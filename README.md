@@ -1,148 +1,69 @@
-# Raptus Claude Playbook
+# status-page-to-chat
 
-Claude Code Konfiguration und Team-Richtlinien der [Raptus AG](https://raptus.ch).
+Ein kleiner Dienst, der Status-Pages externer Anbieter überwacht (Cloudflare, Bexio, Webflow, Bitwarden, Zendesk u.v.m.) und neue Störungen sowie deren Behebung automatisch in **Google Chat** oder **Microsoft Teams** postet.
 
-Dieses Repo ist die gemeinsame Grundlage für die Zusammenarbeit mit Claude Code — für alle Rollen und Projekte. Es kann als **Template** für neue Projekte oder als **Referenz** für bestehende Projekte verwendet werden.
-
----
-
-## Erste Schritte
-
-### Voraussetzungen
-
-1. [Claude Code installieren](https://docs.anthropic.com/de/docs/claude-code) (`npm install -g @anthropic/claude-code`)
-2. Dieses Repo als Template für ein neues Projekt verwenden oder in ein bestehendes Projekt kopieren
-
-### Als Template für ein neues Projekt
-
-1. Auf GitHub: "Use this template" → "Create a new repository"
-2. Repo klonen: `git clone git@github.com:Raptus/<neues-projekt>.git`
-3. `claude` im Projektverzeichnis starten
-
-### In ein bestehendes Projekt importieren
-
-```bash
-cp -r /pfad/zu/raptus-claude-playbook/.claude/ ./.claude/
-cp /pfad/zu/raptus-claude-playbook/CLAUDE.md ./CLAUDE.md
-cp /pfad/zu/raptus-claude-playbook/lessons.md ./lessons.md
-```
+Betreiber: [Raptus AG](https://raptus.ch), Lyss.
 
 ---
 
-## Für alle — auch ohne Programmierkenntnisse
+## Motivation
 
-Claude Code ist ein KI-Assistent im Terminal. Du schreibst auf Deutsch, was du brauchst — Claude erledigt es.
+- Das Team soll proaktiv über Störungen externer Dienste informiert sein, bevor Kunden fragen.
+- Supportanfragen ("Unsere Website läuft nicht") lassen sich schneller einordnen, wenn bekannt ist, dass beispielsweise Webflow gerade eine Störung meldet.
+- Rückfragen wie "Geht es bei dir?" entfallen.
 
-### Was Claude tun kann
+## Funktionsweise (Kurzfassung)
 
-- Dateien erstellen, bearbeiten und erklären
-- Fragen zum Projekt beantworten
-- Texte, Dokumentationen oder Strukturen vorschlagen
-- Bei Entwicklungsprojekten: Code schreiben, testen, reviewen
+1. Ein Azure Function Timer Trigger läuft alle 5 Minuten.
+2. Pro konfiguriertem Dienst wird die Status-Page über den passenden **Adapter** abgefragt (Atlassian-Statuspage, Google Workspace, Metanet RSS, WEDOS, GitHub Issues).
+3. Neue bzw. neu behobene Incidents werden mit dem letzten bekannten Zustand (Azure Table Storage) verglichen.
+4. Bei Zustandsänderung wird eine formatierte Nachricht per Webhook in den konfigurierten Chat-Kanal geschickt.
 
-### Was Claude NICHT selbstständig tut
+**Nachrichtenformat**:
 
-Diese Aktionen erfordern immer deine explizite Bestätigung:
+- **Neu**: `⚠️ <Anbieter> hat eine Störung zu "<Titel>" gemeldet` + Link zur Störung
+- **Behoben**: `✅ <Anbieter> hat die Behebung der Störung zu "<Titel>" gemeldet` + Link
 
-- Dateien löschen
-- Code auf einen Server pushen (deployen)
-- Passwörter oder Zugangsdaten speichern
-- Irreversible Änderungen an Datenbanken
+## Hosting und Kosten
 
-### Wenn Claude unsicher ist
+- **Plattform**: Microsoft Azure (Raptus-Tenant)
+- **Runtime**: Azure Functions (Consumption Plan, Linux, Node.js 20)
+- **State**: Azure Table Storage
+- **Logs**: Application Insights
+- **Self-Monitoring**: Azure Monitor Alert Rule → E-Mail bei Ausfall
 
-Claude sagt es. Antworte mit mehr Kontext oder hol eine Person mit der nötigen Fachkenntnis dazu.
+Erwartete Betriebskosten: **unter 1 CHF pro Monat** (288 Executions/Tag liegen weit unter dem 1-Mio-Freikontingent).
 
-### Warnhinweise ernst nehmen
+## Dokumentation
 
-Wenn Claude `⚠️ Review empfohlen` schreibt, bitte jemanden mit dem nötigen Fachwissen drüberzuschauen — bevor du weitermachst.
-
----
-
-## Struktur
-
-```
-├── CLAUDE.md                  # Kern-Regeln (jede Session, alle Rollen)
-├── .claude/
-│   ├── settings.json          # Berechtigungen & Hooks (Team-shared)
-│   ├── settings.local.json    # Persönliche Overrides (git-ignored)
-│   ├── rules/
-│   │   ├── dev-stack.md       # Tech Stacks und Build-Commands
-│   │   ├── security.md        # Sicherheitsprüfungen
-│   │   ├── code-quality.md    # Qualitätsregeln
-│   │   └── accessibility.md   # Zugänglichkeit
-│   ├── commands/
-│   │   ├── commit-push-pr.md  # /commit-push-pr
-│   │   ├── review.md          # /review
-│   │   └── build-and-test.md  # /build-and-test
-│   ├── agents/
-│   │   ├── code-reviewer.md   # Review-Spezialist
-│   │   └── verify-app.md      # QA-Verifikation
-│   └── hooks/
-│       └── post-edit.sh       # Auto-Formatting nach Edits
-├── .mcp.json                  # MCP-Server (GitHub, erweiterbar)
-├── lessons.md                 # Fehler-Lern-Dokument
-└── CONTRIBUTING.md            # Wie man beiträgt
-```
-
----
-
-## Verfügbare Commands (für Entwickler)
-
-| Command | Beschreibung |
+| Dokument | Inhalt |
 |---|---|
-| `/commit-push-pr` | Änderungen committen, pushen, PR erstellen |
-| `/review` | Code Review des aktuellen Branches |
-| `/build-and-test` | Build und Tests laufen lassen, Fehler beheben |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architektur, Module, Datenfluss |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Format der `config/providers.yaml` |
+| [docs/ADAPTERS.md](docs/ADAPTERS.md) | Spezifikation je Status-Page-Adapter |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Azure-Deployment Schritt für Schritt |
+| [docs/AGENTS.md](docs/AGENTS.md) | Multi-Agent-Arbeit und Zuständigkeiten |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Umsetzungsreihenfolge und offene Punkte |
+| [docs/PLAN.md](docs/PLAN.md) | Ursprünglicher Architektur-Plan (Referenz) |
 
-## Verfügbare Agents (für Entwickler)
+## Projektstand
 
-| Agent | Beschreibung |
-|---|---|
-| `code-reviewer` | Gründliches Review mit Sicherheits- und Qualitätsfokus |
-| `verify-app` | Verifikation nach grösseren Änderungen |
+> **Status**: Planung abgeschlossen, Dokumentation vorhanden. Implementierung steht noch aus.
 
----
+Einstiegspunkt für die Umsetzung: [docs/ROADMAP.md](docs/ROADMAP.md).
 
-## Anpassung
+## Voraussetzungen (später, für Entwicklung)
 
-### Persönliche Einstellungen
-
-Erstelle `.claude/settings.local.json` (git-ignored) für persönliche Overrides:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "Bash(docker *)"
-    ]
-  }
-}
-```
-
-### Neue Rules hinzufügen
-
-Erstelle eine `.md`-Datei in `.claude/rules/` mit optionalem Frontmatter:
-
-```markdown
----
-description: Kurze Beschreibung
-globs: "*.ts,*.tsx"
----
-# Regelname
-- Regel 1
-```
-
----
-
-## Beitragen
-
-Siehe [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Team
-
-Gepflegt vom Entwicklungsteam der Raptus AG, Lyss.
+- Node.js 20+
+- pnpm
+- Azure CLI (`az`)
+- Azure Functions Core Tools (`func`)
+- Zugriff auf den Raptus Azure Tenant
 
 ## Lizenz
 
-MIT
+MIT — siehe [LICENSE](LICENSE).
+
+## Raptus Claude Playbook
+
+Dieses Repo enthält zusätzlich das [Raptus Claude Playbook](CLAUDE.md) mit Team-Regeln für die Zusammenarbeit mit Claude Code. Siehe `CLAUDE.md` und `.claude/rules/`.
