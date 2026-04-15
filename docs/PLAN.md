@@ -39,13 +39,15 @@ Einheitliches Interface `StatusProvider` mit `fetchIncidents(): Promise<Normaliz
 
 | Adapter | Typ | Dienste aus deiner Liste |
 |---|---|---|
-| `atlassian-statuspage` | JSON `/api/v2/incidents/unresolved.json` + `/incidents.json` | bitbucket, bitwarden, bexio, webflow, digicert, kaseya (Komponent-Filter "IT Glue"), ninjaone, sucuri, smartrecruiters, retool, zendesk (Komponent-Filter "raptus-helpcenter"), langdock |
+| `atlassian-statuspage` | JSON `/api/v2/incidents/unresolved.json` + `/incidents.json` | bitbucket, bitwarden, bexio, webflow, digicert, kaseya (Komponent-Filter "IT Glue"), ninjaone, sucuri, smartrecruiters, retool, zendesk (Komponent-Filter "raptus-helpcenter"), langdock, gravityzone-bitdefender (Komponent-Filter auf genutzte Cloud-Instanzen), figma, claude (Komponent-Filter auf genutzte Produkte) |
 | `google-workspace` | JSON `/appsstatus/dashboard/incidents.json` | Google Workspace |
 | `metanet-rss` | RSS `/xml/statusmeldungen.xml` | Metanet |
 | `wedos-status-online` | JSON `/json/incidents.json` | WEDOS |
 | `github-issues` | GitHub REST `/repos/{owner}/{repo}/issues` | onetimesecret |
 
-Komponent-Filter (optional in Config) erlaubt es, bei Multi-Tenant-Pages (Zendesk, Kaseya) nur relevante Sub-Bereiche zu melden.
+Komponent-Filter (optional in Config) erlaubt es, bei Multi-Tenant-Pages (Zendesk, Kaseya) nur relevante Sub-Bereiche zu melden. Der Filter akzeptiert sowohl einen einzelnen Substring als auch eine Liste von Substrings (OR-Logik) — nötig z.B. bei GravityZone (mehrere geografische Cloud-Instanzen) und Claude (mehrere Produkte).
+
+**Sophos** läuft zwar technisch auf Atlassian Statuspage, hat aber die öffentliche JSON-API deaktiviert (alle Endpoints liefern eine 404-HTML-Seite mit Status 200). Integration ist bewusst zurückgestellt — siehe ROADMAP und auskommentierter Eintrag in `config/providers.yaml`.
 
 ## Notifier-Module
 

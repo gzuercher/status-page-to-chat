@@ -17,8 +17,28 @@ providers:
     baseUrl: <url>             # für "atlassian-statuspage", "wedos-status-online"
     owner: <string>            # für "github-issues"
     repo: <string>             # für "github-issues"
-    componentFilter: <string>  # optional, nur bei atlassian-statuspage
+    componentFilter: <string | list<string>>  # optional, nur bei atlassian-statuspage
+    userAgent: <string>        # optional, überschreibt den Default-User-Agent für diesen Provider
 ```
+
+## HTTP User-Agent
+
+Alle ausgehenden HTTP-Aufrufe senden standardmässig einen einheitlichen, sprechenden User-Agent:
+
+```
+raptus-status-monitor/<version> (+https://github.com/raptus/status-page-to-chat; ops@raptus.ch)
+```
+
+Das folgt der gängigen Praxis für gutartige Poller, respektiert die Logs der Status-Page-Betreiber und erleichtert die Kontaktaufnahme, falls wir einen Endpunkt belasten. Die Version wird zur Laufzeit aus `package.json` gezogen.
+
+**Override global** — via App Setting `USER_AGENT` (selten nötig, z.B. für Tests).
+
+**Override pro Provider** — via optionales Feld `userAgent` in `providers.yaml`. Einsatzgrund nur dokumentierte Ausnahmen:
+
+- Endpunkt hinter WAF, der den Default blockt. In diesem Fall die Entscheidung im Pull Request begründen. (Beispiel Sophos: API-Endpoints sind vollständig gesperrt — ein User-Agent-Override allein reicht nicht; siehe auskommentierten Eintrag in `providers.yaml`.)
+- Der Anbieter verlangt explizit ein anderes Format (bisher kein bekannter Fall).
+
+⚠️ Tarnung als Browser ist kein valider Grund — das grenzt an ToS-Verstoss. Lieber Kontakt aufnehmen oder den Adapter 403 akzeptieren lassen.
 
 ## Validierung
 
@@ -98,6 +118,40 @@ providers:
     baseUrl: https://status.kaseya.com
     componentFilter: IT Glue                # nur IT Glue ist für uns relevant
 
+  - key: gravityzone-bitdefender
+    displayName: Bitdefender GravityZone
+    adapter: atlassian-statuspage
+    baseUrl: https://status.gravityzone.bitdefender.com
+    componentFilter:                        # nur Cloud-Instanzen, die Raptus nutzt
+      - cloudgz.gravityzone.bitdefender.com
+      - cloud.gravityzone.bitdefender.com
+
+  - key: figma
+    displayName: Figma
+    adapter: atlassian-statuspage
+    baseUrl: https://status.figma.com
+    # kein componentFilter: nur 3 generische Komponenten, alle relevant
+
+  # --- Sophos: ZURUECKGESTELLT (siehe ROADMAP.md) ---
+  # status.sophos.com laeuft auf Atlassian Statuspage, aber alle
+  # maschinenlesbaren Endpoints (/api/v2/*, /history.atom, /history.rss)
+  # antworten mit HTTP 200 und liefern eine 404-HTML-Seite statt JSON — auch
+  # mit Browser-User-Agent. Aktivierung erfordert Freischaltung durch Sophos
+  # oder einen HTML-Scraping-Adapter (siehe ROADMAP → Spätere Erweiterungen).
+  # - key: sophos
+  #   displayName: Sophos
+  #   adapter: atlassian-statuspage
+  #   baseUrl: https://status.sophos.com
+
+  - key: claude
+    displayName: Claude
+    adapter: atlassian-statuspage
+    baseUrl: https://status.claude.com
+    componentFilter:                        # nur die fuer Raptus genutzten Produkte
+      - claude.ai
+      - Claude Code
+      - api.anthropic.com
+
   # --- Google Workspace ---
   - key: google-workspace
     displayName: Google Workspace
@@ -129,6 +183,7 @@ Webhook-URLs und Alarm-Empfänger liegen **nicht** in `providers.yaml`, sondern 
 |---|---|
 | `WEBHOOK_URL` | Google Chat Incoming Webhook **oder** Teams Incoming Webhook — je nach `chatTarget` |
 | `ALERT_EMAIL` | Empfänger für Self-Monitoring-Alarme (Azure Monitor) |
+| `USER_AGENT` | optional — überschreibt den Default-User-Agent global |
 | `AzureWebJobsStorage` | wird automatisch durch Bicep gesetzt |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | wird automatisch durch Bicep gesetzt |
 

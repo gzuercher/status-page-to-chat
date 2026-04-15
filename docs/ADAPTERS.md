@@ -12,11 +12,18 @@ interface StatusProvider {
 
 Die Aufgabe jedes Adapters: Rohdaten holen, offene + kürzlich geschlossene Incidents extrahieren, ins [`NormalizedIncident`-Format](ARCHITECTURE.md#normalizedincident) mappen.
 
+## HTTP-Requests (gilt für alle Adapter)
+
+- **User-Agent**: Alle Requests laufen über eine zentrale `httpClient`-Hilfsfunktion, die den Default-User-Agent setzt (siehe [CONFIGURATION.md](CONFIGURATION.md#http-user-agent)). Pro Provider kann er über das optionale `userAgent`-Feld in `providers.yaml` überschrieben werden.
+- **Timeout**: 10 s pro Request; Abbruch zählt als Adapter-Fehler (isoliert).
+- **Retry**: Kein Retry auf Adapter-Ebene — der nächste 5-Minuten-Zyklus holt nach.
+- **Accept-Header**: Adapter setzen bei Bedarf spezifisch (`application/json`, `application/rss+xml`).
+
 ---
 
 ## 1. `atlassian-statuspage`
 
-**Abgedeckte Dienste**: Bitbucket, Bitwarden, Bexio, Webflow, DigiCert, NinjaOne, Sucuri, SmartRecruiters, Retool, Zendesk, Langdock, Kaseya — alles was auf Atlassian Statuspage läuft.
+**Abgedeckte Dienste**: Bitbucket, Bitwarden, Bexio, Webflow, DigiCert, NinjaOne, Sucuri, SmartRecruiters, Retool, Zendesk, Langdock, Kaseya, Bitdefender GravityZone, Figma, Claude — alles was auf Atlassian Statuspage mit **öffentlicher JSON-API** läuft. Sophos läuft zwar technisch auf Atlassian Statuspage, hat die JSON-API aber deaktiviert (siehe [ROADMAP.md](ROADMAP.md) → Spätere Erweiterungen).
 
 ### Endpunkte
 
@@ -42,7 +49,12 @@ Die Aufgabe jedes Adapters: Rohdaten holen, offene + kürzlich geschlossene Inci
 
 ### Komponenten-Filter
 
-Optional (`componentFilter: "raptus-helpcenter"`): Ein Incident wird nur übernommen, wenn mindestens eine verknüpfte Component diesen Namen enthält (case-insensitive substring match).
+Optional (`componentFilter`): String **oder** Liste von Strings. Ein Incident wird übernommen, wenn mindestens eine verknüpfte Component (case-insensitive) einen der Filter-Substrings enthält. Bei einer Liste gilt **OR-Logik**: ein Match reicht.
+
+Beispiele:
+
+- `componentFilter: "raptus-helpcenter"` — einzelner Substring
+- `componentFilter: ["cloudgz.gravityzone", "cloud.gravityzone"]` — mehrere Substrings (z.B. mehrere geografische Instanzen eines Anbieters)
 
 ### Konfiguration
 
@@ -161,6 +173,8 @@ Die JSON-API liefert Incidents mit eigenem Schema (noch in Implementierung zu ve
 - GitHub REST API: `GET https://api.github.com/repos/{owner}/{repo}/issues?state=all&per_page=30`
 
 Tipp: Authentisierung optional (höheres Rate-Limit). Wenn ein Token gesetzt wird, erfolgt dies per App Setting `GITHUB_TOKEN`.
+
+Die GitHub API verlangt einen User-Agent — der Default-UA erfüllt die Anforderung, kein Override nötig.
 
 ### Mapping
 

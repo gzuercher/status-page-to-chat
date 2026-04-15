@@ -21,7 +21,7 @@ Legende: `[ ]` offen · `[~]` in Arbeit · `[x]` erledigt
 ## Etappe 2 — Config & State
 
 - [ ] `src/lib/config.ts`: YAML laden, zod-Schema, Umgebungsvariablen lesen
-- [ ] `config/providers.yaml` mit Starter-Einträgen (mindestens Bexio, Webflow, Metanet, Google Workspace)
+- [x] `config/providers.yaml` mit Starter-Einträgen (vorgezogen; enthält aktuell 19 Provider inkl. Atlassian-, Google-Workspace-, Metanet-, WEDOS- und GitHub-Issues-Einträge)
 - [ ] `src/state/tableStore.ts`: CRUD auf Azure Table Storage, Abgleich-Logik
 - [ ] Unit-Tests für config-Validierung und State-Diff
 
@@ -31,8 +31,10 @@ Legende: `[ ]` offen · `[~]` in Arbeit · `[x]` erledigt
 
 - [ ] `src/adapters/atlassianStatuspage.ts`
 - [ ] `tests/adapters/atlassianStatuspage.test.ts` mit Fixture für offene + geschlossene Incidents
-- [ ] Komponenten-Filter-Logik + Test
+- [ ] Komponenten-Filter-Logik: unterstützt sowohl `string` als auch `string[]` (OR-Logik). Tests für beide Formen + für „kein Filter"-Fall.
+- [ ] zod-Schema: `componentFilter: z.union([z.string(), z.array(z.string())]).optional()`
 - [ ] Status-Mapping-Test
+- [ ] Response-Validierung: Content-Type prüfen und JSON parsen in try/catch — HTTP 200 ist **kein** Beweis, dass der Body JSON ist (Atlassian-Pages können bei deaktivierter API eine 404-HTML-Seite mit Status 200 zurückliefern, siehe Sophos).
 
 **Fertig wenn**: Adapter gibt aus einer echten Statuspage-Response korrekt normalisierte Incidents zurück.
 
@@ -94,11 +96,13 @@ Legende: `[ ]` offen · `[~]` in Arbeit · `[x]` erledigt
 - Selbst überwachen per zweiter "canary"-Function (statt nur Azure Monitor)
 - Slack-Notifier
 - Deutsche Übersetzung der Titel (LLM-Aufruf)
-- HTML-Scraping-Adapter für Status-Pages ohne API
+- HTML-Scraping-Adapter für Status-Pages ohne API — **konkreter Anlass: Sophos** (`status.sophos.com`): läuft auf Atlassian Statuspage, aber alle JSON/RSS/Atom-Endpoints antworten mit HTTP 200 und liefern eine 404-HTML-Seite statt echter Daten. Ein realistischer Browser-User-Agent ändert daran nichts. Aktivierung erst, wenn entweder Sophos die API freischaltet oder dieser Adapter existiert. Eintrag in `config/providers.yaml` ist vorbereitet und auskommentiert.
 
 ## Bekannte Risiken / offene Recherche-Punkte
 
 - **WEDOS Response-Format**: Dokumentation der JSON-Struktur muss bei Implementierung empirisch geprüft werden (kein offizielles Schema gefunden).
 - **Metanet Status-Semantik**: Die Zuordnung "behoben" muss per RSS-Heuristik ermittelt werden; evtl. sind mehrere RSS-Einträge pro Incident nötig.
 - **Kaseya Komponenten-Filter "IT Glue"**: Verfügbarkeit der Component-Namen in der Statuspage-API verifizieren.
+- **GravityZone Cloud-Instanzen**: Die aktuellen Filter-Substrings (`cloudgz.gravityzone.bitdefender.com`, `cloud.gravityzone.bitdefender.com`) spiegeln die heutigen Instanz-URLs. Bei Rebranding oder Konsolidierung von Bitdefender (z.B. Migration auf andere Region) muss der `componentFilter` in `config/providers.yaml` nachgezogen werden, sonst verstummen Meldungen.
+- **Claude Komponenten-Namen**: Anthropic benennt Produkte gelegentlich um (z.B. heisst die Konsole bereits offiziell „platform.claude.com (formerly console.anthropic.com)"). Vor Inbetriebnahme die aktuelle Component-Liste unter `https://status.claude.com/api/v2/components.json` abgleichen und ggf. die Substrings in `componentFilter` anpassen.
 - **GitHub Rate Limit**: Ohne Token 60 Requests/h und Client-IP. Für Azure reicht das knapp. Mit Token 5'000/h.

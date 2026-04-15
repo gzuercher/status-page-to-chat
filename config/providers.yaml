@@ -1,0 +1,128 @@
+chatTarget: googleChat
+
+providers:
+  # --- Atlassian Statuspage ---
+  - key: bitbucket
+    displayName: Bitbucket
+    adapter: atlassian-statuspage
+    baseUrl: https://bitbucket.status.atlassian.com
+
+  - key: bitwarden
+    displayName: Bitwarden
+    adapter: atlassian-statuspage
+    baseUrl: https://status.bitwarden.com
+
+  - key: bexio
+    displayName: Bexio
+    adapter: atlassian-statuspage
+    baseUrl: https://www.bexio-status.com
+
+  - key: webflow
+    displayName: Webflow
+    adapter: atlassian-statuspage
+    baseUrl: https://status.webflow.com
+
+  - key: digicert
+    displayName: DigiCert
+    adapter: atlassian-statuspage
+    baseUrl: https://status.digicert.com
+
+  - key: ninjaone
+    displayName: NinjaOne
+    adapter: atlassian-statuspage
+    baseUrl: https://status.ninjaone.com
+
+  - key: sucuri
+    displayName: Sucuri
+    adapter: atlassian-statuspage
+    baseUrl: https://status.sucuri.net
+
+  - key: smartrecruiters
+    displayName: SmartRecruiters
+    adapter: atlassian-statuspage
+    baseUrl: https://status.smartrecruiters.com
+
+  - key: retool
+    displayName: Retool
+    adapter: atlassian-statuspage
+    baseUrl: https://status.retool.com
+
+  - key: langdock
+    displayName: Langdock
+    adapter: atlassian-statuspage
+    baseUrl: https://status.langdock.com
+
+  - key: zendesk-helpcenter
+    displayName: Zendesk Help Center
+    adapter: atlassian-statuspage
+    baseUrl: https://status.zendesk.com
+    componentFilter: raptus-helpcenter      # nur Meldungen zu unserer Subdomain
+
+  - key: kaseya-itglue
+    displayName: Kaseya IT Glue
+    adapter: atlassian-statuspage
+    baseUrl: https://status.kaseya.com
+    componentFilter: IT Glue                # nur IT Glue ist für uns relevant
+
+  - key: gravityzone-bitdefender
+    displayName: Bitdefender GravityZone
+    adapter: atlassian-statuspage
+    baseUrl: https://status.gravityzone.bitdefender.com
+    componentFilter:                        # nur Cloud-Instanzen, die Raptus nutzt
+      - cloudgz.gravityzone.bitdefender.com
+      - cloud.gravityzone.bitdefender.com
+
+  - key: figma
+    displayName: Figma
+    adapter: atlassian-statuspage
+    baseUrl: https://status.figma.com
+    # kein componentFilter: nur 3 generische Komponenten, alle relevant
+
+  # --- Sophos: ZURUECKGESTELLT (siehe ROADMAP.md → Spätere Erweiterungen) ---
+  # WAS: Integration von status.sophos.com in den Chat-Notifier.
+  # WARUM NICHT JETZT: status.sophos.com laeuft zwar auf Atlassian Statuspage,
+  #   aber der Betreiber hat saemtliche maschinenlesbaren Endpoints deaktiviert.
+  #   Alle Pfade unter /api/v2/* sowie /history.atom, /history.rss, /history.json
+  #   antworten mit HTTP 200, liefern jedoch eine generische 1034-Byte 404-HTML-
+  #   Seite statt JSON/Atom — auch mit realistischem Browser-User-Agent. Der
+  #   `atlassian-statuspage`-Adapter kann Sophos daher nicht abdecken.
+  # VORAUSSETZUNG FUER AKTIVIERUNG:
+  #   (a) Sophos schaltet die oeffentliche JSON-API frei, ODER
+  #   (b) wir implementieren einen HTML-Scraping-Adapter (siehe ROADMAP Etappe
+  #       "Spätere Erweiterungen" → "HTML-Scraping-Adapter für Status-Pages ohne
+  #       API"). Browser-Tarnung ist laut CONFIGURATION.md keine Option.
+  # - key: sophos
+  #   displayName: Sophos
+  #   adapter: atlassian-statuspage   # bzw. kuenftig: html-scraping
+  #   baseUrl: https://status.sophos.com
+
+  - key: claude
+    displayName: Claude
+    adapter: atlassian-statuspage
+    baseUrl: https://status.claude.com
+    componentFilter:                        # nur die fuer Raptus genutzten Produkte
+      - claude.ai
+      - Claude Code
+      - api.anthropic.com
+
+  # --- Google Workspace ---
+  - key: google-workspace
+    displayName: Google Workspace
+    adapter: google-workspace
+
+  # --- Metanet (RSS) ---
+  - key: metanet
+    displayName: Metanet
+    adapter: metanet-rss
+
+  # --- WEDOS ---
+  - key: wedos
+    displayName: WEDOS
+    adapter: wedos-status-online
+
+  # --- GitHub-Issues als Status-Tracker ---
+  - key: onetimesecret
+    displayName: Onetime Secret
+    adapter: github-issues
+    owner: onetimesecret
+    repo: status
