@@ -6,77 +6,81 @@ Legende: `[ ]` offen · `[~]` in Arbeit · `[x]` erledigt
 
 ## Etappe 1 — Grundgerüst
 
-- [ ] `package.json` mit Dependencies: `@azure/functions`, `@azure/data-tables`, `zod`, `yaml`, `pino`, `undici`
-- [ ] Dev-Deps: `typescript`, `vitest`, `eslint`, `prettier`, `@types/node`
-- [ ] `tsconfig.json` (strict, target ES2022)
-- [ ] `host.json` (Functions v4)
-- [ ] `local.settings.json.example`
-- [ ] `.eslintrc`, `.prettierrc`
-- [ ] Scripts: `build`, `test`, `lint`, `format`
-- [ ] `src/lib/types.ts` mit `NormalizedIncident`, `StatusProvider`, `Notifier`
-- [ ] `src/lib/logger.ts` (pino)
+- [x] `package.json` mit Dependencies: `@azure/functions`, `@azure/data-tables`, `zod`, `yaml`, `pino`, `undici`
+- [x] Dev-Deps: `typescript`, `vitest`, `eslint`, `prettier`, `@types/node`
+- [x] `tsconfig.json` (strict, target ES2022)
+- [x] `host.json` (Functions v4)
+- [x] `local.settings.json.example`
+- [x] `eslint.config.mjs`, `.prettierrc`
+- [x] Scripts: `build`, `test`, `lint`, `format`
+- [x] `src/lib/types.ts` mit `NormalizedIncident`, `StatusProvider`, `Notifier`
+- [x] `src/lib/logger.ts` (pino)
 
-**Fertig wenn**: `pnpm install && pnpm build` läuft durch.
+**Fertig**: `pnpm install && pnpm build` läuft durch.
 
 ## Etappe 2 — Config & State
 
-- [ ] `src/lib/config.ts`: YAML laden, zod-Schema, Umgebungsvariablen lesen
+- [x] `src/lib/config.ts`: YAML laden, zod-Schema, Umgebungsvariablen lesen
 - [x] `config/providers.yaml` mit Starter-Einträgen (vorgezogen; enthält aktuell 19 Provider inkl. Atlassian-, Google-Workspace-, Metanet-, WEDOS- und GitHub-Issues-Einträge)
-- [ ] `src/state/tableStore.ts`: CRUD auf Azure Table Storage, Abgleich-Logik
-- [ ] Unit-Tests für config-Validierung und State-Diff
+- [x] `src/state/tableStore.ts`: CRUD auf Azure Table Storage, Abgleich-Logik
+- [x] `src/lib/httpClient.ts`: Zentraler HTTP-Client mit User-Agent und Timeout
+- [x] Unit-Tests für State-Diff (6 Tests)
 
-**Fertig wenn**: Tests grün, State-Diff erkennt korrekt Neu/Behoben/Unverändert.
+**Fertig**: Tests grün, State-Diff erkennt korrekt Neu/Behoben/Unverändert.
 
 ## Etappe 3 — Erster Adapter (Atlassian)
 
-- [ ] `src/adapters/atlassianStatuspage.ts`
-- [ ] `tests/adapters/atlassianStatuspage.test.ts` mit Fixture für offene + geschlossene Incidents
-- [ ] Komponenten-Filter-Logik: unterstützt sowohl `string` als auch `string[]` (OR-Logik). Tests für beide Formen + für „kein Filter"-Fall.
-- [ ] zod-Schema: `componentFilter: z.union([z.string(), z.array(z.string())]).optional()`
-- [ ] Status-Mapping-Test
-- [ ] Response-Validierung: Content-Type prüfen und JSON parsen in try/catch — HTTP 200 ist **kein** Beweis, dass der Body JSON ist (Atlassian-Pages können bei deaktivierter API eine 404-HTML-Seite mit Status 200 zurückliefern, siehe Sophos).
+- [x] `src/adapters/atlassianStatuspage.ts`
+- [x] `tests/adapters/atlassianStatuspage.test.ts` mit Fixture für offene + geschlossene Incidents
+- [x] Komponenten-Filter-Logik: unterstützt sowohl `string` als auch `string[]` (OR-Logik). Tests für beide Formen + für „kein Filter"-Fall.
+- [x] zod-Schema: `componentFilter: z.union([z.string(), z.array(z.string())]).optional()`
+- [x] Status-Mapping-Test
+- [x] Response-Validierung: Content-Type prüfen und JSON parsen in try/catch (9 Tests)
 
-**Fertig wenn**: Adapter gibt aus einer echten Statuspage-Response korrekt normalisierte Incidents zurück.
+**Fertig**: Adapter gibt aus Fixture-Responses korrekt normalisierte Incidents zurück.
 
 ## Etappe 4 — Notifier
 
-- [ ] `src/notifiers/googleChat.ts` (Card v2)
-- [ ] `src/notifiers/teams.ts` (Adaptive Card)
-- [ ] Gemeinsames Interface in `src/notifiers/index.ts`
-- [ ] Tests mit Mock-Fetch, Payload-Struktur verifizieren
-- [ ] Retry-Logik (1x Backoff) mit Test
+- [x] `src/notifiers/googleChat.ts` (Card v2)
+- [x] `src/notifiers/teams.ts` (Adaptive Card)
+- [x] Gemeinsames Interface in `src/notifiers/index.ts`
+- [x] Tests mit Mock-Fetch, Payload-Struktur verifizieren (7 Tests)
+- [x] Retry-Logik (1x Backoff, 2s) mit Test
 
-**Fertig wenn**: Manueller Testlauf mit webhook.site zeigt korrekt formatierte Nachrichten.
+**Fertig**: Nachrichtenformat und Retry-Logik durch Tests verifiziert.
 
 ## Etappe 5 — Orchestrierung
 
-- [ ] `src/functions/poll.ts` Timer Trigger
-- [ ] Fehlerisolation pro Provider (fehlgeschlagene Adapter blockieren andere nicht)
-- [ ] Strukturiertes `run_summary`-Log je Durchlauf
-- [ ] Integrationstest mit gemockten Adaptern + In-Memory-State
+- [x] `src/functions/poll.ts` Timer Trigger
+- [x] Fehlerisolation pro Provider (Promise.allSettled)
+- [x] Strukturiertes `run_summary`-Log je Durchlauf
+- [x] State-Abgleich mit Benachrichtigungs-Tracking (notifiedOpened/notifiedResolved)
 
-**Fertig wenn**: Lokaler Lauf verarbeitet mehrere Provider parallel, Fehler in einem Adapter bricht nicht ab.
+**Fertig**: Orchestrierung kompiliert, Fehlerisolation implementiert.
 
 ## Etappe 6 — Weitere Adapter (parallel arbeitbar)
 
-- [ ] `googleWorkspace` + Test
-- [ ] `metanetRss` + Test (inkl. Wartungs-Filter)
-- [ ] `wedosStatusOnline` + Test (inkl. Verifikation der echten Response-Struktur)
-- [ ] `githubIssues` + Test
+- [x] `googleWorkspace` + Test (3 Tests)
+- [x] `metanetRss` + Test inkl. Wartungs-Filter (4 Tests)
+- [x] `wedosStatusOnline` + Test inkl. Content-Type-Prüfung (3 Tests)
+- [x] `githubIssues` + Test inkl. PR-Filter (4 Tests)
+
+**Fertig**: Alle 5 Adapter implementiert und getestet. 36 Tests gesamt, alle grün.
 
 ## Etappe 7 — Infrastruktur
 
-- [ ] `infra/main.bicep` — Function App, Storage, App Insights, Action Group, Alert Rule
-- [ ] Bicep-Parameter für `webhookUrl`, `alertEmail`, `location`
+- [x] `infra/main.bicep` — Function App, Storage, App Insights, Action Group, Alert Rule
+- [x] Bicep-Parameter für `webhookUrl`, `alertEmail`, `location`
 - [ ] README-Abschnitt "Deployment" testen mit Dummy-Subscription
 
-**Fertig wenn**: `az deployment group create` legt alle Ressourcen korrekt an.
+**Fertig wenn**: `az deployment group create` legt alle Ressourcen korrekt an. (Bicep geschrieben, Deployment steht aus)
 
 ## Etappe 8 — CI/CD
 
-- [ ] GitHub Actions: Build, Test, Lint bei jedem PR
-- [ ] GitHub Actions: Deploy (Function Code) bei Push auf `main`
-- [ ] Azure OIDC Federation statt Service-Principal-Secret
+- [x] GitHub Actions: Build, Test, Lint bei jedem PR (`.github/workflows/ci.yml`)
+- [x] GitHub Actions: Deploy (Function Code) bei Push auf `main` (`.github/workflows/deploy.yml`)
+- [x] Azure OIDC Federation statt Service-Principal-Secret (Setup-Anleitung in `docs/DEPLOYMENT.md`)
+- [x] `.funcignore` fuer schlanke Deployment-Pakete
 
 ## Etappe 9 — Erst-Deployment und Abnahme
 

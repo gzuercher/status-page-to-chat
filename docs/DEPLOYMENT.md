@@ -63,7 +63,72 @@ func azure functionapp publish func-status-page-to-chat
 - Änderungen am Adapter-Code: gleicher Publish-Prozess.
 - Infrastruktur-Änderungen: erneut `az deployment group create`.
 
-Empfehlung: GitHub Actions Workflow für Build + Deploy (wird in der Roadmap umgesetzt).
+Der GitHub Actions Workflow `.github/workflows/deploy.yml` deployt automatisch bei Push auf `main`. CI (Build + Lint + Test) läuft zusätzlich bei jedem Pull Request via `.github/workflows/ci.yml`.
+
+## GitHub Actions Setup (einmalig)
+
+Das Deployment nutzt **Azure OIDC Federation** statt Service-Principal-Secrets. Einmal eingerichtet — keine rotierenden Secrets.
+
+### 1. App Registration mit Federated Credential anlegen
+
+```bash
+# Variablen anpassen
+APP_NAME="github-actions-status-page-to-chat"
+GITHUB_ORG="raptus"
+GITHUB_REPO="status-page-to-chat"
+RESOURCE_GROUP="rg-status-page-to-chat"
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+# App Registration erstellen
+APP_ID=$(az ad app create --display-name "$APP_NAME" --query appId -o tsv)
+az ad sp create --id "$APP_ID"
+
+# Federated Credential fuer main-Branch (Deploy-Workflow)
+az ad app federated-credential create \
+  --id "$APP_ID" \
+  --parameters "{
+    \"name\": \"main-branch\",
+    \"issuer\": \"https://token.actions.githubusercontent.com\",
+    \"subject\": \"repo:${GITHUB_ORG}/${GITHUB_REPO}:ref:refs/heads/main\",
+    \"audiences\": [\"api://AzureADTokenExchange\"]
+  }"
+
+# Federated Credential fuer Environment "production" (empfohlen)
+az ad app federated-credential create \
+  --id "$APP_ID" \
+  --parameters "{
+    \"name\": \"production-env\",
+    \"issuer\": \"https://token.actions.githubusercontent.com\",
+    \"subject\": \"repo:${GITHUB_ORG}/${GITHUB_REPO}:environment:production\",
+    \"audiences\": [\"api://AzureADTokenExchange\"]
+  }"
+
+# Rolle auf Resource Group zuweisen
+az role assignment create \
+  --role "Contributor" \
+  --assignee "$APP_ID" \
+  --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}"
+
+# Werte fuer GitHub Secrets ausgeben
+TENANT_ID=$(az account show --query tenantId -o tsv)
+echo "AZURE_CLIENT_ID=$APP_ID"
+echo "AZURE_TENANT_ID=$TENANT_ID"
+echo "AZURE_SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
+```
+
+### 2. GitHub Secrets setzen
+
+Im Repo unter **Settings → Secrets and variables → Actions**:
+
+| Secret | Wert |
+|---|---|
+| `AZURE_CLIENT_ID` | App-ID aus Schritt 1 |
+| `AZURE_TENANT_ID` | Tenant-ID aus Schritt 1 |
+| `AZURE_SUBSCRIPTION_ID` | Subscription-ID aus Schritt 1 |
+
+### 3. GitHub Environment "production" anlegen (optional, empfohlen)
+
+Unter **Settings → Environments → New environment**: `production`. Optional Protection Rules (Approvals, Wait Timer) definieren, damit Deployments reviewt werden.
 
 ## Secrets
 
