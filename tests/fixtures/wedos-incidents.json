@@ -1,0 +1,22 @@
+{
+  "incidents": [
+    {
+      "id": 501,
+      "name": "Network connectivity issues",
+      "status": "active",
+      "started_at": "2026-04-15T07:00:00Z",
+      "updated_at": "2026-04-15T07:30:00Z",
+      "resolved_at": null,
+      "url": "https://wedos.status.online/en/incident/501"
+    },
+    {
+      "id": 500,
+      "name": "DNS resolution delay",
+      "status": "resolved",
+      "started_at": "2026-04-14T15:00:00Z",
+      "updated_at": "2026-04-14T17:00:00Z",
+      "resolved_at": "2026-04-14T17:00:00Z",
+      "url": "https://wedos.status.online/en/incident/500"
+    }
+  ]
+}

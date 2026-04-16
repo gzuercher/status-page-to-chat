@@ -1,0 +1,19 @@
+[
+  {
+    "id": "gw-001",
+    "external_desc": "Gmail: Zustellverzoegerungen",
+    "begin": "2026-04-15T08:00:00Z",
+    "modified": "2026-04-15T09:00:00Z",
+    "uri": "https://www.google.com/appsstatus/dashboard/incidents/gw-001",
+    "service_name": "Gmail"
+  },
+  {
+    "id": "gw-002",
+    "external_desc": "Google Drive: Dateizugriff eingeschraenkt",
+    "begin": "2026-04-14T14:00:00Z",
+    "modified": "2026-04-14T16:00:00Z",
+    "end": "2026-04-14T16:00:00Z",
+    "uri": "https://www.google.com/appsstatus/dashboard/incidents/gw-002",
+    "service_name": "Google Drive"
+  }
+]

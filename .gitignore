@@ -12,6 +12,9 @@ node_modules/
 dist/
 .turbo/
 
+# Azure Functions
+local.settings.json
+
 # PHP
 vendor/
 storage/logs/

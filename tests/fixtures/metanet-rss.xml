@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Metanet Statusmeldungen</title>
+    <link>https://support.metanet.ch/</link>
+    <item>
+      <title>Betriebsunterbruch Webhosting Server 42</title>
+      <link>https://support.metanet.ch/status/12345</link>
+      <guid>https://support.metanet.ch/status/12345</guid>
+      <pubDate>Tue, 15 Apr 2026 10:00:00 +0200</pubDate>
+      <description>Aktuell gibt es Probleme mit Server 42.</description>
+    </item>
+    <item>
+      <title>Stoerung DNS behoben</title>
+      <link>https://support.metanet.ch/status/12344</link>
+      <guid>https://support.metanet.ch/status/12344</guid>
+      <pubDate>Mon, 14 Apr 2026 18:00:00 +0200</pubDate>
+      <description>Die DNS-Stoerung wurde behoben.</description>
+    </item>
+    <item>
+      <title>Geplante Wartungsarbeiten am 20. April</title>
+      <link>https://support.metanet.ch/status/12343</link>
+      <guid>https://support.metanet.ch/status/12343</guid>
+      <pubDate>Mon, 14 Apr 2026 12:00:00 +0200</pubDate>
+      <description>Am 20. April finden Wartungsarbeiten statt.</description>
+    </item>
+  </channel>
+</rss>

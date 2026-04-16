@@ -1,0 +1,30 @@
+[
+  {
+    "id": 100,
+    "number": 15,
+    "title": "Service degradation",
+    "state": "open",
+    "created_at": "2026-04-15T09:00:00Z",
+    "updated_at": "2026-04-15T09:30:00Z",
+    "html_url": "https://github.com/onetimesecret/status/issues/15"
+  },
+  {
+    "id": 99,
+    "number": 14,
+    "title": "Scheduled maintenance complete",
+    "state": "closed",
+    "created_at": "2026-04-14T20:00:00Z",
+    "updated_at": "2026-04-14T22:00:00Z",
+    "html_url": "https://github.com/onetimesecret/status/issues/14"
+  },
+  {
+    "id": 98,
+    "number": 13,
+    "title": "Update dependencies",
+    "state": "open",
+    "created_at": "2026-04-13T10:00:00Z",
+    "updated_at": "2026-04-13T10:00:00Z",
+    "html_url": "https://github.com/onetimesecret/status/issues/13",
+    "pull_request": { "url": "https://api.github.com/repos/onetimesecret/status/pulls/13" }
+  }
+]

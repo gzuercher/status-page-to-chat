@@ -1,0 +1,41 @@
+{
+  "page": {
+    "id": "test-page",
+    "name": "Test Status"
+  },
+  "incidents": [
+    {
+      "id": "inc-001",
+      "name": "API-Latenz erhoeht",
+      "status": "investigating",
+      "shortlink": "https://stspg.io/test001",
+      "created_at": "2026-04-15T10:00:00Z",
+      "updated_at": "2026-04-15T10:30:00Z",
+      "components": [
+        { "id": "comp-1", "name": "API" },
+        { "id": "comp-2", "name": "Dashboard" }
+      ]
+    },
+    {
+      "id": "inc-002",
+      "name": "Login nicht verfuegbar",
+      "status": "identified",
+      "shortlink": "https://stspg.io/test002",
+      "created_at": "2026-04-15T09:00:00Z",
+      "updated_at": "2026-04-15T09:45:00Z",
+      "components": [{ "id": "comp-3", "name": "Authentication" }]
+    },
+    {
+      "id": "inc-003",
+      "name": "Stoerung im IT Glue Modul",
+      "status": "monitoring",
+      "shortlink": "https://stspg.io/test003",
+      "created_at": "2026-04-15T08:00:00Z",
+      "updated_at": "2026-04-15T08:30:00Z",
+      "components": [
+        { "id": "comp-4", "name": "IT Glue" },
+        { "id": "comp-5", "name": "VSA" }
+      ]
+    }
+  ]
+}
