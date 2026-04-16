@@ -1,69 +1,69 @@
 # status-page-to-chat
 
-Ein kleiner Dienst, der Status-Pages externer Anbieter überwacht (Cloudflare, Bexio, Webflow, Bitwarden, Zendesk u.v.m.) und neue Störungen sowie deren Behebung automatisch in **Google Chat** oder **Microsoft Teams** postet.
+A small service that monitors the status pages of external providers (Cloudflare, Bexio, Webflow, Bitwarden, Zendesk, and many more) and automatically posts new incidents and their resolutions to **Google Chat** or **Microsoft Teams**.
 
-Betreiber: [Raptus AG](https://raptus.ch), Lyss.
+Operator: [Raptus AG](https://raptus.ch), Lyss.
 
 ---
 
 ## Motivation
 
-- Das Team soll proaktiv über Störungen externer Dienste informiert sein, bevor Kunden fragen.
-- Supportanfragen ("Unsere Website läuft nicht") lassen sich schneller einordnen, wenn bekannt ist, dass beispielsweise Webflow gerade eine Störung meldet.
-- Rückfragen wie "Geht es bei dir?" entfallen.
+- The team should be proactively informed about disruptions with external services before customers ask.
+- Support requests ("Our website is down") can be assessed more quickly when it's known that, for example, Webflow is currently reporting an incident.
+- Questions like "Is it working for you?" become unnecessary.
 
-## Funktionsweise (Kurzfassung)
+## How it works (summary)
 
-1. Ein Azure Function Timer Trigger läuft alle 5 Minuten.
-2. Pro konfiguriertem Dienst wird die Status-Page über den passenden **Adapter** abgefragt (Atlassian-Statuspage, Google Workspace, Metanet RSS, WEDOS, GitHub Issues).
-3. Neue bzw. neu behobene Incidents werden mit dem letzten bekannten Zustand (Azure Table Storage) verglichen.
-4. Bei Zustandsänderung wird eine formatierte Nachricht per Webhook in den konfigurierten Chat-Kanal geschickt.
+1. An Azure Function Timer Trigger runs every 5 minutes.
+2. For each configured service, the status page is queried via the appropriate **adapter** (Atlassian Statuspage, Google Workspace, Metanet RSS, WEDOS, GitHub Issues).
+3. New or newly resolved incidents are compared against the last known state (Azure Table Storage).
+4. On state change, a formatted message is sent via webhook to the configured chat channel.
 
-**Nachrichtenformat**:
+**Message format**:
 
-- **Neu**: `⚠️ <Anbieter> hat eine Störung zu "<Titel>" gemeldet` + Link zur Störung
-- **Behoben**: `✅ <Anbieter> hat die Behebung der Störung zu "<Titel>" gemeldet` + Link
+- **New**: `⚠️ <Provider> has reported an incident: "<Title>"` + link to incident
+- **Resolved**: `✅ <Provider> has resolved the incident: "<Title>"` + link
 
-## Hosting und Kosten
+## Hosting and costs
 
-- **Plattform**: Microsoft Azure (Raptus-Tenant)
+- **Platform**: Microsoft Azure (Raptus tenant)
 - **Runtime**: Azure Functions (Consumption Plan, Linux, Node.js 20)
 - **State**: Azure Table Storage
 - **Logs**: Application Insights
-- **Self-Monitoring**: Azure Monitor Alert Rule → E-Mail bei Ausfall
+- **Self-monitoring**: Azure Monitor Alert Rule → email on failure
 
-Erwartete Betriebskosten: **unter 1 CHF pro Monat** (288 Executions/Tag liegen weit unter dem 1-Mio-Freikontingent).
+Expected operating costs: **under CHF 1 per month** (288 executions/day is well below the 1M free tier).
 
-## Dokumentation
+## Documentation
 
-| Dokument | Inhalt |
+| Document | Content |
 |---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architektur, Module, Datenfluss |
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Format der `config/providers.yaml` |
-| [docs/ADAPTERS.md](docs/ADAPTERS.md) | Spezifikation je Status-Page-Adapter |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Azure-Deployment Schritt für Schritt |
-| [docs/AGENTS.md](docs/AGENTS.md) | Multi-Agent-Arbeit und Zuständigkeiten |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Umsetzungsreihenfolge und offene Punkte |
-| [docs/PLAN.md](docs/PLAN.md) | Ursprünglicher Architektur-Plan (Referenz) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, modules, data flow |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Format of `config/providers.yaml` |
+| [docs/ADAPTERS.md](docs/ADAPTERS.md) | Specification per status page adapter |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Azure deployment step by step |
+| [docs/AGENTS.md](docs/AGENTS.md) | Multi-agent work and responsibilities |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Implementation order and open items |
+| [docs/PLAN.md](docs/PLAN.md) | Original architecture plan (reference) |
 
-## Projektstand
+## Project status
 
-> **Status**: Planung abgeschlossen, Dokumentation vorhanden. Implementierung steht noch aus.
+> **Status**: Implementation complete. Awaiting first deployment to Azure.
 
-Einstiegspunkt für die Umsetzung: [docs/ROADMAP.md](docs/ROADMAP.md).
+Entry point for deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-## Voraussetzungen (später, für Entwicklung)
+## Prerequisites (for development)
 
 - Node.js 20+
 - pnpm
 - Azure CLI (`az`)
 - Azure Functions Core Tools (`func`)
-- Zugriff auf den Raptus Azure Tenant
+- Access to the Raptus Azure tenant
 
-## Lizenz
+## License
 
-MIT — siehe [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
 
 ## Raptus Claude Playbook
 
-Dieses Repo enthält zusätzlich das [Raptus Claude Playbook](CLAUDE.md) mit Team-Regeln für die Zusammenarbeit mit Claude Code. Siehe `CLAUDE.md` und `.claude/rules/`.
+This repo also contains the [Raptus Claude Playbook](CLAUDE.md) with team rules for collaboration with Claude Code. See `CLAUDE.md` and `.claude/rules/`.

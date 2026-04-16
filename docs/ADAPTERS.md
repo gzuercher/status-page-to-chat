@@ -1,6 +1,6 @@
-# Adapter
+# Adapters
 
-Jeder Adapter implementiert das Interface:
+Each adapter implements the interface:
 
 ```ts
 interface StatusProvider {
@@ -10,53 +10,53 @@ interface StatusProvider {
 }
 ```
 
-Die Aufgabe jedes Adapters: Rohdaten holen, offene + kürzlich geschlossene Incidents extrahieren, ins [`NormalizedIncident`-Format](ARCHITECTURE.md#normalizedincident) mappen.
+The task of each adapter: fetch raw data, extract open + recently closed incidents, map to the [`NormalizedIncident` format](ARCHITECTURE.md#data-model).
 
-## HTTP-Requests (gilt für alle Adapter)
+## HTTP requests (applies to all adapters)
 
-- **User-Agent**: Alle Requests laufen über eine zentrale `httpClient`-Hilfsfunktion, die den Default-User-Agent setzt (siehe [CONFIGURATION.md](CONFIGURATION.md#http-user-agent)). Pro Provider kann er über das optionale `userAgent`-Feld in `providers.yaml` überschrieben werden.
-- **Timeout**: 10 s pro Request; Abbruch zählt als Adapter-Fehler (isoliert).
-- **Retry**: Kein Retry auf Adapter-Ebene — der nächste 5-Minuten-Zyklus holt nach.
-- **Accept-Header**: Adapter setzen bei Bedarf spezifisch (`application/json`, `application/rss+xml`).
+- **User-Agent**: All requests go through a central `httpClient` helper that sets the default User-Agent (see [CONFIGURATION.md](CONFIGURATION.md#http-user-agent)). Per provider it can be overridden via the optional `userAgent` field in `providers.yaml`.
+- **Timeout**: 10 s per request; abort counts as an adapter error (isolated).
+- **Retry**: No retry at adapter level — the next 5-minute cycle will pick it up.
+- **Accept header**: Adapters set it specifically where needed (`application/json`, `application/rss+xml`).
 
 ---
 
 ## 1. `atlassian-statuspage`
 
-**Abgedeckte Dienste**: Bitbucket, Bitwarden, Bexio, Webflow, DigiCert, NinjaOne, Sucuri, SmartRecruiters, Retool, Zendesk, Langdock, Kaseya, Bitdefender GravityZone, Figma, Claude — alles was auf Atlassian Statuspage mit **öffentlicher JSON-API** läuft. Sophos läuft zwar technisch auf Atlassian Statuspage, hat die JSON-API aber deaktiviert (siehe [ROADMAP.md](ROADMAP.md) → Spätere Erweiterungen).
+**Covered services**: Bitbucket, Bitwarden, Bexio, Webflow, DigiCert, NinjaOne, Sucuri, SmartRecruiters, Retool, Zendesk, Langdock, Kaseya, Bitdefender GravityZone, Figma, Claude — everything running on Atlassian Statuspage with a **public JSON API**. Sophos runs technically on Atlassian Statuspage but has the JSON API disabled (see [ROADMAP.md](ROADMAP.md) → Later extensions).
 
-### Endpunkte
+### Endpoints
 
-- Offene Incidents: `{baseUrl}/api/v2/incidents/unresolved.json`
-- Letzte Incidents (inkl. kürzlich resolved): `{baseUrl}/api/v2/incidents.json`
-- Summary (optional, für Komponenten-Lookup): `{baseUrl}/api/v2/summary.json`
+- Open incidents: `{baseUrl}/api/v2/incidents/unresolved.json`
+- Recent incidents (incl. recently resolved): `{baseUrl}/api/v2/incidents.json`
+- Summary (optional, for component lookup): `{baseUrl}/api/v2/summary.json`
 
 ### Mapping
 
-| Statuspage-Feld | Normalized-Feld |
+| Statuspage field | Normalized field |
 |---|---|
 | `id` | `externalId` |
 | `name` | `title` |
-| `status` | `status` (mapping siehe unten) |
-| `shortlink` oder `{baseUrl}/incidents/{id}` | `url` |
+| `status` | `status` (mapping see below) |
+| `shortlink` or `{baseUrl}/incidents/{id}` | `url` |
 | `created_at` | `startedAt` |
 | `updated_at` | `updatedAt` |
 
-**Status-Mapping**:
+**Status mapping**:
 
 - `resolved`, `completed`, `postmortem` → `resolved`
-- alles andere (`investigating`, `identified`, `monitoring`, …) → `open`
+- everything else (`investigating`, `identified`, `monitoring`, …) → `open`
 
-### Komponenten-Filter
+### Component filter
 
-Optional (`componentFilter`): String **oder** Liste von Strings. Ein Incident wird übernommen, wenn mindestens eine verknüpfte Component (case-insensitive) einen der Filter-Substrings enthält. Bei einer Liste gilt **OR-Logik**: ein Match reicht.
+Optional (`componentFilter`): string **or** list of strings. An incident is included if at least one linked component (case-insensitive) contains one of the filter substrings. With a list, **OR logic** applies: one match is sufficient.
 
-Beispiele:
+Examples:
 
-- `componentFilter: "raptus-helpcenter"` — einzelner Substring
-- `componentFilter: ["cloudgz.gravityzone", "cloud.gravityzone"]` — mehrere Substrings (z.B. mehrere geografische Instanzen eines Anbieters)
+- `componentFilter: "raptus-helpcenter"` — single substring
+- `componentFilter: ["cloudgz.gravityzone", "cloud.gravityzone"]` — multiple substrings (e.g. multiple geographic instances of one provider)
 
-### Konfiguration
+### Configuration
 
 ```yaml
 - key: bexio
@@ -69,26 +69,26 @@ Beispiele:
 
 ## 2. `google-workspace`
 
-**Dienst**: Google Workspace Status Dashboard.
+**Service**: Google Workspace Status Dashboard.
 
-### Endpunkt
+### Endpoint
 
 - `https://www.google.com/appsstatus/dashboard/incidents.json`
 
 ### Mapping
 
-Die JSON-Struktur enthält eine Liste aktiver und historischer Incidents mit:
+The JSON structure contains a list of active and historical incidents with:
 
-| Google-Feld | Normalized-Feld |
+| Google field | Normalized field |
 |---|---|
 | `id` | `externalId` |
 | `external_desc` | `title` |
 | `begin` | `startedAt` |
 | `modified` | `updatedAt` |
-| `end` (vorhanden?) | Bestimmt `status`: vorhanden = `resolved`, sonst `open` |
-| `uri` (Details) bzw. Dashboard-URL | `url` |
+| `end` (present?) | Determines `status`: present = `resolved`, otherwise `open` |
+| `uri` (details) or dashboard URL | `url` |
 
-### Konfiguration
+### Configuration
 
 ```yaml
 - key: google-workspace
@@ -100,31 +100,31 @@ Die JSON-Struktur enthält eine Liste aktiver und historischer Incidents mit:
 
 ## 3. `metanet-rss`
 
-**Dienst**: Metanet Switzerland Status-Meldungen.
+**Service**: Metanet Switzerland status announcements.
 
-### Endpunkt
+### Endpoint
 
 - `https://support.metanet.ch/xml/statusmeldungen.xml` (RSS)
 
 ### Mapping
 
-RSS Items enthalten Titel, Link, pubDate, description. Zusätzlich Kategorisierung im Titel/Body ("Betriebsunterbruch", "Wartungsarbeiten", "Technische Infos").
+RSS items contain title, link, pubDate, description. Additional categorisation in the title/body ("Betriebsunterbruch", "Wartungsarbeiten", "Technische Infos").
 
-| RSS-Feld | Normalized-Feld |
+| RSS field | Normalized field |
 |---|---|
-| `guid` oder `link` | `externalId` |
+| `guid` or `link` | `externalId` |
 | `title` | `title` |
 | `pubDate` | `startedAt` / `updatedAt` |
 | `link` | `url` |
-| Kategorie / Body-Keywords | Bestimmt `status` |
+| Category / body keywords | Determines `status` |
 
-**Status-Heuristik**:
+**Status heuristic**:
 
-- Enthält Titel/Body Stichworte wie "behoben", "gelöst", "ended" → `resolved`
-- Typ "Wartungsarbeiten" → wird übersprungen (laut Plan: keine Maintenance-Meldungen)
-- Sonst → `open`
+- Title/body contains keywords like "behoben", "gelöst", "ended" → `resolved`
+- Type "Wartungsarbeiten" → skipped (no maintenance messages per spec)
+- Otherwise → `open`
 
-### Konfiguration
+### Configuration
 
 ```yaml
 - key: metanet
@@ -136,58 +136,61 @@ RSS Items enthalten Titel, Link, pubDate, description. Zusätzlich Kategorisieru
 
 ## 4. `wedos-status-online`
 
-**Dienst**: WEDOS (wedos.status.online Plattform).
+**Service**: WEDOS (wedos.status.online platform).
 
-### Endpunkt
+### Endpoint
 
 - `https://wedos.status.online/en/json/incidents.json`
 
 ### Mapping
 
-Die JSON-API liefert Incidents mit eigenem Schema (noch in Implementierung zu verifizieren). Erwartete Felder:
+The JSON API returns incidents with its own schema (to be verified during implementation). Expected fields:
 
-| WEDOS-Feld | Normalized-Feld |
+| WEDOS field | Normalized field |
 |---|---|
 | `id` | `externalId` |
 | `name` / `title` | `title` |
 | `status` / `resolved_at` | `status` |
-| Start/Update-Timestamps | `startedAt` / `updatedAt` |
-| Link zur Incident-Seite | `url` |
+| start/update timestamps | `startedAt` / `updatedAt` |
+| Link to incident page | `url` |
 
-### Konfiguration
+### Configuration
 
 ```yaml
 - key: wedos
   displayName: WEDOS
   adapter: wedos-status-online
+  baseUrl: https://wedos.status.online
 ```
 
 ---
 
 ## 5. `github-issues`
 
-**Dienst**: Projekte, die GitHub Issues als Status-Tracker nutzen (z.B. Onetime Secret).
+**Service**: Projects that use GitHub Issues as a status tracker (e.g. Onetime Secret).
 
-### Endpunkt
+### Endpoint
 
 - GitHub REST API: `GET https://api.github.com/repos/{owner}/{repo}/issues?state=all&per_page=30`
 
-Tipp: Authentisierung optional (höheres Rate-Limit). Wenn ein Token gesetzt wird, erfolgt dies per App Setting `GITHUB_TOKEN`.
+Tip: Authentication is optional (higher rate limit). If a token is set, it is provided via App Setting `GITHUB_TOKEN`.
 
-Die GitHub API verlangt einen User-Agent — der Default-UA erfüllt die Anforderung, kein Override nötig.
+The GitHub API requires a User-Agent — the default UA meets the requirement, no override needed.
 
 ### Mapping
 
-| GitHub-Feld | Normalized-Feld |
+| GitHub field | Normalized field |
 |---|---|
-| `id` bzw. `number` | `externalId` |
+| `id` or `number` | `externalId` |
 | `title` | `title` |
 | `state` (`open`/`closed`) | `status` (`open` → `open`, `closed` → `resolved`) |
 | `created_at` | `startedAt` |
 | `updated_at` | `updatedAt` |
 | `html_url` | `url` |
 
-### Konfiguration
+Pull requests are filtered out (GitHub API returns both issues and PRs).
+
+### Configuration
 
 ```yaml
 - key: onetimesecret
@@ -199,10 +202,10 @@ Die GitHub API verlangt einen User-Agent — der Default-UA erfüllt die Anforde
 
 ---
 
-## Neuen Adapter hinzufügen
+## Adding a new adapter
 
-1. Neue Datei unter `src/adapters/<name>.ts` anlegen. Implementierung muss `StatusProvider` erfüllen.
-2. In `src/adapters/index.ts` registrieren.
-3. zod-Schema für adapter-spezifische Config-Felder in `src/lib/config.ts` ergänzen.
-4. Unit-Test unter `tests/adapters/<name>.test.ts` mit mindestens einem Fixture (realer gespeicherter Response).
-5. Dokumentations-Abschnitt in diesem File ergänzen.
+1. Create a new file at `src/adapters/<name>.ts`. Implementation must satisfy `StatusProvider`.
+2. Register in `src/adapters/index.ts`.
+3. Add zod schema for adapter-specific config fields in `src/lib/config.ts`.
+4. Unit test at `tests/adapters/<name>.test.ts` with at least one fixture (real saved response).
+5. Add a documentation section in this file.

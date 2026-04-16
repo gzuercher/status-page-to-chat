@@ -5,18 +5,18 @@ import type { DiffResult, NormalizedIncident, StoredIncident } from "../lib/type
 const TABLE_NAME = "incidents";
 
 /**
- * Erstellt einen TableClient fuer die Incidents-Tabelle.
- * Legt die Tabelle an, falls sie nicht existiert.
+ * Creates a TableClient for the incidents table.
+ * Creates the table if it does not exist.
  */
 export async function createTableClient(connectionString?: string): Promise<TableClient> {
   const connStr = connectionString ?? process.env.AzureWebJobsStorage;
   if (!connStr) {
-    throw new Error("AzureWebJobsStorage ist nicht gesetzt");
+    throw new Error("AzureWebJobsStorage is not set");
   }
 
   const serviceClient = TableServiceClient.fromConnectionString(connStr);
   await serviceClient.createTable(TABLE_NAME).catch((err: { statusCode?: number }) => {
-    // Tabelle existiert bereits → kein Fehler
+    // Table already exists → not an error
     if (err.statusCode !== 409) throw err;
   });
 
@@ -24,7 +24,7 @@ export async function createTableClient(connectionString?: string): Promise<Tabl
 }
 
 /**
- * Laedt alle gespeicherten Incidents fuer einen bestimmten Provider.
+ * Loads all stored incidents for a specific provider.
  */
 export async function getStoredIncidents(
   client: TableClient,
@@ -56,8 +56,8 @@ export async function getStoredIncidents(
 }
 
 /**
- * Vergleicht aktuelle Incidents mit dem gespeicherten Zustand
- * und bestimmt, welche Aktionen noetig sind.
+ * Compares current incidents against the stored state
+ * and determines which actions are needed.
  */
 export function diffIncidents(
   current: NormalizedIncident[],
@@ -69,13 +69,13 @@ export function diffIncidents(
     const existing = stored.get(incident.externalId);
 
     if (!existing && incident.status === "open") {
-      // Neuer offener Incident → benachrichtigen
+      // New open incident → notify
       results.push({ incident, action: "notify_opened" });
     } else if (existing && existing.status === "open" && incident.status === "resolved") {
-      // War offen, ist jetzt behoben → benachrichtigen
+      // Was open, is now resolved → notify
       results.push({ incident, action: "notify_resolved" });
     } else {
-      // Kein Zustandswechsel
+      // No state change
       results.push({ incident, action: "none" });
     }
   }
@@ -84,7 +84,7 @@ export function diffIncidents(
 }
 
 /**
- * Speichert oder aktualisiert einen Incident in Table Storage.
+ * Inserts or updates an incident in Table Storage.
  */
 export async function upsertIncident(
   client: TableClient,
@@ -109,6 +109,6 @@ export async function upsertIncident(
 
   logger.debug(
     { providerKey: incident.providerKey, externalId: incident.externalId, status: incident.status },
-    "Incident in Table Storage geschrieben",
+    "Incident written to Table Storage",
   );
 }

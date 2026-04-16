@@ -1,46 +1,46 @@
-# Contributing – Claude Code bei Raptus
+# Contributing – Claude Code at Raptus
 
-## Erste Schritte
+## Getting started
 
-1. Repo klonen oder Template verwenden
-2. `claude` im Projektverzeichnis starten
-3. `/help` zeigt verfügbare Commands
+1. Clone the repo or use the template
+2. Start `claude` in the project directory
+3. `/help` shows available commands
 
-## Verfügbare Commands
+## Available commands
 
-- `/commit-push-pr` — Git-Workflow automatisieren
-- `/review` — Code Review des aktuellen Branches
-- `/build-and-test` — Build und Tests laufen lassen
+- `/commit-push-pr` — automate the git workflow
+- `/review` — code review of the current branch
+- `/build-and-test` — run build and tests
 
-## Wenn Claude einen Fehler macht
+## When Claude makes a mistake
 
-1. **Sofort korrigieren.** Nicht durchlaufen lassen.
-2. **Lektion dokumentieren:** Sage Claude: "Dokumentiere diese Lektion in lessons.md"
-3. **Im PR vermerken:** Wenn es ein wiederkehrendes Problem ist, CLAUDE.md oder eine Rule anpassen
+1. **Correct it immediately.** Don't let it run through.
+2. **Document the lesson:** Tell Claude: "Document this lesson in lessons.md"
+3. **Note in the PR:** If it's a recurring issue, update CLAUDE.md or a rule
 
-## Code Review mit Claude
+## Code review with Claude
 
-Bei Pull Reviews kannst du `@.claude` taggen (braucht die Claude Code GitHub Action). Claude kann dann:
-- Fehler in der CLAUDE.md ergänzen
-- Lektionen in lessons.md eintragen
-- Direkt Verbesserungen vorschlagen
+On pull reviews you can tag `@.claude` (requires the Claude Code GitHub Action). Claude can then:
+- Add errors to CLAUDE.md
+- Add entries to lessons.md
+- Directly suggest improvements
 
-## Rules erweitern
+## Extending rules
 
-Wenn du eine neue Regel brauchst:
-1. Erstelle eine `.md`-Datei in `.claude/rules/`
-2. Setze `globs` im Frontmatter auf die relevanten Dateitypen
-3. Halte die Regel kurz und konkret
-4. Erstelle einen PR
+If you need a new rule:
+1. Create a `.md` file in `.claude/rules/`
+2. Set `globs` in the frontmatter for the relevant file types
+3. Keep the rule short and concrete
+4. Create a PR
 
-## Persönliche Einstellungen
+## Personal settings
 
-Für persönliche Anpassungen: `.claude/settings.local.json` (git-ignored).
-Diese Datei überschreibt Team-Einstellungen lokal.
+For personal customisations: `.claude/settings.local.json` (git-ignored).
+This file overrides team settings locally.
 
-## Wichtig
+## Important
 
-- **CLAUDE.md schlank halten.** Nur was jede Session braucht.
-- **Rules für Spezifisches.** Sicherheit, Qualität, A11y sind ausgelagert.
-- **Hooks für Determinismus.** Was immer passieren muss (Formatting), gehört in Hooks.
-- **lessons.md pflegen.** Jeder Fehler, der dokumentiert wird, spart dem Team Zeit.
+- **Keep CLAUDE.md lean.** Only what every session needs.
+- **Rules for specifics.** Security, quality, a11y are separate.
+- **Hooks for determinism.** What always must happen (formatting) belongs in hooks.
+- **Maintain lessons.md.** Every documented error saves the team time.

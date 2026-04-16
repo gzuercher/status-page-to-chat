@@ -1,31 +1,31 @@
 # Deployment
 
-> ⚠️ **Review empfohlen** — dieses Dokument beschreibt Azure-Infrastruktur. Vor erstmaligem Deployment ins produktive Subscription-Konto lässt eine zweite Person die Werte gegenprüfen.
+> ⚠️ **Review recommended** — this document describes Azure infrastructure. Before first deployment to the production subscription, have a second person verify the values.
 
-## Zielbild
+## Target state
 
-| Ressource | Typ | Zweck |
+| Resource | Type | Purpose |
 |---|---|---|
-| Resource Group `rg-status-page-to-chat` | | Container aller Ressourcen |
-| Storage Account `stspagetochat...` | Standard_LRS | Function Runtime + `incidents`-Table |
-| Application Insights `appi-status-page-to-chat` | | Logs, Metrics, Traces |
-| Function App `func-status-page-to-chat` | Linux, Consumption Plan, Node 20 | Hostet den Timer Trigger |
-| Action Group `ag-status-page-to-chat` | | E-Mail-Empfänger für Alarme |
+| Resource Group `rg-status-page-to-chat` | | Container for all resources |
+| Storage Account `stspagetochat...` | Standard_LRS | Function runtime + `incidents` table |
+| Application Insights `appi-status-page-to-chat` | | Logs, metrics, traces |
+| Function App `func-status-page-to-chat` | Linux, Consumption Plan, Node 20 | Hosts the Timer Trigger |
+| Action Group `ag-status-page-to-chat` | | Email recipient for alerts |
 | Alert Rule | Metric Alert | "FunctionExecutionCount < 1 in 15 min" |
 
-Definiert in **`infra/main.bicep`** (wird im Implementierungsschritt erstellt).
+Defined in **`infra/main.bicep`**.
 
-## Voraussetzungen (Betreiber)
+## Prerequisites (operator)
 
-- Azure CLI installiert und eingeloggt: `az login`
-- Zugriff auf das richtige Subscription: `az account set --subscription <name>`
-- Ausreichende Rollen: `Contributor` auf Subscription oder Resource Group
-- Webhook-URL für Google Chat oder Teams vorbereitet
-- E-Mail-Adresse für Alarme (Gruppen-Mail empfohlen)
+- Azure CLI installed and logged in: `az login`
+- Access to the correct subscription: `az account set --subscription <name>`
+- Sufficient roles: `Contributor` on subscription or resource group
+- Webhook URL for Google Chat or Teams prepared
+- Email address for alerts (group mail recommended)
 
-## Erst-Deployment
+## First deployment
 
-### 1. Resource Group anlegen
+### 1. Create resource group
 
 ```bash
 az group create \
@@ -33,57 +33,56 @@ az group create \
   --location switzerlandnorth
 ```
 
-### 2. Infrastruktur deployen
+### 2. Deploy infrastructure
 
 ```bash
 az deployment group create \
   --resource-group rg-status-page-to-chat \
   --template-file infra/main.bicep \
   --parameters \
-      webhookUrl='<GOOGLE_CHAT_ODER_TEAMS_WEBHOOK>' \
-      alertEmail='<ops-empfänger@raptus.ch>'
+      webhookUrl='<GOOGLE_CHAT_OR_TEAMS_WEBHOOK>' \
+      alertEmail='<ops@raptus.ch>'
 ```
 
-### 3. Function Code deployen
+### 3. Deploy Function code
 
 ```bash
 pnpm build
-cd dist   # oder wo das Build-Output liegt
 func azure functionapp publish func-status-page-to-chat
 ```
 
-### 4. Konfiguration prüfen
+### 4. Verify configuration
 
-- Portal: Function App → Functions → `poll` → invocations → erster Lauf sichtbar?
-- Testweise: ein bekannter offener Incident sollte beim nächsten Timer eine Chat-Nachricht erzeugen.
+- Portal: Function App → Functions → `poll` → invocations → first run visible?
+- Test: a known open incident should trigger a chat message on the next timer run.
 
-## Laufendes Deployment (Updates)
+## Ongoing deployment (updates)
 
-- Änderungen an **`config/providers.yaml`**: werden beim nächsten `func azure functionapp publish` mit ausgeliefert.
-- Änderungen am Adapter-Code: gleicher Publish-Prozess.
-- Infrastruktur-Änderungen: erneut `az deployment group create`.
+- Changes to **`config/providers.yaml`**: delivered with the next `func azure functionapp publish`.
+- Changes to adapter code: same publish process.
+- Infrastructure changes: run `az deployment group create` again.
 
-Der GitHub Actions Workflow `.github/workflows/deploy.yml` deployt automatisch bei Push auf `main`. CI (Build + Lint + Test) läuft zusätzlich bei jedem Pull Request via `.github/workflows/ci.yml`.
+The GitHub Actions workflow `.github/workflows/deploy.yml` deploys automatically on push to `main`. CI (Build + Lint + Test) also runs on every pull request via `.github/workflows/ci.yml`.
 
-## GitHub Actions Setup (einmalig)
+## GitHub Actions Setup (one-time)
 
-Das Deployment nutzt **Azure OIDC Federation** statt Service-Principal-Secrets. Einmal eingerichtet — keine rotierenden Secrets.
+The deployment uses **Azure OIDC Federation** instead of Service Principal secrets. Once set up — no rotating credentials.
 
-### 1. App Registration mit Federated Credential anlegen
+### 1. Create App Registration with Federated Credential
 
 ```bash
-# Variablen anpassen
+# Adjust variables
 APP_NAME="github-actions-status-page-to-chat"
 GITHUB_ORG="raptus"
 GITHUB_REPO="status-page-to-chat"
 RESOURCE_GROUP="rg-status-page-to-chat"
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
-# App Registration erstellen
+# Create App Registration
 APP_ID=$(az ad app create --display-name "$APP_NAME" --query appId -o tsv)
 az ad sp create --id "$APP_ID"
 
-# Federated Credential fuer main-Branch (Deploy-Workflow)
+# Federated Credential for main branch (deploy workflow)
 az ad app federated-credential create \
   --id "$APP_ID" \
   --parameters "{
@@ -93,7 +92,7 @@ az ad app federated-credential create \
     \"audiences\": [\"api://AzureADTokenExchange\"]
   }"
 
-# Federated Credential fuer Environment "production" (empfohlen)
+# Federated Credential for environment "production" (recommended)
 az ad app federated-credential create \
   --id "$APP_ID" \
   --parameters "{
@@ -103,62 +102,62 @@ az ad app federated-credential create \
     \"audiences\": [\"api://AzureADTokenExchange\"]
   }"
 
-# Rolle auf Resource Group zuweisen
+# Assign role on resource group
 az role assignment create \
   --role "Contributor" \
   --assignee "$APP_ID" \
   --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}"
 
-# Werte fuer GitHub Secrets ausgeben
+# Output values for GitHub Secrets
 TENANT_ID=$(az account show --query tenantId -o tsv)
 echo "AZURE_CLIENT_ID=$APP_ID"
 echo "AZURE_TENANT_ID=$TENANT_ID"
 echo "AZURE_SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
 ```
 
-### 2. GitHub Secrets setzen
+### 2. Set GitHub Secrets
 
-Im Repo unter **Settings → Secrets and variables → Actions**:
+In the repo under **Settings → Secrets and variables → Actions**:
 
-| Secret | Wert |
+| Secret | Value |
 |---|---|
-| `AZURE_CLIENT_ID` | App-ID aus Schritt 1 |
-| `AZURE_TENANT_ID` | Tenant-ID aus Schritt 1 |
-| `AZURE_SUBSCRIPTION_ID` | Subscription-ID aus Schritt 1 |
+| `AZURE_CLIENT_ID` | App ID from step 1 |
+| `AZURE_TENANT_ID` | Tenant ID from step 1 |
+| `AZURE_SUBSCRIPTION_ID` | Subscription ID from step 1 |
 
-### 3. GitHub Environment "production" anlegen (optional, empfohlen)
+### 3. Create GitHub Environment "production" (optional, recommended)
 
-Unter **Settings → Environments → New environment**: `production`. Optional Protection Rules (Approvals, Wait Timer) definieren, damit Deployments reviewt werden.
+Under **Settings → Environments → New environment**: `production`. Optionally define Protection Rules (Approvals, Wait Timer) so deployments are reviewed.
 
 ## Secrets
 
-Secrets werden als **Application Settings** auf der Function App gespeichert — nie im Repo.
+Secrets are stored as **Application Settings** on the Function App — never in the repo.
 
-| Setting | Quelle |
+| Setting | Source |
 |---|---|
-| `WEBHOOK_URL` | Wird via Bicep-Parameter gesetzt |
-| `ALERT_EMAIL` | Wird via Bicep-Parameter gesetzt (Action Group) |
-| `AzureWebJobsStorage` | Automatisch durch Bicep |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Automatisch durch Bicep |
-| `GITHUB_TOKEN` (optional) | Bei Bedarf nachträglich setzen: `az functionapp config appsettings set` |
+| `WEBHOOK_URL` | Set via Bicep parameter |
+| `ALERT_EMAIL` | Set via Bicep parameter (Action Group) |
+| `AzureWebJobsStorage` | Automatically set by Bicep |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Automatically set by Bicep |
+| `GITHUB_TOKEN` (optional) | Set afterwards if needed: `az functionapp config appsettings set` |
 
-Webhook-URL rotieren:
+Rotating the webhook URL:
 
 ```bash
 az functionapp config appsettings set \
   --name func-status-page-to-chat \
   --resource-group rg-status-page-to-chat \
-  --settings WEBHOOK_URL='<neuer-webhook>'
+  --settings WEBHOOK_URL='<new-webhook>'
 ```
 
 ## Rollback
 
-- Deployments sind **immutable Pakete**. Rollback = älteres Paket erneut deployen.
-- Configuration-Rollback: `providers.yaml` per Git-Revert und erneut publishen.
+- Deployments are **immutable packages**. Rollback = redeploy an older package.
+- Configuration rollback: `git revert` on `providers.yaml` and republish.
 
-## Monitoring-Abfragen (App Insights)
+## Monitoring queries (App Insights)
 
-**Hat der Timer in den letzten 15 Minuten gefeuert?**
+**Has the timer fired in the last 15 minutes?**
 
 ```kusto
 traces
@@ -168,7 +167,7 @@ traces
 | count
 ```
 
-**Fehler pro Adapter (24 h)**:
+**Errors per adapter (24 h)**:
 
 ```kusto
 traces
@@ -178,11 +177,11 @@ traces
 | summarize count() by tostring(customDimensions.providerKey)
 ```
 
-## Lokales Ausführen
+## Running locally
 
-Siehe auch Abschnitt "Lokale Entwicklung" in [AGENTS.md](AGENTS.md).
+See also "Local development" section in [AGENTS.md](AGENTS.md).
 
-1. `local.settings.json` anlegen (aus `local.settings.json.example`):
+1. Create `local.settings.json` (from `local.settings.json.example`):
 
 ```json
 {
@@ -190,16 +189,16 @@ Siehe auch Abschnitt "Lokale Entwicklung" in [AGENTS.md](AGENTS.md).
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "node",
-    "WEBHOOK_URL": "https://webhook.site/<dein-test-slot>"
+    "WEBHOOK_URL": "https://webhook.site/<your-test-slot>"
   }
 }
 ```
 
-2. Azurite starten (lokaler Azure-Storage-Emulator): `azurite --silent`
+2. Start Azurite (local Azure Storage emulator): `azurite --silent`
 3. `pnpm install && pnpm build && func start`
-4. Test-Webhook-Ziel über [webhook.site](https://webhook.site) beobachten.
+4. Monitor the test webhook target via [webhook.site](https://webhook.site).
 
-## Kostenkontrolle
+## Cost control
 
-- **Budget Alert** einrichten: Portal → Cost Management → Budget für `rg-status-page-to-chat`, Schwelle 2 CHF/Monat, Mail an Ops.
-- App Insights **Daily Cap** auf z.B. 100 MB setzen, damit ein Log-Amoklauf nicht die Rechnung explodieren lässt.
+- Set up a **Budget Alert**: Portal → Cost Management → Budget for `rg-status-page-to-chat`, threshold CHF 2/month, email to ops.
+- Set App Insights **Daily Cap** to e.g. 100 MB to prevent a logging runaway from inflating the bill.

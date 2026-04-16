@@ -1,70 +1,70 @@
-# Plan: Status-Page-zu-Chat Benachrichtigungsdienst
+# Plan: Status Page to Chat Notification Service
 
-## Kontext
+## Context
 
-Das Raptus-Team soll automatisch informiert werden, wenn bei externen Diensten (Cloudflare, Bexio, Webflow, Bitwarden, Zendesk u.v.m.) Störungen auftreten oder behoben werden. Ziel ist:
+The Raptus team should be automatically notified when external services (Cloudflare, Bexio, Webflow, Bitwarden, Zendesk, and more) experience incidents or resolve them. Goals:
 
-- Weniger Rückfragen im Team ("Geht es bei dir?")
-- Schnellere Reaktion auf Kundenmeldungen
-- Keine verpassten Incidents
+- Fewer internal questions ("Is it working for you?")
+- Faster response to customer reports
+- No missed incidents
 
-Das Repo ist aktuell leer (nur Raptus Playbook). Dieser Plan beschreibt den kompletten Aufbau eines kleinen, modularen Dienstes, der auf Azure läuft, regelmässig die Status-Pages pollt, Zustandsänderungen erkennt und formatierte Meldungen in Google Chat oder Microsoft Teams postet.
+The repo was initially empty (Raptus Playbook only). This plan describes the complete setup of a small, modular service that runs on Azure, polls status pages regularly, detects state changes, and posts formatted alerts to Google Chat or Microsoft Teams.
 
-## Entscheidungen (bereits mit dir geklärt)
+## Decisions (already discussed)
 
-- **Konfiguration**: YAML-Datei im Repo (`config/providers.yaml`) — versioniert, PR-reviewbar
-- **Chat-Routing**: Ein globales Ziel zum Start (Webhook-URL in App-Settings)
-- **Self-Monitoring**: Azure Monitor Alert → Mail bei Ausfall
-- **Scheduled Maintenance**: wird nicht gemeldet (nur Incidents)
+- **Configuration**: YAML file in the repo (`config/providers.yaml`) — versioned, PR-reviewable
+- **Chat routing**: One global target to start (webhook URL in App Settings)
+- **Self-monitoring**: Azure Monitor Alert → email on failure
+- **Scheduled maintenance**: not reported (incidents only)
 
-## Architektur
+## Architecture
 
-**Stack**: TypeScript + Node.js 20, Azure Functions (Consumption Plan, Timer Trigger alle 5 min), Azure Table Storage für State, Bicep für IaC.
+**Stack**: TypeScript + Node.js 20, Azure Functions (Consumption Plan, Timer Trigger every 5 min), Azure Table Storage for state, Bicep for IaC.
 
-**Ablauf pro Durchlauf**:
+**Flow per run**:
 
-1. Timer feuert alle 5 min
-2. `config/providers.yaml` wird geladen (gebündelt im Deployment)
-3. Je konfiguriertem Provider wird der passende Adapter instanziert und `fetchIncidents()` aufgerufen
-4. Rohdaten werden in ein einheitliches `NormalizedIncident`-Modell gemappt
-5. Abgleich mit letztem bekannten Zustand in Azure Table Storage
-6. Für neue / neu behobene Incidents: formatierte Nachricht via Notifier (Google Chat oder Teams Webhook)
-7. State in Table Storage aktualisieren
+1. Timer fires every 5 min
+2. `config/providers.yaml` is loaded (bundled in deployment)
+3. For each configured provider the appropriate adapter is instantiated and `fetchIncidents()` is called
+4. Raw data is mapped to a unified `NormalizedIncident` model
+5. Compared against last known state in Azure Table Storage
+6. For new / newly resolved incidents: formatted message via Notifier (Google Chat or Teams webhook)
+7. State updated in Table Storage
 
-**Kosten**: ~288 Executions/Tag = ~8'700/Monat, weit unter dem 1-Mio-Freikontingent. Storage + App Insights wenige Cent. Erwartung: **< 1 CHF/Monat**.
+**Costs**: ~288 executions/day = ~8,700/month, well below the 1M free tier. Storage + App Insights a few cents. Expected: **< CHF 1/month**.
 
-## Adapter-Module (modular)
+## Adapter modules (modular)
 
-Einheitliches Interface `StatusProvider` mit `fetchIncidents(): Promise<NormalizedIncident[]>`. Fünf Adapter decken alle genannten Status-Pages ab:
+Unified interface `StatusProvider` with `fetchIncidents(): Promise<NormalizedIncident[]>`. Five adapters cover all listed status pages:
 
-| Adapter | Typ | Dienste aus deiner Liste |
+| Adapter | Type | Services from the list |
 |---|---|---|
-| `atlassian-statuspage` | JSON `/api/v2/incidents/unresolved.json` + `/incidents.json` | bitbucket, bitwarden, bexio, webflow, digicert, kaseya (Komponent-Filter "IT Glue"), ninjaone, sucuri, smartrecruiters, retool, zendesk (Komponent-Filter "raptus-helpcenter"), langdock, gravityzone-bitdefender (Komponent-Filter auf genutzte Cloud-Instanzen), figma, claude (Komponent-Filter auf genutzte Produkte) |
+| `atlassian-statuspage` | JSON `/api/v2/incidents/unresolved.json` + `/incidents.json` | Bitbucket, Bitwarden, Bexio, Webflow, DigiCert, Kaseya (component filter "IT Glue"), NinjaOne, Sucuri, SmartRecruiters, Retool, Zendesk (component filter "raptus-helpcenter"), Langdock, Bitdefender GravityZone (component filter on used cloud instances), Figma, Claude (component filter on used products) |
 | `google-workspace` | JSON `/appsstatus/dashboard/incidents.json` | Google Workspace |
 | `metanet-rss` | RSS `/xml/statusmeldungen.xml` | Metanet |
 | `wedos-status-online` | JSON `/json/incidents.json` | WEDOS |
-| `github-issues` | GitHub REST `/repos/{owner}/{repo}/issues` | onetimesecret |
+| `github-issues` | GitHub REST `/repos/{owner}/{repo}/issues` | Onetime Secret |
 
-Komponent-Filter (optional in Config) erlaubt es, bei Multi-Tenant-Pages (Zendesk, Kaseya) nur relevante Sub-Bereiche zu melden. Der Filter akzeptiert sowohl einen einzelnen Substring als auch eine Liste von Substrings (OR-Logik) — nötig z.B. bei GravityZone (mehrere geografische Cloud-Instanzen) und Claude (mehrere Produkte).
+Component filter (optional in config) allows filtering only relevant sub-areas on multi-tenant pages (Zendesk, Kaseya). The filter accepts both a single substring and a list of substrings (OR logic) — needed e.g. for GravityZone (multiple geographic cloud instances) and Claude (multiple products).
 
-**Sophos** läuft zwar technisch auf Atlassian Statuspage, hat aber die öffentliche JSON-API deaktiviert (alle Endpoints liefern eine 404-HTML-Seite mit Status 200). Integration ist bewusst zurückgestellt — siehe ROADMAP und auskommentierter Eintrag in `config/providers.yaml`.
+**Sophos** runs technically on Atlassian Statuspage but has the public JSON API disabled (all endpoints return a 404 HTML page with status 200). Integration is deliberately deferred — see ROADMAP and commented-out entry in `config/providers.yaml`.
 
-## Notifier-Module
+## Notifier modules
 
-Einheitliches Interface `Notifier` mit `notifyOpened(incident)` und `notifyResolved(incident)`.
+Unified interface `Notifier` with `notifyOpened(incident)` and `notifyResolved(incident)`.
 
-- `GoogleChatNotifier`: Incoming Webhook, Card v2 mit Titel + Link
-- `TeamsNotifier`: Incoming Webhook, Adaptive Card oder MessageCard
+- `GoogleChatNotifier`: Incoming Webhook, Card v2 with title + link
+- `TeamsNotifier`: Incoming Webhook, Adaptive Card
 
-**Message-Format** (genau wie gewünscht):
+**Message format** (exactly as specified):
 
-- **Neu**: `⚠️ <Anbieter> hat eine Störung zu "<Titel>" gemeldet` + Link
-- **Behoben**: `✅ <Anbieter> hat die Behebung der Störung zu "<Titel>" gemeldet` + Link
+- **New**: `⚠️ <Provider> has reported an incident: "<Title>"` + link
+- **Resolved**: `✅ <Provider> has resolved the incident: "<Title>"` + link
 
-## Konfigurationsformat (`config/providers.yaml`)
+## Configuration format (`config/providers.yaml`)
 
 ```yaml
-chatTarget: googleChat   # oder "teams"
+chatTarget: googleChat   # or "teams"
 
 providers:
   - key: bexio
@@ -94,29 +94,29 @@ providers:
   - key: wedos
     displayName: WEDOS
     adapter: wedos-status-online
+    baseUrl: https://wedos.status.online
   - key: onetimesecret
     displayName: Onetime Secret
     adapter: github-issues
     owner: onetimesecret
     repo: status
-  # ... bitbucket, bitwarden, digicert, ninjaone, sucuri, smartrecruiters, retool, langdock analog
 ```
 
-Validierung mit `zod` beim Laden (laut Raptus-Regeln Pflicht).
+Validated with `zod` on load (required per Raptus rules).
 
-## Projektstruktur
+## Project structure
 
 ```
 status-page-to-chat/
 ├── config/
-│   └── providers.yaml              # Konfigurierte Status-Pages
+│   └── providers.yaml              # Configured status pages
 ├── infra/
-│   └── main.bicep                  # Azure-Ressourcen (Function App, Storage, App Insights, Alert)
+│   └── main.bicep                  # Azure resources (Function App, Storage, App Insights, Alert)
 ├── src/
 │   ├── functions/
-│   │   └── poll.ts                 # Timer-Trigger Entry Point
+│   │   └── poll.ts                 # Timer Trigger entry point
 │   ├── adapters/
-│   │   ├── index.ts                # Adapter-Registry
+│   │   ├── index.ts                # Adapter registry
 │   │   ├── atlassianStatuspage.ts
 │   │   ├── googleWorkspace.ts
 │   │   ├── metanetRss.ts
@@ -127,14 +127,15 @@ status-page-to-chat/
 │   │   ├── googleChat.ts
 │   │   └── teams.ts
 │   ├── state/
-│   │   └── tableStore.ts           # Azure Table Storage Wrapper
+│   │   └── tableStore.ts           # Azure Table Storage wrapper
 │   ├── lib/
-│   │   ├── config.ts               # YAML laden + zod-Validierung
-│   │   ├── logger.ts               # pino-Logger
-│   │   └── types.ts                # NormalizedIncident, Provider-Interface
+│   │   ├── config.ts               # YAML load + zod schema
+│   │   ├── httpClient.ts           # Central HTTP client
+│   │   ├── logger.ts               # pino logger
+│   │   └── types.ts                # NormalizedIncident, provider interface
 │   └── index.ts
 ├── tests/
-│   └── adapters/                   # vitest für jeden Adapter mit Fixture-Responses
+│   └── adapters/                   # vitest per adapter with fixture responses
 ├── .env.example
 ├── host.json
 ├── local.settings.json.example
@@ -143,64 +144,65 @@ status-page-to-chat/
 └── README.md
 ```
 
-## Azure-Ressourcen (Bicep)
+## Azure resources (Bicep)
 
 - **Resource Group**: `rg-status-page-to-chat`
-- **Storage Account** (Standard_LRS): für Function-Runtime + `incidents`-Tabelle
-- **Application Insights**: Logs/Metrics
-- **Function App** (Linux, Consumption Plan, Node 20): hostet den Timer-Trigger
-- **Action Group**: E-Mail-Empfänger für Alarm
+- **Storage Account** (Standard_LRS): for Function runtime + `incidents` table
+- **Log Analytics Workspace**: prerequisite for workspace-based App Insights
+- **Application Insights**: logs/metrics
+- **Function App** (Linux, Consumption Plan, Node 20): hosts the Timer Trigger
+- **Action Group**: email recipient for alert
 - **Alert Rule**: "FunctionExecutionCount < 1 in 15 min" → Action Group
 
-App-Settings enthalten:
-- `WEBHOOK_URL` (Google Chat oder Teams, je nach `chatTarget`)
-- `ALERT_EMAIL` (als Parameter für Action Group)
-- Secrets als Azure-verschlüsselte App-Settings, nie im Code (Regel `security.md`)
+App Settings contain:
+- `WEBHOOK_URL` (Google Chat or Teams, depending on `chatTarget`)
+- `ALERT_EMAIL` (as parameter for Action Group)
+- Secrets as Azure-encrypted App Settings, never in code (rule `security.md`)
 
-## State-Modell (Azure Table Storage)
+## State model (Azure Table Storage)
 
-Tabelle `incidents`:
-- `PartitionKey` = Provider-Key (z.B. `bexio`)
-- `RowKey` = externe Incident-ID
-- Felder: `title`, `status`, `startedAt`, `updatedAt`, `url`, `resolved` (bool), `notifiedOpened`, `notifiedResolved`
+Table `incidents`:
+- `PartitionKey` = provider key (e.g. `bexio`)
+- `RowKey` = external incident ID
+- Fields: `title`, `status`, `startedAt`, `updatedAt`, `url`, `resolved` (bool), `notifiedOpened`, `notifiedResolved`
 
-Abgleich-Logik:
-- Incident existiert nicht in Tabelle + ist offen → Neu → `notifyOpened` → Zeile schreiben, `notifiedOpened = true`
-- Incident existiert, war offen, ist jetzt resolved → Behoben → `notifyResolved` → `notifiedResolved = true`
-- Sonst: nichts tun
+Diff logic:
+- Incident not in table + is open → New → `notifyOpened` → write row, `notifiedOpened = true`
+- Incident exists, was open, is now resolved → Resolved → `notifyResolved` → `notifiedResolved = true`
+- Otherwise: do nothing
 
-## Kritische Dateien
+## Critical files
 
-- `src/functions/poll.ts` — Orchestrierung des gesamten Durchlaufs
-- `src/adapters/*.ts` — je ein Adapter, isoliert testbar
-- `src/state/tableStore.ts` — State-Persistenz und Abgleich-Logik (Kern-Korrektheit)
-- `src/lib/config.ts` — YAML + zod-Schema für Konfiguration
-- `infra/main.bicep` — komplette Azure-Infrastruktur als Code
+- `src/functions/poll.ts` — orchestration of the entire run
+- `src/adapters/*.ts` — one adapter each, independently testable
+- `src/state/tableStore.ts` — state persistence and diff logic (core correctness)
+- `src/lib/config.ts` — YAML + zod schema for configuration
+- `infra/main.bicep` — complete Azure infrastructure as code
 
-## Verifikation
+## Verification
 
-1. **Unit-Tests** (`pnpm test`): Jeder Adapter mit Fixture-Responses (gespeicherte echte Statuspage-Antworten) — erkennt offene vs. geschlossene Incidents korrekt?
-2. **Lokaler Lauf**: `func start` mit `local.settings.json` (dummy Webhook gegen `webhook.site`) — prüft End-to-End ohne Azure.
-3. **Webhook-Formate manuell prüfen**: Test-Incident simulieren → Nachricht erscheint korrekt formatiert in Google Chat / Teams.
-4. **State-Resilienz**: Test mit manueller Tabellen-Manipulation: Wird eine bereits gemeldete Störung nicht doppelt gepostet? Wird das Behoben-Signal nach Neustart der Function korrekt erkannt?
-5. **Azure-Deployment**: `az deployment group create` mit `main.bicep` → Function-Lauf in Azure-Portal verifizieren, Alert-Rule manuell triggern (Function stoppen).
-6. **Build & Lint** (Raptus-Regel): `pnpm build && pnpm lint` muss ohne Fehler durchlaufen.
+1. **Unit tests** (`pnpm test`): Each adapter with fixture responses (saved real statuspage responses) — correctly identifies open vs. closed incidents?
+2. **Local run**: `func start` with `local.settings.json` (dummy webhook against `webhook.site`) — tests end-to-end without Azure.
+3. **Webhook formats checked manually**: Simulate a test incident → message appears correctly formatted in Google Chat / Teams.
+4. **State resilience**: Test with manual table manipulation: Does an already reported incident not get posted twice? Is the resolved signal correctly detected after Function restart?
+5. **Azure deployment**: `az deployment group create` with `main.bicep` → verify Function run in Azure portal, manually trigger Alert Rule (stop Function).
+6. **Build & Lint** (Raptus rule): `pnpm build && pnpm lint` must pass without errors.
 
-## Umsetzungsreihenfolge
+## Implementation order
 
-1. Grundgerüst: `package.json`, `tsconfig.json`, `host.json`, Projektstruktur
-2. `src/lib/types.ts` + `src/lib/config.ts` inkl. zod-Schema
-3. Erster Adapter `atlassianStatuspage.ts` + Tests (deckt ~13 der Status-Pages)
+1. Foundation: `package.json`, `tsconfig.json`, `host.json`, project structure
+2. `src/lib/types.ts` + `src/lib/config.ts` incl. zod schema
+3. First adapter `atlassianStatuspage.ts` + tests (covers ~13 status pages)
 4. `src/state/tableStore.ts`
-5. `googleChat.ts` Notifier + `teams.ts`
-6. `src/functions/poll.ts` Orchestrierung
-7. Weitere Adapter (`googleWorkspace`, `metanetRss`, `wedosStatusOnline`, `githubIssues`) + Tests
-8. `infra/main.bicep` + README mit Deployment-Anleitung
-9. Alert-Rule für Self-Monitoring
-10. Deployment nach Azure, End-to-End-Test
+5. `googleChat.ts` notifier + `teams.ts`
+6. `src/functions/poll.ts` orchestration
+7. Further adapters (`googleWorkspace`, `metanetRss`, `wedosStatusOnline`, `githubIssues`) + tests
+8. `infra/main.bicep` + README with deployment guide
+9. Alert Rule for self-monitoring
+10. Deployment to Azure, end-to-end test
 
-## Offene Punkte für später
+## Open items for later
 
-- Sprache der Titel: Titel werden 1:1 von der Status-Page übernommen (meist Englisch). Falls eine deutsche Übersetzung gewünscht ist, wäre das eine spätere Erweiterung.
-- Update-Nachrichten zwischen Neu und Behoben: aktuell ausgeblendet, kann später pro Provider aktiviert werden.
-- Mehrere Chat-Ziele / Pro-Dienst-Routing: laut deiner Entscheidung vorerst bewusst weggelassen — Architektur ist aber vorbereitet (Notifier-Interface).
+- Language of titles: Titles are taken 1:1 from the status page (usually English). If a German translation is desired, that would be a later extension.
+- Update messages between New and Resolved: currently hidden, can be activated per provider later.
+- Multiple chat targets / per-service routing: deliberately omitted for now — architecture is prepared (Notifier interface).

@@ -4,7 +4,7 @@ import type { NormalizedIncident, StatusProvider } from "../lib/types.js";
 import type { ProviderConfig } from "../lib/config.js";
 
 /**
- * Response-Typen der Atlassian Statuspage API.
+ * Response types for the Atlassian Statuspage API.
  */
 type AtlassianIncidentComponent = {
   id: string;
@@ -25,13 +25,14 @@ type AtlassianIncidentsResponse = {
   incidents: AtlassianIncident[];
 };
 
-/** Status-Werte, die als "resolved" gelten. */
+/** Status values that count as "resolved". */
 const RESOLVED_STATUSES = new Set(["resolved", "completed", "postmortem"]);
 
 /**
- * Prueft ob ein Incident den Komponenten-Filter besteht.
- * Ohne Filter: alle Incidents werden uebernommen.
- * Mit Filter: mindestens eine Component muss einen der Filter-Substrings enthalten (case-insensitive, OR-Logik).
+ * Checks whether an incident passes the component filter.
+ * Without filter: all incidents are included.
+ * With filter: at least one component must contain one of the filter substrings
+ * (case-insensitive, OR logic).
  */
 function matchesComponentFilter(
   incident: AtlassianIncident,
@@ -48,15 +49,15 @@ function matchesComponentFilter(
 }
 
 /**
- * Mappt den Atlassian-Status auf das vereinfachte Modell.
+ * Maps the Atlassian status to the simplified model.
  */
 function mapStatus(atlassianStatus: string): "open" | "resolved" {
   return RESOLVED_STATUSES.has(atlassianStatus) ? "resolved" : "open";
 }
 
 /**
- * Adapter fuer Status-Pages, die auf Atlassian Statuspage laufen.
- * Deckt ca. 15 der konfigurierten Dienste ab.
+ * Adapter for status pages running on Atlassian Statuspage.
+ * Covers approximately 15 of the configured services.
  */
 export class AtlassianStatuspageAdapter implements StatusProvider {
   readonly key: string;
@@ -68,14 +69,14 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
   constructor(config: ProviderConfig) {
     this.key = config.key;
     this.displayName = config.displayName;
-    if (!config.baseUrl) throw new Error(`baseUrl fehlt fuer ${config.key}`);
+    if (!config.baseUrl) throw new Error(`baseUrl missing for ${config.key}`);
     this.baseUrl = config.baseUrl;
     this.componentFilter = config.componentFilter;
     this.userAgent = config.userAgent;
   }
 
   async fetchIncidents(): Promise<NormalizedIncident[]> {
-    // Offene Incidents holen
+    // Fetch open incidents
     const unresolvedUrl = `${this.baseUrl}/api/v2/incidents/unresolved.json`;
     const unresolvedResponse = await httpGet(unresolvedUrl, {
       accept: "application/json",
@@ -84,7 +85,7 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
 
     this.validateJsonResponse(unresolvedResponse, unresolvedUrl);
 
-    // Letzte Incidents holen (enthaelt auch kuerzlich resolved)
+    // Fetch recent incidents (includes recently resolved)
     const recentUrl = `${this.baseUrl}/api/v2/incidents.json`;
     const recentResponse = await httpGet(recentUrl, {
       accept: "application/json",
@@ -96,7 +97,7 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
     const unresolved = this.parseIncidents(unresolvedResponse.body);
     const recent = this.parseIncidents(recentResponse.body);
 
-    // Zusammenfuehren: alle offenen + kuerzlich resolved (dedupliziert)
+    // Merge: all open + recently resolved (deduplicated)
     const incidentMap = new Map<string, AtlassianIncident>();
     for (const inc of [...unresolved, ...recent]) {
       incidentMap.set(inc.id, inc);
@@ -123,29 +124,29 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
 
     logger.info(
       { provider: this.key, incidentCount: normalized.length },
-      "Atlassian Statuspage Incidents abgefragt",
+      "Atlassian Statuspage incidents fetched",
     );
 
     return normalized;
   }
 
   /**
-   * Validiert, dass die Response tatsaechlich JSON ist.
-   * Atlassian-Pages koennen bei deaktivierter API eine 404-HTML-Seite
-   * mit HTTP 200 zurueckliefern (siehe Sophos / lessons.md).
+   * Validates that the response is actually JSON.
+   * Atlassian pages can return a 404 HTML page with HTTP 200
+   * when the API is disabled (see Sophos / lessons.md).
    */
   private validateJsonResponse(
     response: { status: number; contentType: string; body: string },
     url: string,
   ): void {
     if (response.status !== 200) {
-      throw new Error(`HTTP ${response.status} von ${url}`);
+      throw new Error(`HTTP ${response.status} from ${url}`);
     }
 
     if (!response.contentType.includes("application/json")) {
       throw new Error(
-        `Unerwarteter Content-Type "${response.contentType}" von ${url} — ` +
-          "moeglicherweise ist die JSON-API deaktiviert",
+        `Unexpected Content-Type "${response.contentType}" from ${url} — ` +
+          "the JSON API may be disabled",
       );
     }
   }
@@ -155,7 +156,7 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
       const data = JSON.parse(body) as AtlassianIncidentsResponse;
       return data.incidents ?? [];
     } catch (err) {
-      throw new Error(`JSON-Parsing fehlgeschlagen: ${String(err)}`);
+      throw new Error(`JSON parsing failed: ${String(err)}`);
     }
   }
 }

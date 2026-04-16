@@ -1,55 +1,55 @@
-# Konfiguration
+# Configuration
 
-Die gesamte Laufzeit-Konfiguration liegt in **`config/providers.yaml`** im Repo. Änderungen sind versioniert, im Pull Request reviewbar und werden mit dem nächsten Deployment aktiv.
+All runtime configuration lives in **`config/providers.yaml`** in the repo. Changes are versioned, reviewable in pull requests, and become active with the next deployment.
 
 ## Schema
 
 ```yaml
-# Pflichtfelder
+# Required fields
 chatTarget: googleChat         # "googleChat" | "teams"
 
-# Liste der überwachten Dienste
+# List of monitored services
 providers:
-  - key: <string>              # Eindeutiger Schlüssel, nur [a-z0-9-]
-    displayName: <string>      # So erscheint der Name im Chat ("Bexio", "Webflow")
-    adapter: <adapter-name>    # siehe ADAPTERS.md
-    # adapter-spezifische Felder:
-    baseUrl: <url>             # für "atlassian-statuspage", "wedos-status-online"
-    owner: <string>            # für "github-issues"
-    repo: <string>             # für "github-issues"
-    componentFilter: <string | list<string>>  # optional, nur bei atlassian-statuspage
-    userAgent: <string>        # optional, überschreibt den Default-User-Agent für diesen Provider
+  - key: <string>              # Unique key, only [a-z0-9-]
+    displayName: <string>      # How the name appears in chat ("Bexio", "Webflow")
+    adapter: <adapter-name>    # see ADAPTERS.md
+    # adapter-specific fields:
+    baseUrl: <url>             # for "atlassian-statuspage", "wedos-status-online"
+    owner: <string>            # for "github-issues"
+    repo: <string>             # for "github-issues"
+    componentFilter: <string | list<string>>  # optional, only for atlassian-statuspage
+    userAgent: <string>        # optional, overrides the default User-Agent for this provider
 ```
 
 ## HTTP User-Agent
 
-Alle ausgehenden HTTP-Aufrufe senden standardmässig einen einheitlichen, sprechenden User-Agent:
+All outgoing HTTP requests send a uniform, descriptive User-Agent by default:
 
 ```
 raptus-status-monitor/<version> (+https://github.com/raptus/status-page-to-chat; ops@raptus.ch)
 ```
 
-Das folgt der gängigen Praxis für gutartige Poller, respektiert die Logs der Status-Page-Betreiber und erleichtert die Kontaktaufnahme, falls wir einen Endpunkt belasten. Die Version wird zur Laufzeit aus `package.json` gezogen.
+This follows the common practice for well-behaved pollers, respects the logs of status page operators, and makes it easy to get in touch if we are stressing an endpoint. The version is pulled from `package.json` at runtime.
 
-**Override global** — via App Setting `USER_AGENT` (selten nötig, z.B. für Tests).
+**Global override** — via App Setting `USER_AGENT` (rarely needed, e.g. for tests).
 
-**Override pro Provider** — via optionales Feld `userAgent` in `providers.yaml`. Einsatzgrund nur dokumentierte Ausnahmen:
+**Per-provider override** — via the optional field `userAgent` in `providers.yaml`. Use only for documented exceptions:
 
-- Endpunkt hinter WAF, der den Default blockt. In diesem Fall die Entscheidung im Pull Request begründen. (Beispiel Sophos: API-Endpoints sind vollständig gesperrt — ein User-Agent-Override allein reicht nicht; siehe auskommentierten Eintrag in `providers.yaml`.)
-- Der Anbieter verlangt explizit ein anderes Format (bisher kein bekannter Fall).
+- Endpoint behind a WAF that blocks the default. Justify the decision in the pull request. (Example Sophos: API endpoints are completely blocked — a User-Agent override alone is not sufficient; see commented-out entry in `providers.yaml`.)
+- The provider explicitly requires a different format (no known case yet).
 
-⚠️ Tarnung als Browser ist kein valider Grund — das grenzt an ToS-Verstoss. Lieber Kontakt aufnehmen oder den Adapter 403 akzeptieren lassen.
+⚠️ Impersonating a browser is not a valid reason — it borders on a ToS violation. Prefer contacting the provider or accepting a 403 from the adapter.
 
-## Validierung
+## Validation
 
-Die Datei wird beim Start der Function mit **`zod`** validiert. Fehler werden geloggt und verhindern den Start. Mindestanforderungen:
+The file is validated with **`zod`** on Function startup. Errors are logged and prevent startup. Minimum requirements:
 
 - `chatTarget` ∈ `{googleChat, teams}`
-- mindestens ein Eintrag in `providers`
-- `key` ist eindeutig
-- adapter-spezifische Pflichtfelder sind vorhanden
+- at least one entry in `providers`
+- `key` is unique
+- adapter-specific required fields are present
 
-## Beispiel (vollständig)
+## Example (complete)
 
 ```yaml
 chatTarget: googleChat
@@ -76,81 +76,36 @@ providers:
     adapter: atlassian-statuspage
     baseUrl: https://status.webflow.com
 
-  - key: digicert
-    displayName: DigiCert
-    adapter: atlassian-statuspage
-    baseUrl: https://status.digicert.com
-
-  - key: ninjaone
-    displayName: NinjaOne
-    adapter: atlassian-statuspage
-    baseUrl: https://status.ninjaone.com
-
-  - key: sucuri
-    displayName: Sucuri
-    adapter: atlassian-statuspage
-    baseUrl: https://status.sucuri.net
-
-  - key: smartrecruiters
-    displayName: SmartRecruiters
-    adapter: atlassian-statuspage
-    baseUrl: https://status.smartrecruiters.com
-
-  - key: retool
-    displayName: Retool
-    adapter: atlassian-statuspage
-    baseUrl: https://status.retool.com
-
-  - key: langdock
-    displayName: Langdock
-    adapter: atlassian-statuspage
-    baseUrl: https://status.langdock.com
-
   - key: zendesk-helpcenter
     displayName: Zendesk Help Center
     adapter: atlassian-statuspage
     baseUrl: https://status.zendesk.com
-    componentFilter: raptus-helpcenter      # nur Meldungen zu unserer Subdomain
+    componentFilter: raptus-helpcenter      # only alerts for our subdomain
 
   - key: kaseya-itglue
     displayName: Kaseya IT Glue
     adapter: atlassian-statuspage
     baseUrl: https://status.kaseya.com
-    componentFilter: IT Glue                # nur IT Glue ist für uns relevant
+    componentFilter: IT Glue                # only IT Glue is relevant for us
 
   - key: gravityzone-bitdefender
     displayName: Bitdefender GravityZone
     adapter: atlassian-statuspage
     baseUrl: https://status.gravityzone.bitdefender.com
-    componentFilter:                        # nur Cloud-Instanzen, die Raptus nutzt
+    componentFilter:                        # only cloud instances used by Raptus
       - cloudgz.gravityzone.bitdefender.com
       - cloud.gravityzone.bitdefender.com
 
-  - key: figma
-    displayName: Figma
-    adapter: atlassian-statuspage
-    baseUrl: https://status.figma.com
-    # kein componentFilter: nur 3 generische Komponenten, alle relevant
-
-  # --- Sophos: ZURUECKGESTELLT (siehe ROADMAP.md) ---
-  # status.sophos.com laeuft auf Atlassian Statuspage, aber alle
-  # maschinenlesbaren Endpoints (/api/v2/*, /history.atom, /history.rss)
-  # antworten mit HTTP 200 und liefern eine 404-HTML-Seite statt JSON — auch
-  # mit Browser-User-Agent. Aktivierung erfordert Freischaltung durch Sophos
-  # oder einen HTML-Scraping-Adapter (siehe ROADMAP → Spätere Erweiterungen).
+  # --- Sophos: DEFERRED (see ROADMAP.md) ---
+  # status.sophos.com runs on Atlassian Statuspage, but all
+  # machine-readable endpoints (/api/v2/*, /history.atom, /history.rss)
+  # respond with HTTP 200 and return a 404 HTML page instead of JSON —
+  # even with a browser User-Agent. Enable requires Sophos opening the
+  # API or an HTML scraping adapter (see ROADMAP → Later extensions).
   # - key: sophos
   #   displayName: Sophos
   #   adapter: atlassian-statuspage
   #   baseUrl: https://status.sophos.com
-
-  - key: claude
-    displayName: Claude
-    adapter: atlassian-statuspage
-    baseUrl: https://status.claude.com
-    componentFilter:                        # nur die fuer Raptus genutzten Produkte
-      - claude.ai
-      - Claude Code
-      - api.anthropic.com
 
   # --- Google Workspace ---
   - key: google-workspace
@@ -166,8 +121,9 @@ providers:
   - key: wedos
     displayName: WEDOS
     adapter: wedos-status-online
+    baseUrl: https://wedos.status.online
 
-  # --- GitHub-Issues als Status-Tracker ---
+  # --- GitHub Issues as status tracker ---
   - key: onetimesecret
     displayName: Onetime Secret
     adapter: github-issues
@@ -175,28 +131,28 @@ providers:
     repo: status
 ```
 
-## App-Settings (Secrets, nicht in YAML)
+## App Settings (secrets, not in YAML)
 
-Webhook-URLs und Alarm-Empfänger liegen **nicht** in `providers.yaml`, sondern in den Azure Function App Settings:
+Webhook URLs and alert recipients are stored **not** in `providers.yaml` but in the Azure Function App Settings:
 
-| Setting | Beschreibung |
+| Setting | Description |
 |---|---|
-| `WEBHOOK_URL` | Google Chat Incoming Webhook **oder** Teams Incoming Webhook — je nach `chatTarget` |
-| `ALERT_EMAIL` | Empfänger für Self-Monitoring-Alarme (Azure Monitor) |
-| `USER_AGENT` | optional — überschreibt den Default-User-Agent global |
-| `AzureWebJobsStorage` | wird automatisch durch Bicep gesetzt |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | wird automatisch durch Bicep gesetzt |
+| `WEBHOOK_URL` | Google Chat Incoming Webhook **or** Teams Incoming Webhook — depending on `chatTarget` |
+| `ALERT_EMAIL` | Recipient for self-monitoring alerts (Azure Monitor) |
+| `USER_AGENT` | optional — overrides the default User-Agent globally |
+| `AzureWebJobsStorage` | Set automatically by Bicep |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Set automatically by Bicep |
 
-Siehe [DEPLOYMENT.md](DEPLOYMENT.md) für das Setzen der Werte.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for setting values.
 
-## Eine Status-Page hinzufügen (Workflow)
+## Adding a status page (workflow)
 
-1. Neuer Eintrag in `config/providers.yaml` mit passendem Adapter (siehe [ADAPTERS.md](ADAPTERS.md)).
-2. Pull Request aufsetzen → Review durch zweite Person.
-3. Nach Merge: Deployment triggert automatisch (bzw. `az functionapp deployment source sync`).
-4. Im nächsten 5-Minuten-Zyklus ist der Dienst aktiv.
+1. Add a new entry to `config/providers.yaml` with the appropriate adapter (see [ADAPTERS.md](ADAPTERS.md)).
+2. Open a pull request → review by a second person.
+3. After merge: deployment triggers automatically (or `func azure functionapp publish`).
+4. In the next 5-minute cycle the service is active.
 
-## Status-Page entfernen
+## Removing a status page
 
-- Eintrag aus `providers.yaml` löschen und mergen.
-- Optional: zugehörige Zeilen in Azure Table Storage löschen (PartitionKey = `key`). Sonst: bleiben inaktiv liegen.
+- Delete the entry from `providers.yaml` and merge.
+- Optional: delete the corresponding rows in Azure Table Storage (PartitionKey = `key`). Otherwise they remain inactive.

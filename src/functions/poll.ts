@@ -12,13 +12,13 @@ import {
 } from "../state/tableStore.js";
 
 /**
- * Timer Trigger: Laeuft alle 5 Minuten.
- * Orchestriert den gesamten Durchlauf:
- * 1. Konfiguration laden
- * 2. Provider parallel abfragen
- * 3. State abgleichen
- * 4. Benachrichtigungen senden
- * 5. State aktualisieren
+ * Timer Trigger: runs every 5 minutes.
+ * Orchestrates the entire poll run:
+ * 1. Load configuration
+ * 2. Poll providers in parallel
+ * 3. Diff against stored state
+ * 4. Send notifications
+ * 5. Update state
  */
 async function poll(_timer: Timer): Promise<void> {
   const startTime = Date.now();
@@ -35,15 +35,15 @@ async function poll(_timer: Timer): Promise<void> {
   };
 
   try {
-    // 1. Konfiguration laden
+    // 1. Load configuration
     const config = loadConfig();
     summary.providersTotal = config.providers.length;
 
-    // 2. Notifier und Table Client initialisieren
+    // 2. Initialise notifier and table client
     const notifier = createNotifier(config);
     const tableClient = await createTableClient();
 
-    // 3. Provider parallel abfragen (mit Fehlerisolation)
+    // 3. Poll providers in parallel (with error isolation)
     const adapterResults = await Promise.allSettled(
       config.providers.map(async (providerConfig) => {
         const adapter = createAdapter(providerConfig);
@@ -52,18 +52,18 @@ async function poll(_timer: Timer): Promise<void> {
       }),
     );
 
-    // 4. Ergebnisse verarbeiten
+    // 4. Process results
     for (const result of adapterResults) {
       if (result.status === "rejected") {
         summary.providersFailed++;
-        logger.error({ err: result.reason }, "Adapter fehlgeschlagen");
+        logger.error({ err: result.reason }, "Adapter failed");
         continue;
       }
 
       summary.providersSucceeded++;
       const { providerKey, incidents } = result.value;
 
-      // State abgleichen
+      // Diff against stored state
       const stored = await getStoredIncidents(tableClient, providerKey);
       const diffs = diffIncidents(incidents, stored);
 
@@ -83,10 +83,10 @@ async function poll(_timer: Timer): Promise<void> {
             summary.notificationsFailed++;
             logger.error(
               { provider: providerKey, incidentId: diff.incident.externalId, err },
-              "Benachrichtigung (opened) fehlgeschlagen",
+              "Notification (opened) failed",
             );
-            // Incident trotzdem speichern, aber notifiedOpened bleibt false
-            // → wird im naechsten Durchlauf erneut versucht
+            // Still write to state, but notifiedOpened remains false
+            // → will be retried in the next run
           }
         }
 
@@ -99,19 +99,19 @@ async function poll(_timer: Timer): Promise<void> {
             summary.notificationsFailed++;
             logger.error(
               { provider: providerKey, incidentId: diff.incident.externalId, err },
-              "Benachrichtigung (resolved) fehlgeschlagen",
+              "Notification (resolved) failed",
             );
           }
         }
 
-        // State aktualisieren (auch bei "none", um updatedAt zu aktualisieren)
+        // Update state (also for "none" to refresh updatedAt)
         if (diff.action !== "none") {
           await upsertIncident(tableClient, diff.incident, notifiedOpened, notifiedResolved);
         }
       }
     }
   } catch (err) {
-    logger.fatal({ err }, "Kritischer Fehler im Poll-Durchlauf");
+    logger.fatal({ err }, "Critical error in poll run");
   } finally {
     summary.durationMs = Date.now() - startTime;
     logger.info({ run_summary: summary }, "run_summary");

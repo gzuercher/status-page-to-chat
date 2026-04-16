@@ -1,131 +1,131 @@
-# Agenten-Leitfaden
+# Agent Guide
 
-Dieses Dokument ist für Menschen **und für Claude-Code-Agenten** geschrieben. Ein neuer Agent (oder ein Mensch auf einem anderen Computer) soll mit **diesem Dokument + `docs/PLAN.md` + `CLAUDE.md`** genug Kontext haben, um produktiv weiterzuarbeiten.
+This document is written for **humans and for Claude Code agents**. A new agent (or a person on a different machine) should have enough context from **this document + `docs/PLAN.md` + `CLAUDE.md`** to work productively.
 
-## Erste Schritte für einen neuen Agenten
+## First steps for a new agent
 
-1. Lies in dieser Reihenfolge:
-   - `CLAUDE.md` (Raptus-Regeln, Kommunikationssprache, verbotene Eigenbauten)
-   - `README.md` (Projektüberblick)
-   - `docs/PLAN.md` (ursprünglicher Architektur-Plan)
+1. Read in this order:
+   - `CLAUDE.md` (Raptus rules, communication language, forbidden DIY implementations)
+   - `README.md` (project overview)
+   - `docs/PLAN.md` (original architecture plan)
    - `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, `docs/ADAPTERS.md`
-   - `docs/ROADMAP.md` (was als nächstes zu tun ist)
-2. Prüfe den aktuellen Projektstand: `git log --oneline`, `ls src/`.
-3. Wähle eine offene Aufgabe aus der Roadmap oder stimm dich mit dem Menschen ab.
+   - `docs/ROADMAP.md` (what to do next)
+2. Check current project state: `git log --oneline`, `ls src/`.
+3. Pick an open task from the roadmap or align with the human.
 
-## Projektsprache und Konventionen
+## Project language and conventions
 
-- **Kommunikation mit dem Benutzer**: Deutsch
-- **Kommentare und Doku**: Deutsch
-- **Bezeichner (Variablen, Funktionen, Dateien)**: Englisch
-- **Commit-Messages**: Deutsch, Imperativ ("Füge Adapter für Metanet hinzu")
-- **TypeScript strict**, kein `any`
-- **Kein `console.log`**, sondern `pino`-Logger
-- Siehe `.claude/rules/` für Details
+- **Communication with the user**: English
+- **Comments and documentation**: English
+- **Identifiers (variables, functions, files)**: English
+- **Commit messages**: German, imperative ("Füge Adapter für Metanet hinzu")
+- **TypeScript strict**, no `any`
+- **No `console.log`**, use the `pino` logger
+- See `.claude/rules/` for details
 
-## Multi-Agent-Arbeit
+## Multi-agent work
 
-Mehrere Agenten dürfen **parallel** am Projekt arbeiten, aber nur in isolierten Scopes. Empfohlenes Modell: **ein Agent pro logische Einheit** (Modul, Feature, PR).
+Multiple agents may work **in parallel** on the project, but only in isolated scopes. Recommended model: **one agent per logical unit** (module, feature, PR).
 
 ### Isolation
 
-- **Git Worktrees** nutzen, damit mehrere Agenten gleichzeitig arbeiten können ohne sich gegenseitig zu überschreiben:
+- Use **git worktrees** so multiple agents can work simultaneously without overwriting each other:
 
 ```bash
 git worktree add ../status-page-to-chat-adapter-google feature/adapter-google-workspace
 git worktree add ../status-page-to-chat-notifier-teams feature/notifier-teams
 ```
 
-- Innerhalb Claude Code: `isolation: "worktree"` beim Agent-Spawn.
-- Jeder Agent arbeitet auf einem eigenen Feature-Branch, öffnet einen eigenen PR.
+- Within Claude Code: `isolation: "worktree"` when spawning an agent.
+- Each agent works on its own feature branch and opens its own PR.
 
-### Zuständigkeits-Bereiche
+### Responsibility areas
 
-Um Merge-Konflikte zu minimieren, teilen wir das Projekt in **unabhängige Zonen**:
+To minimise merge conflicts, the project is divided into **independent zones**:
 
-| Zone | Verantwortlicher Agent / Branch | Typische Dateien |
+| Zone | Responsible agent / branch | Typical files |
 |---|---|---|
-| Grundgerüst | `core` | `package.json`, `tsconfig.json`, `host.json`, `src/lib/types.ts` |
+| Foundation | `core` | `package.json`, `tsconfig.json`, `host.json`, `src/lib/types.ts` |
 | Config | `config` | `src/lib/config.ts`, `config/providers.yaml` |
 | State | `state` | `src/state/tableStore.ts` |
-| Adapter: Atlassian | `adapter-atlassian` | `src/adapters/atlassianStatuspage.ts` + Test |
-| Adapter: Google | `adapter-google` | `src/adapters/googleWorkspace.ts` + Test |
-| Adapter: Metanet | `adapter-metanet` | `src/adapters/metanetRss.ts` + Test |
-| Adapter: WEDOS | `adapter-wedos` | `src/adapters/wedosStatusOnline.ts` + Test |
-| Adapter: GitHub | `adapter-github` | `src/adapters/githubIssues.ts` + Test |
-| Notifier: Google Chat | `notifier-gchat` | `src/notifiers/googleChat.ts` + Test |
-| Notifier: Teams | `notifier-teams` | `src/notifiers/teams.ts` + Test |
-| Orchestrierung | `orchestration` | `src/functions/poll.ts` |
-| Infrastruktur | `infra` | `infra/main.bicep` |
-| Doku | `docs` | `docs/*.md` |
+| Adapter: Atlassian | `adapter-atlassian` | `src/adapters/atlassianStatuspage.ts` + test |
+| Adapter: Google | `adapter-google` | `src/adapters/googleWorkspace.ts` + test |
+| Adapter: Metanet | `adapter-metanet` | `src/adapters/metanetRss.ts` + test |
+| Adapter: WEDOS | `adapter-wedos` | `src/adapters/wedosStatusOnline.ts` + test |
+| Adapter: GitHub | `adapter-github` | `src/adapters/githubIssues.ts` + test |
+| Notifier: Google Chat | `notifier-gchat` | `src/notifiers/googleChat.ts` + test |
+| Notifier: Teams | `notifier-teams` | `src/notifiers/teams.ts` + test |
+| Orchestration | `orchestration` | `src/functions/poll.ts` |
+| Infrastructure | `infra` | `infra/main.bicep` |
+| Docs | `docs` | `docs/*.md` |
 
-**Reihenfolge wichtig**: Grundgerüst → Types → Config → State → Adapter/Notifier (parallel) → Orchestrierung → Infra. Bis das Grundgerüst steht, sollten Adapter-Agenten pausieren.
+**Order matters**: Foundation → Types → Config → State → Adapters/Notifiers (parallel) → Orchestration → Infra. Adapter agents should pause until the foundation is in place.
 
-### Koordination
+### Coordination
 
-- **Eine zentrale `lessons.md`** dokumentiert Fehler und Korrekturen (Raptus-Regel).
-- **Pull Requests** sind der Koordinationspunkt. Kein direkter Push auf `main`.
-- Bei Unsicherheit: **nachfragen**, nicht raten (Raptus-Grundhaltung).
+- **One central `lessons.md`** documents errors and corrections (Raptus rule).
+- **Pull Requests** are the coordination point. No direct push to `main`.
+- When uncertain about scope: **ask**, don't guess (Raptus principle: no uninvited refactoring).
 
-## Tool-Empfehlungen innerhalb Claude Code
+## Tool recommendations within Claude Code
 
-Die im Raptus-Playbook definierten Commands und Agents sind hier ebenfalls verfügbar:
+The commands and agents defined in the Raptus Playbook are also available here:
 
-| Tool | Zweck |
+| Tool | Purpose |
 |---|---|
-| `/commit-push-pr` | Änderungen committen, pushen, PR erstellen |
-| `/review` | Code Review des aktuellen Branches |
-| `/build-and-test` | Build und Tests laufen lassen |
-| Agent `code-reviewer` | Gründliches Review mit Sicherheitsfokus |
-| Agent `verify-app` | Verifikation nach grösseren Änderungen |
+| `/commit-push-pr` | Commit, push, create PR |
+| `/review` | Code review of the current branch |
+| `/build-and-test` | Run build and tests |
+| Agent `code-reviewer` | Thorough review with security focus |
+| Agent `verify-app` | Verification after larger changes |
 
-## Lokale Entwicklung (für Agent oder Mensch)
+## Local development (for agent or human)
 
-### Voraussetzungen
+### Prerequisites
 
 - Node.js 20+
 - pnpm (`npm i -g pnpm`)
 - Azure Functions Core Tools (`npm i -g azure-functions-core-tools@4 --unsafe-perm true`)
-- Azurite als lokaler Storage-Emulator (`npm i -g azurite`)
+- Azurite as local storage emulator (`npm i -g azurite`)
 
-### Erstmaliger Setup
+### Initial setup
 
 ```bash
 git clone git@github.com:gzuercher/status-page-to-chat.git
 cd status-page-to-chat
 pnpm install
-cp local.settings.json.example local.settings.json  # danach Werte anpassen
+cp local.settings.json.example local.settings.json  # then adjust values
 ```
 
-### Entwicklungs-Zyklus
+### Development cycle
 
 ```bash
-pnpm build         # TypeScript kompilieren
+pnpm build         # compile TypeScript
 pnpm test          # vitest
 pnpm lint          # eslint + prettier check
-azurite --silent & # lokalen Storage starten
-func start         # Function lokal laufen lassen
+azurite --silent & # start local storage
+func start         # run Function locally
 ```
 
-## Wichtige Grenzen (für Agenten)
+## Important limits (for agents)
 
-- **Keine irreversiblen Aktionen** ohne explizite Bestätigung: keine `git push --force`, keine `rm -rf`, keine Azure-Ressourcen löschen.
-- **Keine Secrets im Code**: Webhook-URLs, Tokens, Passwörter gehören in App Settings.
-- **Kein `--no-verify`** bei Commits.
-- **Bei Unsicherheit über Scope**: nachfragen statt "alles mitmachen" (Raptus-Regel: kein ungebetenes Refactoring).
-- **Bei Fehler-Korrekturen**: Lektion in `lessons.md` dokumentieren (Format: `- [YYYY-MM-DD]: [Was falsch war] → [Korrekte Vorgehensweise]`).
+- **No irreversible actions** without explicit confirmation: no `git push --force`, no `rm -rf`, no Azure resource deletion.
+- **No secrets in code**: webhook URLs, tokens, passwords belong in App Settings.
+- **No `--no-verify`** on commits.
+- **When uncertain about scope**: ask rather than "do everything" (Raptus rule: no uninvited refactoring).
+- **On error corrections**: document the lesson in `lessons.md` (format: `- [YYYY-MM-DD]: [What was wrong] → [Correct approach]`).
 
-## Zustands-Dateien für Wieder-Einstieg
+## State files for re-entry
 
-Damit ein Agent auf einem anderen Rechner den Faden aufnehmen kann, müssen folgende Artefakte im Repo aktuell sein:
+So an agent on a different machine can pick up the thread, the following artefacts must be current in the repo:
 
-- `docs/ROADMAP.md` — offene Punkte mit Status
-- `docs/PLAN.md` — architektonischer Plan (sollte mit aktuellem Stand übereinstimmen; bei grösseren Abweichungen: neuer Abschnitt am Ende)
-- `lessons.md` — gemachte Fehler
-- `config/providers.yaml` — aktueller Satz überwachter Dienste
+- `docs/ROADMAP.md` — open items with status
+- `docs/PLAN.md` — architectural plan (should match current state; for larger deviations: add a new section at the end)
+- `lessons.md` — mistakes made
+- `config/providers.yaml` — current set of monitored services
 
-## Was dieser Dienst ist und was nicht
+## What this service is and isn't
 
-**Ist**: Ein schmaler, gut wartbarer Monitoring-Benachrichtiger für externe Status-Pages.
+**Is**: A lean, well-maintainable monitoring notifier for external status pages.
 
-**Ist nicht**: Ein allgemeines Monitoring-Tool, ein Uptime-Prober, ein SRE-Dashboard, eine Incident-Management-Plattform. Für diese Zwecke bitte spezialisierte Lösungen einsetzen (Uptime Kuma, Better Stack, PagerDuty, Grafana Cloud, …).
+**Is not**: A general monitoring tool, an uptime prober, an SRE dashboard, an incident management platform. For those purposes please use specialised solutions (Uptime Kuma, Better Stack, PagerDuty, Grafana Cloud, …).

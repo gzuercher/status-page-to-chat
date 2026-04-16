@@ -5,14 +5,14 @@ import type { ProviderConfig } from "../lib/config.js";
 
 const RSS_URL = "https://support.metanet.ch/xml/statusmeldungen.xml";
 
-/** Stichwoerter, die auf eine behobene Stoerung hinweisen. */
+/** Keywords indicating a resolved incident. */
 const RESOLVED_KEYWORDS = ["behoben", "gelöst", "ended", "resolved", "abgeschlossen"];
 
-/** Stichwoerter fuer Wartungsarbeiten (werden uebersprungen). */
+/** Keywords for maintenance work (skipped). */
 const MAINTENANCE_KEYWORDS = ["wartungsarbeiten", "maintenance", "geplante wartung"];
 
 /**
- * Einfacher XML-Tag-Extraktor (kein vollstaendiger Parser noetig fuer RSS).
+ * Simple XML tag extractor (no full parser needed for RSS).
  */
 function extractTag(xml: string, tag: string): string {
   const regex = new RegExp(
@@ -23,7 +23,7 @@ function extractTag(xml: string, tag: string): string {
 }
 
 /**
- * Extrahiert alle <item>-Bloecke aus dem RSS-Feed.
+ * Extracts all <item> blocks from the RSS feed.
  */
 function extractItems(rssBody: string): string[] {
   const items: string[] = [];
@@ -37,7 +37,7 @@ function extractItems(rssBody: string): string[] {
 }
 
 /**
- * Prueft ob ein Text eines der gegebenen Stichwoerter enthaelt (case-insensitive).
+ * Checks whether a text contains any of the given keywords (case-insensitive).
  */
 function containsKeyword(text: string, keywords: string[]): boolean {
   const lower = text.toLowerCase();
@@ -45,7 +45,7 @@ function containsKeyword(text: string, keywords: string[]): boolean {
 }
 
 /**
- * Adapter fuer Metanet Switzerland Status-Meldungen (RSS).
+ * Adapter for Metanet Switzerland status announcements (RSS).
  */
 export class MetanetRssAdapter implements StatusProvider {
   readonly key: string;
@@ -65,7 +65,7 @@ export class MetanetRssAdapter implements StatusProvider {
     });
 
     if (response.status !== 200) {
-      throw new Error(`HTTP ${response.status} von Metanet RSS`);
+      throw new Error(`HTTP ${response.status} from Metanet RSS`);
     }
 
     const items = extractItems(response.body);
@@ -80,7 +80,7 @@ export class MetanetRssAdapter implements StatusProvider {
 
       const fullText = `${title} ${description}`;
 
-      // Wartungsarbeiten ueberspringen
+      // Skip maintenance work
       if (containsKeyword(fullText, MAINTENANCE_KEYWORDS)) {
         continue;
       }
@@ -101,7 +101,7 @@ export class MetanetRssAdapter implements StatusProvider {
 
     logger.info(
       { provider: this.key, incidentCount: normalized.length },
-      "Metanet RSS Incidents abgefragt",
+      "Metanet RSS incidents fetched",
     );
 
     return normalized;

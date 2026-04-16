@@ -1,13 +1,13 @@
 # Lessons Learned
 
-Dieses Dokument wird automatisch gepflegt. Wenn Claude einen Fehler macht und korrigiert wird, wird die Lektion hier dokumentiert.
+This document is maintained automatically. When Claude makes a mistake and is corrected, the lesson is documented here.
 
-Format: `- [YYYY-MM-DD]: [Was falsch war] → [Korrekte Vorgehensweise]`
+Format: `- [YYYY-MM-DD]: [What was wrong] → [Correct approach]`
 
-## Lektionen
+## Lessons
 
-<!-- Neue Einträge oben anfügen -->
+<!-- Add new entries at the top -->
 
-- [2026-04-15]: Doku nach Code-/Konfig-Änderungen nicht sofort nachgezogen (Provider-Liste in `ADAPTERS.md`, Adapter-Tabelle in `PLAN.md`, Filter-Task und Risiken in `ROADMAP.md` blieben veraltet, bis der User explizit nachfragte) → Doku-Nachtrag ist Bestandteil jeder Änderung. Nach jedem Edit aktiv prüfen, welche Doku-Stellen den geänderten Bereich beschreiben, und sie im selben Arbeitsgang aktualisieren.
-- [2026-04-15]: Vorschlag eines realistischen Browser-User-Agents als Workaround für Sophos' blockierte API → Browser-Tarnung ist laut `docs/CONFIGURATION.md` (Abschnitt "HTTP User-Agent") explizit verboten, weil sie an einen ToS-Verstoss grenzt. Bei Blockaden eine der dokumentierten Alternativen wählen (Kontakt mit Anbieter, HTML-Scraping-Adapter, oder Provider bewusst zurückstellen).
-- [2026-04-15]: Sophos-API-Endpoint als "erreichbar" gewertet, weil HTTP-Status 200 zurückkam — der Body war aber eine 404-HTML-Seite → HTTP-Statuscode allein ist kein Beweis für eine valide Response. Immer zusätzlich Content-Type prüfen und JSON parsen in try/catch kapseln. Atlassian Statuspage liefert bei deaktivierter öffentlicher API eine Fehler-HTML-Seite mit Status 200.
+- [2026-04-15]: Documentation not updated immediately after code/config changes (provider list in `ADAPTERS.md`, adapter table in `PLAN.md`, filter task and risks in `ROADMAP.md` remained stale until the user explicitly asked) → Documentation update is part of every change. After each edit, actively check which documentation sections describe the changed area and update them in the same pass.
+- [2026-04-15]: Proposed a realistic browser user-agent as a workaround for Sophos' blocked API → Browser impersonation is explicitly forbidden by `docs/CONFIGURATION.md` (section "HTTP User-Agent") because it borders on a ToS violation. When blocked, choose one of the documented alternatives (contact the provider, HTML scraping adapter, or consciously defer the provider).
+- [2026-04-15]: Treated the Sophos API endpoint as "reachable" because HTTP status 200 was returned — but the body was a 404 HTML page → HTTP status code alone is not proof of a valid response. Always additionally check Content-Type and wrap JSON parsing in try/catch. Atlassian Statuspage returns an HTML error page with status 200 when the public API is disabled.

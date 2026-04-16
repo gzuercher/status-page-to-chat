@@ -3,11 +3,11 @@ import { resolve } from "node:path";
 import { fetch, type RequestInit } from "undici";
 import { logger } from "./logger.js";
 
-/** Timeout fuer alle ausgehenden HTTP-Requests (10 Sekunden). */
+/** Timeout for all outgoing HTTP requests (10 seconds). */
 const REQUEST_TIMEOUT_MS = 10_000;
 
 /**
- * Ermittelt den Default-User-Agent aus package.json.
+ * Determines the default User-Agent from package.json.
  * Format: raptus-status-monitor/<version> (+https://github.com/raptus/status-page-to-chat; ops@raptus.ch)
  */
 function getDefaultUserAgent(): string {
@@ -40,8 +40,8 @@ export type HttpResponse = {
 };
 
 /**
- * Zentraler HTTP-Client fuer alle Adapter.
- * Setzt User-Agent und Timeout einheitlich.
+ * Central HTTP client for all adapters.
+ * Sets User-Agent and timeout uniformly.
  */
 export async function httpGet(
   url: string,
@@ -69,7 +69,7 @@ export async function httpGet(
     const body = await response.text();
     const contentType = response.headers.get("content-type") ?? "";
 
-    logger.debug({ url, status: response.status, contentType }, "HTTP GET abgeschlossen");
+    logger.debug({ url, status: response.status, contentType }, "HTTP GET completed");
 
     return {
       status: response.status,
@@ -82,7 +82,7 @@ export async function httpGet(
 }
 
 /**
- * HTTP POST fuer Notifier (Webhooks).
+ * HTTP POST for notifiers (webhooks).
  */
 export async function httpPost(
   url: string,

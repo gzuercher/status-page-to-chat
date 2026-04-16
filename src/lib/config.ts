@@ -5,11 +5,11 @@ import { z } from "zod";
 import { logger } from "./logger.js";
 
 /**
- * zod-Schema fuer einen einzelnen Provider-Eintrag in providers.yaml.
+ * zod schema for a single provider entry in providers.yaml.
  */
 const providerSchema = z
   .object({
-    key: z.string().regex(/^[a-z0-9-]+$/, "key darf nur a-z, 0-9 und - enthalten"),
+    key: z.string().regex(/^[a-z0-9-]+$/, "key may only contain a-z, 0-9 and -"),
     displayName: z.string().min(1),
     adapter: z.enum([
       "atlassian-statuspage",
@@ -31,7 +31,7 @@ const providerSchema = z
       }
       return true;
     },
-    { message: "baseUrl ist Pflicht fuer atlassian-statuspage und wedos-status-online" },
+    { message: "baseUrl is required for atlassian-statuspage and wedos-status-online" },
   )
   .refine(
     (p) => {
@@ -40,31 +40,31 @@ const providerSchema = z
       }
       return true;
     },
-    { message: "owner und repo sind Pflicht fuer github-issues" },
+    { message: "owner and repo are required for github-issues" },
   );
 
 /**
- * zod-Schema fuer die gesamte providers.yaml.
+ * zod schema for the entire providers.yaml.
  */
 const configSchema = z
   .object({
     chatTarget: z.enum(["googleChat", "teams"]),
-    providers: z.array(providerSchema).min(1, "Mindestens ein Provider muss konfiguriert sein"),
+    providers: z.array(providerSchema).min(1, "At least one provider must be configured"),
   })
   .refine(
     (c) => {
       const keys = c.providers.map((p) => p.key);
       return new Set(keys).size === keys.length;
     },
-    { message: "Provider-Keys muessen eindeutig sein" },
+    { message: "Provider keys must be unique" },
   );
 
 export type ProviderConfig = z.infer<typeof providerSchema>;
 export type AppConfig = z.infer<typeof configSchema>;
 
 /**
- * Laedt und validiert die Konfiguration aus config/providers.yaml.
- * Bei Validierungsfehler wird geloggt und der Prozess beendet.
+ * Loads and validates the configuration from config/providers.yaml.
+ * On validation error, logs and exits the process.
  */
 export function loadConfig(configPath?: string): AppConfig {
   const filePath = configPath ?? resolve(process.cwd(), "config", "providers.yaml");
@@ -73,7 +73,7 @@ export function loadConfig(configPath?: string): AppConfig {
   try {
     raw = readFileSync(filePath, "utf-8");
   } catch (err) {
-    logger.fatal({ err, filePath }, "Konfigurationsdatei konnte nicht geladen werden");
+    logger.fatal({ err, filePath }, "Configuration file could not be loaded");
     process.exit(1);
   }
 
@@ -81,19 +81,19 @@ export function loadConfig(configPath?: string): AppConfig {
   try {
     parsed = parseYaml(raw);
   } catch (err) {
-    logger.fatal({ err, filePath }, "YAML konnte nicht geparst werden");
+    logger.fatal({ err, filePath }, "YAML could not be parsed");
     process.exit(1);
   }
 
   const result = configSchema.safeParse(parsed);
   if (!result.success) {
-    logger.fatal({ errors: result.error.flatten(), filePath }, "Konfiguration ist ungueltig");
+    logger.fatal({ errors: result.error.flatten(), filePath }, "Configuration is invalid");
     process.exit(1);
   }
 
   logger.info(
     { providerCount: result.data.providers.length, chatTarget: result.data.chatTarget },
-    "Konfiguration geladen",
+    "Configuration loaded",
   );
 
   return result.data;

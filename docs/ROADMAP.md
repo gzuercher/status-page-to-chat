@@ -1,112 +1,112 @@
 # Roadmap
 
-Die Umsetzung des Dienstes erfolgt in aufeinander aufbauenden Etappen. Jede Etappe ist so geschnitten, dass sie **einzeln reviewbar und lauffähig** ist.
+The service is implemented in sequential stages. Each stage is scoped so that it is **individually reviewable and runnable**.
 
-Legende: `[ ]` offen · `[~]` in Arbeit · `[x]` erledigt
+Legend: `[ ]` open · `[~]` in progress · `[x]` done
 
-## Etappe 1 — Grundgerüst
+## Stage 1 — Foundation
 
-- [x] `package.json` mit Dependencies: `@azure/functions`, `@azure/data-tables`, `zod`, `yaml`, `pino`, `undici`
-- [x] Dev-Deps: `typescript`, `vitest`, `eslint`, `prettier`, `@types/node`
+- [x] `package.json` with dependencies: `@azure/functions`, `@azure/data-tables`, `zod`, `yaml`, `pino`, `undici`
+- [x] Dev deps: `typescript`, `vitest`, `eslint`, `prettier`, `@types/node`
 - [x] `tsconfig.json` (strict, target ES2022)
 - [x] `host.json` (Functions v4)
 - [x] `local.settings.json.example`
 - [x] `eslint.config.mjs`, `.prettierrc`
 - [x] Scripts: `build`, `test`, `lint`, `format`
-- [x] `src/lib/types.ts` mit `NormalizedIncident`, `StatusProvider`, `Notifier`
+- [x] `src/lib/types.ts` with `NormalizedIncident`, `StatusProvider`, `Notifier`
 - [x] `src/lib/logger.ts` (pino)
 
-**Fertig**: `pnpm install && pnpm build` läuft durch.
+**Done**: `pnpm install && pnpm build` passes.
 
-## Etappe 2 — Config & State
+## Stage 2 — Config & State
 
-- [x] `src/lib/config.ts`: YAML laden, zod-Schema, Umgebungsvariablen lesen
-- [x] `config/providers.yaml` mit Starter-Einträgen (vorgezogen; enthält aktuell 19 Provider inkl. Atlassian-, Google-Workspace-, Metanet-, WEDOS- und GitHub-Issues-Einträge)
-- [x] `src/state/tableStore.ts`: CRUD auf Azure Table Storage, Abgleich-Logik
-- [x] `src/lib/httpClient.ts`: Zentraler HTTP-Client mit User-Agent und Timeout
-- [x] Unit-Tests für State-Diff (6 Tests)
+- [x] `src/lib/config.ts`: load YAML, zod schema, read environment variables
+- [x] `config/providers.yaml` with starter entries (pulled forward; currently contains 19 providers including Atlassian, Google Workspace, Metanet, WEDOS and GitHub Issues entries)
+- [x] `src/state/tableStore.ts`: CRUD on Azure Table Storage, diff logic
+- [x] `src/lib/httpClient.ts`: central HTTP client with User-Agent and timeout
+- [x] Unit tests for state diff (6 tests)
 
-**Fertig**: Tests grün, State-Diff erkennt korrekt Neu/Behoben/Unverändert.
+**Done**: Tests green, state diff correctly identifies New/Resolved/Unchanged.
 
-## Etappe 3 — Erster Adapter (Atlassian)
+## Stage 3 — First Adapter (Atlassian)
 
 - [x] `src/adapters/atlassianStatuspage.ts`
-- [x] `tests/adapters/atlassianStatuspage.test.ts` mit Fixture für offene + geschlossene Incidents
-- [x] Komponenten-Filter-Logik: unterstützt sowohl `string` als auch `string[]` (OR-Logik). Tests für beide Formen + für „kein Filter"-Fall.
-- [x] zod-Schema: `componentFilter: z.union([z.string(), z.array(z.string())]).optional()`
-- [x] Status-Mapping-Test
-- [x] Response-Validierung: Content-Type prüfen und JSON parsen in try/catch (9 Tests)
+- [x] `tests/adapters/atlassianStatuspage.test.ts` with fixture for open + closed incidents
+- [x] Component filter logic: supports both `string` and `string[]` (OR logic). Tests for both forms + for "no filter" case.
+- [x] zod schema: `componentFilter: z.union([z.string(), z.array(z.string())]).optional()`
+- [x] Status mapping test
+- [x] Response validation: check Content-Type and parse JSON in try/catch (9 tests)
 
-**Fertig**: Adapter gibt aus Fixture-Responses korrekt normalisierte Incidents zurück.
+**Done**: Adapter returns correctly normalised incidents from fixture responses.
 
-## Etappe 4 — Notifier
+## Stage 4 — Notifier
 
 - [x] `src/notifiers/googleChat.ts` (Card v2)
 - [x] `src/notifiers/teams.ts` (Adaptive Card)
-- [x] Gemeinsames Interface in `src/notifiers/index.ts`
-- [x] Tests mit Mock-Fetch, Payload-Struktur verifizieren (7 Tests)
-- [x] Retry-Logik (1x Backoff, 2s) mit Test
+- [x] Shared interface in `src/notifiers/index.ts`
+- [x] Tests with mock fetch, verify payload structure (7 tests)
+- [x] Retry logic (1x backoff, 2s) with test
 
-**Fertig**: Nachrichtenformat und Retry-Logik durch Tests verifiziert.
+**Done**: Message format and retry logic verified by tests.
 
-## Etappe 5 — Orchestrierung
+## Stage 5 — Orchestration
 
 - [x] `src/functions/poll.ts` Timer Trigger
-- [x] Fehlerisolation pro Provider (Promise.allSettled)
-- [x] Strukturiertes `run_summary`-Log je Durchlauf
-- [x] State-Abgleich mit Benachrichtigungs-Tracking (notifiedOpened/notifiedResolved)
+- [x] Error isolation per provider (Promise.allSettled)
+- [x] Structured `run_summary` log per run
+- [x] State diff with notification tracking (notifiedOpened/notifiedResolved)
 
-**Fertig**: Orchestrierung kompiliert, Fehlerisolation implementiert.
+**Done**: Orchestration compiles, error isolation implemented.
 
-## Etappe 6 — Weitere Adapter (parallel arbeitbar)
+## Stage 6 — Additional Adapters (parallelisable)
 
-- [x] `googleWorkspace` + Test (3 Tests)
-- [x] `metanetRss` + Test inkl. Wartungs-Filter (4 Tests)
-- [x] `wedosStatusOnline` + Test inkl. Content-Type-Prüfung (3 Tests)
-- [x] `githubIssues` + Test inkl. PR-Filter (4 Tests)
+- [x] `googleWorkspace` + test (3 tests)
+- [x] `metanetRss` + test incl. maintenance filter (4 tests)
+- [x] `wedosStatusOnline` + test incl. Content-Type check (3 tests)
+- [x] `githubIssues` + test incl. PR filter (4 tests)
 
-**Fertig**: Alle 5 Adapter implementiert und getestet. 36 Tests gesamt, alle grün.
+**Done**: All 5 adapters implemented and tested. 36 tests total, all green.
 
-## Etappe 7 — Infrastruktur
+## Stage 7 — Infrastructure
 
 - [x] `infra/main.bicep` — Function App, Storage, App Insights, Action Group, Alert Rule
-- [x] Bicep-Parameter für `webhookUrl`, `alertEmail`, `location`
-- [ ] README-Abschnitt "Deployment" testen mit Dummy-Subscription
+- [x] Bicep parameters for `webhookUrl`, `alertEmail`, `location`
+- [ ] Test "Deployment" section with dummy subscription
 
-**Fertig wenn**: `az deployment group create` legt alle Ressourcen korrekt an. (Bicep geschrieben, Deployment steht aus)
+**Done when**: `az deployment group create` creates all resources correctly. (Bicep written, deployment pending)
 
-## Etappe 8 — CI/CD
+## Stage 8 — CI/CD
 
-- [x] GitHub Actions: Build, Test, Lint bei jedem PR (`.github/workflows/ci.yml`)
-- [x] GitHub Actions: Deploy (Function Code) bei Push auf `main` (`.github/workflows/deploy.yml`)
-- [x] Azure OIDC Federation statt Service-Principal-Secret (Setup-Anleitung in `docs/DEPLOYMENT.md`)
-- [x] `.funcignore` fuer schlanke Deployment-Pakete
+- [x] GitHub Actions: Build, Test, Lint on every PR (`.github/workflows/ci.yml`)
+- [x] GitHub Actions: Deploy (Function code) on push to `main` (`.github/workflows/deploy.yml`)
+- [x] Azure OIDC Federation instead of Service Principal secret (setup guide in `docs/DEPLOYMENT.md`)
+- [x] `.funcignore` for lean deployment packages
 
-## Etappe 9 — Erst-Deployment und Abnahme
+## Stage 9 — First Deployment and Acceptance
 
-- [ ] Deployment in Azure-Tenant
-- [ ] Echten Webhook gegen einen Test-Chat-Raum konfigurieren
-- [ ] Wartezeit / beobachten → erster realer Incident getriggert
-- [ ] Alert-Rule manuell auslösen (Function deaktivieren) → Mail kommt an
-- [ ] Abnahme mit Team
+- [ ] Deployment to Azure tenant
+- [ ] Configure real webhook against a test chat room
+- [ ] Wait and observe → first real incident triggered
+- [ ] Manually trigger Alert Rule (disable Function) → email received
+- [ ] Team acceptance
 
-## Spätere Erweiterungen (bewusst nicht in V1)
+## Later extensions (deliberately not in V1)
 
-- Update-Nachrichten zwischen `open` und `resolved` (z.B. "monitoring", "identified")
-- Mehrere Chat-Ziele parallel (Fan-Out an mehrere Webhooks)
-- Pro-Dienst-Routing (z.B. DevOps-Raum vs. Support-Raum)
-- Geplante Wartungen als separate Nachrichten-Gattung
-- Admin-UI zum Verwalten der Konfiguration
-- Selbst überwachen per zweiter "canary"-Function (statt nur Azure Monitor)
-- Slack-Notifier
-- Deutsche Übersetzung der Titel (LLM-Aufruf)
-- HTML-Scraping-Adapter für Status-Pages ohne API — **konkreter Anlass: Sophos** (`status.sophos.com`): läuft auf Atlassian Statuspage, aber alle JSON/RSS/Atom-Endpoints antworten mit HTTP 200 und liefern eine 404-HTML-Seite statt echter Daten. Ein realistischer Browser-User-Agent ändert daran nichts. Aktivierung erst, wenn entweder Sophos die API freischaltet oder dieser Adapter existiert. Eintrag in `config/providers.yaml` ist vorbereitet und auskommentiert.
+- Update messages between `open` and `resolved` (e.g. "monitoring", "identified")
+- Multiple chat targets in parallel (fan-out to multiple webhooks)
+- Per-service routing (e.g. DevOps room vs. support room)
+- Scheduled maintenance as a separate message type
+- Admin UI for managing configuration
+- Self-monitoring via a second "canary" function (instead of Azure Monitor only)
+- Slack notifier
+- German translation of titles (LLM call)
+- HTML scraping adapter for status pages without an API — **concrete case: Sophos** (`status.sophos.com`): runs on Atlassian Statuspage, but all JSON/RSS/Atom endpoints respond with HTTP 200 and return a 404 HTML page instead of real data. A realistic browser user-agent makes no difference. Enable only when Sophos opens the API or this adapter exists. Entry in `config/providers.yaml` is prepared and commented out.
 
-## Bekannte Risiken / offene Recherche-Punkte
+## Known risks / open research items
 
-- **WEDOS Response-Format**: Dokumentation der JSON-Struktur muss bei Implementierung empirisch geprüft werden (kein offizielles Schema gefunden).
-- **Metanet Status-Semantik**: Die Zuordnung "behoben" muss per RSS-Heuristik ermittelt werden; evtl. sind mehrere RSS-Einträge pro Incident nötig.
-- **Kaseya Komponenten-Filter "IT Glue"**: Verfügbarkeit der Component-Namen in der Statuspage-API verifizieren.
-- **GravityZone Cloud-Instanzen**: Die aktuellen Filter-Substrings (`cloudgz.gravityzone.bitdefender.com`, `cloud.gravityzone.bitdefender.com`) spiegeln die heutigen Instanz-URLs. Bei Rebranding oder Konsolidierung von Bitdefender (z.B. Migration auf andere Region) muss der `componentFilter` in `config/providers.yaml` nachgezogen werden, sonst verstummen Meldungen.
-- **Claude Komponenten-Namen**: Anthropic benennt Produkte gelegentlich um (z.B. heisst die Konsole bereits offiziell „platform.claude.com (formerly console.anthropic.com)"). Vor Inbetriebnahme die aktuelle Component-Liste unter `https://status.claude.com/api/v2/components.json` abgleichen und ggf. die Substrings in `componentFilter` anpassen.
-- **GitHub Rate Limit**: Ohne Token 60 Requests/h und Client-IP. Für Azure reicht das knapp. Mit Token 5'000/h.
+- **WEDOS response format**: JSON structure must be empirically verified during implementation (no official schema found).
+- **Metanet status semantics**: The "resolved" mapping must be determined via RSS heuristics; multiple RSS entries per incident may be needed.
+- **Kaseya component filter "IT Glue"**: Verify availability of component names in the Statuspage API.
+- **GravityZone cloud instances**: The current filter substrings (`cloudgz.gravityzone.bitdefender.com`, `cloud.gravityzone.bitdefender.com`) reflect today's instance URLs. On Bitdefender rebranding or consolidation (e.g. migration to another region), the `componentFilter` in `config/providers.yaml` must be updated or notifications will go silent.
+- **Claude component names**: Anthropic occasionally renames products (e.g. the console is now officially "platform.claude.com (formerly console.anthropic.com)"). Before go-live, check the current component list at `https://status.claude.com/api/v2/components.json` and update the substrings in `componentFilter` if needed.
+- **GitHub rate limit**: Without a token: 60 requests/h per client IP. Sufficient for Azure. With token: 5,000/h.

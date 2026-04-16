@@ -16,7 +16,7 @@ type GoogleIncident = {
 };
 
 /**
- * Adapter fuer Google Workspace Status Dashboard.
+ * Adapter for the Google Workspace Status Dashboard.
  */
 export class GoogleWorkspaceAdapter implements StatusProvider {
   readonly key: string;
@@ -36,14 +36,14 @@ export class GoogleWorkspaceAdapter implements StatusProvider {
     });
 
     if (response.status !== 200) {
-      throw new Error(`HTTP ${response.status} von Google Workspace Dashboard`);
+      throw new Error(`HTTP ${response.status} from Google Workspace Dashboard`);
     }
 
     let incidents: GoogleIncident[];
     try {
       incidents = JSON.parse(response.body) as GoogleIncident[];
     } catch (err) {
-      throw new Error(`JSON-Parsing fehlgeschlagen: ${String(err)}`);
+      throw new Error(`JSON parsing failed: ${String(err)}`);
     }
 
     const normalized: NormalizedIncident[] = incidents.map((inc) => ({
@@ -59,7 +59,7 @@ export class GoogleWorkspaceAdapter implements StatusProvider {
 
     logger.info(
       { provider: this.key, incidentCount: normalized.length },
-      "Google Workspace Incidents abgefragt",
+      "Google Workspace incidents fetched",
     );
 
     return normalized;

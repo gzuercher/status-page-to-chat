@@ -1,29 +1,29 @@
 /**
- * Einheitliches Incident-Modell.
- * Alle Adapter mappen ihre Rohdaten in dieses Format.
+ * Unified incident model.
+ * All adapters map their raw data into this format.
  */
 export type NormalizedIncident = {
-  /** ID aus dem Quellsystem */
+  /** ID from the source system */
   externalId: string;
-  /** Eindeutiger Schluessel des Providers (z.B. "bexio") */
+  /** Unique key of the provider (e.g. "bexio") */
   providerKey: string;
-  /** Anzeigename des Providers (z.B. "Bexio") */
+  /** Display name of the provider (e.g. "Bexio") */
   displayName: string;
-  /** Kurzbeschreibung der Stoerung */
+  /** Short description of the incident */
   title: string;
-  /** Vereinfachter Status: offen oder behoben */
+  /** Simplified status: open or resolved */
   status: "open" | "resolved";
-  /** Link zur Stoerung oder Status-Page */
+  /** Link to the incident or status page */
   url: string;
-  /** Beginn der Stoerung (ISO-8601) */
+  /** Start of the incident (ISO-8601) */
   startedAt: string;
-  /** Letzte Aktualisierung (ISO-8601) */
+  /** Last update (ISO-8601) */
   updatedAt: string;
 };
 
 /**
- * Interface fuer Status-Page-Adapter.
- * Jeder Adapter holt Incidents von einer bestimmten Plattform.
+ * Interface for status page adapters.
+ * Each adapter fetches incidents from a specific platform.
  */
 export interface StatusProvider {
   readonly key: string;
@@ -32,8 +32,8 @@ export interface StatusProvider {
 }
 
 /**
- * Interface fuer Chat-Notifier.
- * Sendet formatierte Nachrichten an einen Chat-Kanal.
+ * Interface for chat notifiers.
+ * Sends formatted messages to a chat channel.
  */
 export interface Notifier {
   notifyOpened(incident: NormalizedIncident): Promise<void>;
@@ -41,7 +41,7 @@ export interface Notifier {
 }
 
 /**
- * Gespeicherter Zustand eines Incidents in Table Storage.
+ * Stored state of an incident in Table Storage.
  */
 export type StoredIncident = {
   partitionKey: string;
@@ -56,7 +56,7 @@ export type StoredIncident = {
 };
 
 /**
- * Ergebnis des State-Abgleichs fuer einen einzelnen Incident.
+ * Result of the state diff for a single incident.
  */
 export type DiffResult = {
   incident: NormalizedIncident;
@@ -64,7 +64,7 @@ export type DiffResult = {
 };
 
 /**
- * Zusammenfassung eines Durchlaufs (fuer strukturiertes Logging).
+ * Summary of a single run (for structured logging).
  */
 export type RunSummary = {
   providersTotal: number;

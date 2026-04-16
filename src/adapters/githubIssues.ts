@@ -15,7 +15,7 @@ type GitHubIssue = {
 };
 
 /**
- * Adapter fuer GitHub Repositories, die Issues als Status-Tracker nutzen.
+ * Adapter for GitHub repositories that use issues as a status tracker.
  */
 export class GithubIssuesAdapter implements StatusProvider {
   readonly key: string;
@@ -27,7 +27,7 @@ export class GithubIssuesAdapter implements StatusProvider {
   constructor(config: ProviderConfig) {
     this.key = config.key;
     this.displayName = config.displayName;
-    if (!config.owner || !config.repo) throw new Error(`owner/repo fehlt fuer ${config.key}`);
+    if (!config.owner || !config.repo) throw new Error(`owner/repo missing for ${config.key}`);
     this.owner = config.owner;
     this.repo = config.repo;
     this.userAgent = config.userAgent;
@@ -41,7 +41,7 @@ export class GithubIssuesAdapter implements StatusProvider {
       "X-GitHub-Api-Version": "2022-11-28",
     };
 
-    // Optionaler Token fuer hoeheres Rate-Limit
+    // Optional token for higher rate limit
     const token = process.env.GITHUB_TOKEN;
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
@@ -53,17 +53,17 @@ export class GithubIssuesAdapter implements StatusProvider {
     });
 
     if (response.status !== 200) {
-      throw new Error(`HTTP ${response.status} von GitHub API (${this.owner}/${this.repo})`);
+      throw new Error(`HTTP ${response.status} from GitHub API (${this.owner}/${this.repo})`);
     }
 
     let issues: GitHubIssue[];
     try {
       issues = JSON.parse(response.body) as GitHubIssue[];
     } catch (err) {
-      throw new Error(`JSON-Parsing fehlgeschlagen: ${String(err)}`);
+      throw new Error(`JSON parsing failed: ${String(err)}`);
     }
 
-    // Pull Requests filtern (GitHub API liefert Issues und PRs)
+    // Filter out pull requests (GitHub API returns both issues and PRs)
     const normalized: NormalizedIncident[] = issues
       .filter((issue) => !issue.pull_request)
       .map((issue) => ({
@@ -79,7 +79,7 @@ export class GithubIssuesAdapter implements StatusProvider {
 
     logger.info(
       { provider: this.key, incidentCount: normalized.length },
-      "GitHub Issues abgefragt",
+      "GitHub issues fetched",
     );
 
     return normalized;

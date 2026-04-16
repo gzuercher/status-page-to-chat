@@ -1,16 +1,16 @@
 ---
-description: Sicherheitsprüfungen für Code-Dateien
+description: Security checks for code files
 globs: "*.ts,*.tsx,*.js,*.jsx,*.php"
 ---
 
-# Sicherheit
+# Security
 
-- Keine Secrets (API-Keys, Passwörter, Tokens) im Code. Verwende Umgebungsvariablen.
-- Alle Benutzereingaben validieren: zod (TypeScript) oder Laravel Validation (PHP).
-- SQL: nur parametrisierte Statements oder ORM. Nie String-Konkatenation.
-- Kein `dangerouslySetInnerHTML` ohne DOMPurify.
-- Kein `eval()`, `Function()` oder `innerHTML` mit Benutzereingaben.
-- HTTP-Antworten: keine sensitiven Daten in Fehlermeldungen.
-- API-Routen: Authentifizierung und Autorisierung prüfen.
-- PHP: kein `$_GET`/`$_POST` direkt verwenden, immer sanitisieren.
-- Laravel: Mass Assignment Protection aktivieren ($fillable / $guarded).
+- No secrets (API keys, passwords, tokens) in code. Use environment variables.
+- Validate all user input: zod (TypeScript) or Laravel Validation (PHP).
+- SQL: only parameterised statements or ORM. Never string concatenation.
+- No `dangerouslySetInnerHTML` without DOMPurify.
+- No `eval()`, `Function()` or `innerHTML` with user input.
+- HTTP responses: no sensitive data in error messages.
+- API routes: check authentication and authorisation.
+- PHP: do not use `$_GET`/`$_POST` directly, always sanitise.
+- Laravel: enable mass assignment protection ($fillable / $guarded).

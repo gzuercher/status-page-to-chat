@@ -4,8 +4,8 @@ import type { NormalizedIncident, StatusProvider } from "../lib/types.js";
 import type { ProviderConfig } from "../lib/config.js";
 
 /**
- * Erwartete Response-Struktur von WEDOS status.online.
- * Hinweis: Kein offizielles Schema vorhanden, empirisch ermittelt.
+ * Expected response structure from WEDOS status.online.
+ * Note: no official schema available, determined empirically.
  */
 type WedosIncident = {
   id: number | string;
@@ -25,7 +25,7 @@ type WedosResponse = {
 };
 
 /**
- * Adapter fuer WEDOS status.online Plattform.
+ * Adapter for the WEDOS status.online platform.
  */
 export class WedosStatusOnlineAdapter implements StatusProvider {
   readonly key: string;
@@ -36,7 +36,7 @@ export class WedosStatusOnlineAdapter implements StatusProvider {
   constructor(config: ProviderConfig) {
     this.key = config.key;
     this.displayName = config.displayName;
-    if (!config.baseUrl) throw new Error(`baseUrl fehlt fuer ${config.key}`);
+    if (!config.baseUrl) throw new Error(`baseUrl missing for ${config.key}`);
     this.baseUrl = config.baseUrl;
     this.userAgent = config.userAgent;
   }
@@ -49,25 +49,25 @@ export class WedosStatusOnlineAdapter implements StatusProvider {
     });
 
     if (response.status !== 200) {
-      throw new Error(`HTTP ${response.status} von WEDOS`);
+      throw new Error(`HTTP ${response.status} from WEDOS`);
     }
 
     if (!response.contentType.includes("application/json")) {
-      throw new Error(`Unerwarteter Content-Type "${response.contentType}" von ${url}`);
+      throw new Error(`Unexpected Content-Type "${response.contentType}" from ${url}`);
     }
 
     let data: WedosResponse;
     try {
       data = JSON.parse(response.body) as WedosResponse;
     } catch (err) {
-      throw new Error(`JSON-Parsing fehlgeschlagen: ${String(err)}`);
+      throw new Error(`JSON parsing failed: ${String(err)}`);
     }
 
-    // WEDOS koennte incidents oder data als Schluessel verwenden
+    // WEDOS may use either "incidents" or "data" as the key
     const incidents = data.incidents ?? data.data ?? [];
 
     const normalized: NormalizedIncident[] = incidents.map((inc) => {
-      const title = inc.name ?? inc.title ?? "Unbekannte Stoerung";
+      const title = inc.name ?? inc.title ?? "Unknown incident";
       const isResolved = !!inc.resolved_at || inc.status === "resolved";
 
       return {
@@ -84,7 +84,7 @@ export class WedosStatusOnlineAdapter implements StatusProvider {
 
     logger.info(
       { provider: this.key, incidentCount: normalized.length },
-      "WEDOS Incidents abgefragt",
+      "WEDOS incidents fetched",
     );
 
     return normalized;

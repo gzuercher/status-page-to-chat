@@ -3,7 +3,7 @@ import { logger } from "../lib/logger.js";
 import type { Notifier, NormalizedIncident } from "../lib/types.js";
 
 /**
- * Google Chat Card v2 Payload.
+ * Builds a Google Chat Card v2 payload.
  */
 function buildCard(
   incident: NormalizedIncident,
@@ -12,8 +12,8 @@ function buildCard(
   const isOpened = type === "opened";
   const emoji = isOpened ? "\u26a0\ufe0f" : "\u2705";
   const actionText = isOpened
-    ? `hat eine Stoerung zu "${incident.title}" gemeldet`
-    : `hat die Behebung der Stoerung zu "${incident.title}" gemeldet`;
+    ? `has reported an incident: "${incident.title}"`
+    : `has resolved the incident: "${incident.title}"`;
 
   return {
     cardsV2: [
@@ -31,7 +31,7 @@ function buildCard(
                   buttonList: {
                     buttons: [
                       {
-                        text: "Details anzeigen",
+                        text: "View details",
                         onClick: {
                           openLink: { url: incident.url },
                         },
@@ -49,7 +49,7 @@ function buildCard(
 }
 
 /**
- * Notifier fuer Google Chat Incoming Webhooks.
+ * Notifier for Google Chat Incoming Webhooks.
  */
 export class GoogleChatNotifier implements Notifier {
   private readonly webhookUrl: string;
@@ -78,25 +78,25 @@ export class GoogleChatNotifier implements Notifier {
 
       logger.info(
         { provider: incident.providerKey, type, incidentId: incident.externalId },
-        "Google Chat Nachricht gesendet",
+        "Google Chat message sent",
       );
     } catch (firstError) {
       logger.warn(
         { provider: incident.providerKey, type, err: firstError },
-        "Google Chat Nachricht fehlgeschlagen, Retry in 2s",
+        "Google Chat message failed, retrying in 2s",
       );
 
-      // Einmaliger Retry mit Backoff
+      // Single retry with backoff
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const response = await httpPost(this.webhookUrl, payload);
       if (response.status < 200 || response.status >= 300) {
-        throw new Error(`Retry fehlgeschlagen: HTTP ${response.status}: ${response.body}`);
+        throw new Error(`Retry failed: HTTP ${response.status}: ${response.body}`);
       }
 
       logger.info(
         { provider: incident.providerKey, type, incidentId: incident.externalId },
-        "Google Chat Nachricht gesendet (nach Retry)",
+        "Google Chat message sent (after retry)",
       );
     }
   }

@@ -1,8 +1,8 @@
-# Architektur
+# Architecture
 
-## Übersicht
+## Overview
 
-`status-page-to-chat` ist ein **Timer-getriebener Serverless-Dienst**. Alle 5 Minuten pollt er eine Liste externer Status-Pages, normalisiert die Antworten zu einem einheitlichen Incident-Modell, vergleicht mit dem letzten bekannten Zustand und verschickt bei Änderungen eine Nachricht in einen Chat-Kanal.
+`status-page-to-chat` is a **timer-driven serverless service**. Every 5 minutes it polls a list of external status pages, normalises the responses into a unified incident model, compares with the last known state, and sends a message to a chat channel when changes are detected.
 
 ```
            ┌────────────────────┐
@@ -17,7 +17,7 @@
         ┌─────────────┼──────────────┐
         ▼             ▼              ▼
   ┌─────────┐   ┌─────────┐    ┌──────────┐
-  │ Adapter │   │ Adapter │    │ Adapter  │   (je nach Provider)
+  │ Adapter │   │ Adapter │    │ Adapter  │   (one per provider)
   └────┬────┘   └────┬────┘    └─────┬────┘
        │             │               │
        └─────────────┼───────────────┘
@@ -37,84 +37,85 @@
          └────────────────────────┘
 ```
 
-## Module
+## Modules
 
-| Modul | Pfad | Verantwortung |
+| Module | Path | Responsibility |
 |---|---|---|
-| Timer Entry | `src/functions/poll.ts` | Orchestriert den gesamten Durchlauf |
-| Config Loader | `src/lib/config.ts` | Lädt und validiert `config/providers.yaml` (zod) |
-| Adapter-Registry | `src/adapters/index.ts` | Mappt Adapter-Key → Implementierung |
-| Adapter | `src/adapters/*.ts` | Pro Status-Page-Typ eine Implementierung des `StatusProvider`-Interface |
-| Notifier-Registry | `src/notifiers/index.ts` | Wählt Notifier anhand `chatTarget` |
-| Notifier | `src/notifiers/googleChat.ts`, `teams.ts` | Formatieren und POSTen die Nachricht |
-| State Store | `src/state/tableStore.ts` | Persistiert zuletzt bekannte Incidents |
-| Logger | `src/lib/logger.ts` | pino-Logger mit App-Insights-Sink |
+| Timer Entry | `src/functions/poll.ts` | Orchestrates the entire run |
+| Config Loader | `src/lib/config.ts` | Loads and validates `config/providers.yaml` (zod) |
+| Adapter Registry | `src/adapters/index.ts` | Maps adapter key → implementation |
+| Adapter | `src/adapters/*.ts` | One implementation of the `StatusProvider` interface per status page type |
+| Notifier Registry | `src/notifiers/index.ts` | Selects notifier based on `chatTarget` |
+| Notifier | `src/notifiers/googleChat.ts`, `teams.ts` | Formats and POSTs the message |
+| State Store | `src/state/tableStore.ts` | Persists last known incidents |
+| Logger | `src/lib/logger.ts` | pino logger with App Insights sink |
+| HTTP Client | `src/lib/httpClient.ts` | Central HTTP client with User-Agent and timeout |
 | Types | `src/lib/types.ts` | `NormalizedIncident`, `StatusProvider`, `Notifier` |
 
-## Datenmodell
+## Data model
 
 ### `NormalizedIncident`
 
 ```ts
 type NormalizedIncident = {
-  externalId: string;          // ID aus dem Quellsystem
-  providerKey: string;         // z.B. "bexio"
-  displayName: string;         // z.B. "Bexio"
-  title: string;               // Kurzbeschreibung der Störung
-  status: "open" | "resolved"; // vereinfacht, siehe unten
-  url: string;                 // Link zur Störung oder Status-Page
+  externalId: string;          // ID from the source system
+  providerKey: string;         // e.g. "bexio"
+  displayName: string;         // e.g. "Bexio"
+  title: string;               // Short description of the incident
+  status: "open" | "resolved"; // simplified, see below
+  url: string;                 // Link to the incident or status page
   startedAt: string;           // ISO-8601
   updatedAt: string;           // ISO-8601
 };
 ```
 
-### Status-Vereinfachung
+### Status simplification
 
-Status-Pages kennen viele Zustände (`investigating`, `identified`, `monitoring`, `resolved`, `postmortem`, …). Für die Zielgruppe (Endnutzer) wird reduziert auf:
+Status pages have many states (`investigating`, `identified`, `monitoring`, `resolved`, `postmortem`, …). For the target audience (end users) this is reduced to:
 
-- **open** = aktuell beeinträchtigt (alles außer `resolved`/`completed`)
-- **resolved** = behoben
+- **open** = currently impacted (everything except `resolved`/`completed`)
+- **resolved** = fixed
 
-## Datenfluss pro Durchlauf
+## Data flow per run
 
-1. **Config laden**: `config/providers.yaml` lesen, per `zod` validieren, bei Fehler `process.exit` mit Log.
-2. **Pollen**: Für jeden Provider parallel (mit Timeout + Einzelfehler-Isolation) `fetchIncidents()` aufrufen. Ein fehlschlagender Provider darf die anderen nicht beeinflussen.
-3. **Normalisieren**: Adapter liefert bereits `NormalizedIncident[]`.
-4. **Abgleich** (pro Incident):
-   - Nicht in Table Storage + Status `open` → neuer offener Incident
-   - In Table Storage offen + jetzt `resolved` → behoben
-   - Sonst: Zustand übernehmen, keine Nachricht
-5. **Benachrichtigen**: Für jeden Zustandswechsel `notifyOpened` oder `notifyResolved`.
-6. **State schreiben**: Zeile in Table Storage aktualisieren.
+1. **Load config**: read `config/providers.yaml`, validate with `zod`, `process.exit` with log on error.
+2. **Poll**: For each provider in parallel (with timeout + individual error isolation) call `fetchIncidents()`. A failing provider must not affect others.
+3. **Normalise**: Adapter already delivers `NormalizedIncident[]`.
+4. **Diff** (per incident):
+   - Not in Table Storage + status `open` → new open incident
+   - In Table Storage open + now `resolved` → resolved
+   - Otherwise: carry over state, no message
+5. **Notify**: For each state change call `notifyOpened` or `notifyResolved`.
+6. **Write state**: Update row in Table Storage.
 
-## Fehlerisolation
+## Error isolation
 
-- Einzelne Adapter laufen in eigenem `try/catch`. Fehler werden geloggt und als Metric gezählt, brechen aber den Gesamtlauf nicht ab.
-- Notifier-Aufrufe werden bei Fehler 1-mal mit Backoff wiederholt. Schlägt der Notifier komplett fehl, wird der Incident als "nicht benachrichtigt" im State markiert, damit im nächsten Durchlauf erneut versucht wird.
+- Individual adapters run in their own `try/catch`. Errors are logged and counted as a metric, but do not abort the overall run.
+- Notifier calls are retried once with backoff on failure. If the notifier fails completely, the incident is marked as "not notified" in state so it will be retried in the next run.
 
-## Self-Monitoring
+## Self-monitoring
 
-- **Azure Monitor Alert Rule** (definiert in `infra/main.bicep`):
-  - Regel: Function Execution Count < 1 in einem 15-Minuten-Fenster
-  - Aktion: Mail an konfigurierte Adresse via Action Group
-- Zusätzlich: jeder Durchlauf loggt eine strukturierte `run_summary`-Nachricht. Dashboards und Queries in App Insights lesen diese.
+- **Azure Monitor Alert Rule** (defined in `infra/main.bicep`):
+  - Rule: Function Execution Count < 1 in a 15-minute window
+  - Action: email to configured address via Action Group
+- Additionally: every run logs a structured `run_summary` message. Dashboards and queries in App Insights read this.
 
-## Sicherheit
+## Security
 
-- Webhook-URLs sind **Secrets** → liegen ausschliesslich in Function App Settings (verschlüsselt).
-- Kein Secret im Repo (siehe `.claude/rules/security.md`).
-- Keine personenbezogenen Daten in Logs.
-- Ausgehende Aufrufe gehen nur an statische, konfigurierte Hosts.
+- Webhook URLs are **secrets** → stored exclusively in Function App Settings (encrypted).
+- No secret in the repo (see `.claude/rules/security.md`).
+- No personal data in logs.
+- Outbound calls go only to static, configured hosts.
 
-## Was explizit NICHT gebaut wird
+## What is explicitly NOT built
 
-- Keine eigene Authentifizierung (Service ist Backend-only, keine UI)
-- Keine eigene Webseite zur Verwaltung (Konfig erfolgt per YAML im Repo)
-- Kein Datenbankserver (Table Storage genügt)
-- Keine eigene Queue (pro Durchlauf synchron)
+- No own authentication (service is backend-only, no UI)
+- No own management website (config is done via YAML in the repo)
+- No database server (Table Storage is sufficient)
+- No own queue (synchronous per run)
 
-## Referenzen
+## References
 
-- Datenformat `providers.yaml`: [CONFIGURATION.md](CONFIGURATION.md)
-- Adapter-Details: [ADAPTERS.md](ADAPTERS.md)
+- Data format `providers.yaml`: [CONFIGURATION.md](CONFIGURATION.md)
+- Adapter details: [ADAPTERS.md](ADAPTERS.md)
 - Deployment: [DEPLOYMENT.md](DEPLOYMENT.md)

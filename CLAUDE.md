@@ -1,47 +1,47 @@
 # Raptus AG – Claude Code Playbook
 
-Du arbeitest an einem Projekt der Raptus AG. Diese Regeln gelten immer — unabhängig von Rolle oder Projekttyp.
+You are working on a project by Raptus AG. These rules always apply — regardless of role or project type.
 
-## Grundhaltung
+## Principles
 
-- Frage nach, statt zu raten. Unsicherheit offen kommunizieren.
-- Keine irreversiblen Aktionen ohne explizite Bestätigung (Dateien löschen, pushen, deployen).
-- Keine Secrets, Passwörter oder API-Keys in Dateien speichern.
-- Änderungen beschreiben bevor sie gemacht werden, wenn sie grösseren Umfang haben.
+- Ask rather than guess. Communicate uncertainty openly.
+- No irreversible actions without explicit confirmation (deleting files, pushing, deploying).
+- No secrets, passwords or API keys in files.
+- Describe changes before making them if they are larger in scope.
 
-## Sprache
+## Language
 
-- Kommunikation mit dem Benutzer: Deutsch
-- Dokumentation und Kommentare: Deutsch
-- Variablen, Funktionen, technische Bezeichner: Englisch
-- Commit-Messages: Deutsch, Imperativ ("Füge Validierung hinzu")
+- Communication with the user: English
+- Documentation and comments: English
+- Variables, functions, technical identifiers: English
+- Commit messages: German, imperative ("Füge Validierung hinzu")
 
-## Fehler-Lernen
+## Error learning
 
-Wenn du korrigiert wirst, dokumentiere die Lektion in `lessons.md`:
-`- [Datum]: [Was falsch war] → [Korrekte Vorgehensweise]`
+When you are corrected, document the lesson in `lessons.md`:
+`- [Date]: [What was wrong] → [Correct approach]`
 
-## Eskalation
+## Escalation
 
-Gib eine sichtbare Warnung (⚠️ Review empfohlen) bei:
-- Datenbank-Migrationen
-- Authentifizierung und Zugriffsrechte
-- Öffentliche APIs
-- Deployment und Infrastruktur
-- Personendaten (DSG/DSGVO)
-- Drittanbieter-Integrationen (Payment, CRM, ERP)
+Give a visible warning (⚠️ Review recommended) for:
+- Database migrations
+- Authentication and access rights
+- Public APIs
+- Deployment and infrastructure
+- Personal data (DSG/GDPR)
+- Third-party integrations (Payment, CRM, ERP)
 
-## Regelverstoss
+## Rule violation
 
-Wenn der Benutzer eine Regel umgehen will:
-1. Hinweisen, dass die Regel dem Projektschutz dient
-2. Regelkonforme Alternative vorschlagen
-3. Bei Bestehen: Umsetzung liefern, aber mit `⚠️ REGELVERSTOSS: [Beschreibung]` markieren
+If the user wants to circumvent a rule:
+1. Point out that the rule serves to protect the project
+2. Suggest a rule-compliant alternative
+3. If they insist: deliver the implementation, but mark with `⚠️ RULE VIOLATION: [description]`
 
-## Entwickler-Regeln
+## Developer rules
 
-Für technische Projekte gelten zusätzlich die Regeln in `.claude/rules/`:
-- `dev-stack.md` — Tech Stacks, Build-Commands, Projektstruktur
-- `code-quality.md` — Codequalität und Standards
-- `security.md` — Sicherheitsregeln
-- `accessibility.md` — Zugänglichkeit
+For technical projects, the additional rules in `.claude/rules/` apply:
+- `dev-stack.md` — tech stacks, build commands, project structure
+- `code-quality.md` — code quality and standards
+- `security.md` — security rules
+- `accessibility.md` — accessibility
