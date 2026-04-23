@@ -77,10 +77,7 @@ export class GithubIssuesAdapter implements StatusProvider {
         updatedAt: issue.updated_at,
       }));
 
-    logger.info(
-      { provider: this.key, incidentCount: normalized.length },
-      "GitHub issues fetched",
-    );
+    logger.info({ provider: this.key, incidentCount: normalized.length }, "GitHub issues fetched");
 
     return normalized;
   }
