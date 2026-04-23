@@ -14,9 +14,9 @@ Operator: [Raptus AG](https://raptus.ch), Lyss.
 
 ## How it works (summary)
 
-1. An Azure Function Timer Trigger runs every 5 minutes.
+1. A long-running Node.js process (containerised) polls every 5 minutes.
 2. For each configured service, the status page is queried via the appropriate **adapter** (Atlassian Statuspage, Google Workspace, Metanet RSS, WEDOS, GitHub Issues).
-3. New or newly resolved incidents are compared against the last known state (Azure Table Storage).
+3. New or newly resolved incidents are compared against the last known state (SQLite).
 4. On state change, a formatted message is sent via webhook to the configured chat channel.
 
 **Message format**:
@@ -26,39 +26,48 @@ Operator: [Raptus AG](https://raptus.ch), Lyss.
 
 ## Hosting and costs
 
-- **Platform**: Microsoft Azure (Raptus tenant)
-- **Runtime**: Azure Functions (Consumption Plan, Linux, Node.js 20)
-- **State**: Azure Table Storage
-- **Logs**: Application Insights
-- **Self-monitoring**: Azure Monitor Alert Rule → email on failure
+- **Platform**: Docker container on the Raptus Synology NAS (Container Manager)
+- **Runtime**: Node.js 20 on `node:20-alpine`
+- **Scheduler**: In-process cron (`croner`), default `*/5 * * * *`
+- **State**: SQLite file on a Docker volume (`/data/state.sqlite`)
+- **Logs**: stdout → Docker JSON file driver → Container Manager log viewer
+- **Self-monitoring**: Synology Container Manager notification on container stop / restart loop
 
-Expected operating costs: **under CHF 1 per month** (288 executions/day is well below the 1M free tier).
+No cloud dependency, no recurring cost beyond the NAS that Raptus already runs.
 
 ## Documentation
 
 | Document | Content |
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, modules, data flow |
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Format of `config/providers.yaml` |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Format of `config/providers.yaml` and env vars |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Specification per status page adapter |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Azure deployment step by step |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment to Synology, step by step |
 | [docs/AGENTS.md](docs/AGENTS.md) | Multi-agent work and responsibilities |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Implementation order and open items |
-| [docs/PLAN.md](docs/PLAN.md) | Original architecture plan (reference) |
+| [docs/PLAN.md](docs/PLAN.md) | Original architecture plan (historical reference) |
 
-## Project status
+## Quick start (local development)
 
-> **Status**: Implementation complete. Awaiting first deployment to Azure.
+```bash
+pnpm install
+pnpm build
+pnpm test
+WEBHOOK_URL='https://webhook.site/<your-slot>' STATE_DB_PATH=./data/state.sqlite pnpm start
+```
 
-Entry point for deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Or with Docker:
+
+```bash
+echo "WEBHOOK_URL=https://webhook.site/<your-slot>" > .env
+docker compose up --build
+```
 
 ## Prerequisites (for development)
 
 - Node.js 20+
-- pnpm
-- Azure CLI (`az`)
-- Azure Functions Core Tools (`func`)
-- Access to the Raptus Azure tenant
+- pnpm (via `corepack enable`)
+- Optional: Docker + Docker Compose for container work
 
 ## License
 

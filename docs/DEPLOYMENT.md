@@ -1,204 +1,131 @@
 # Deployment
 
-> ⚠️ **Review recommended** — this document describes Azure infrastructure. Before first deployment to the production subscription, have a second person verify the values.
+> ⚠️ **Review recommended** — this document describes infrastructure and secret handling. Confirm the values with a second person before first production start-up.
 
 ## Target state
 
-| Resource | Type | Purpose |
-|---|---|---|
-| Resource Group `rg-status-page-to-chat` | | Container for all resources |
-| Storage Account `stspagetochat...` | Standard_LRS | Function runtime + `incidents` table |
-| Application Insights `appi-status-page-to-chat` | | Logs, metrics, traces |
-| Function App `func-status-page-to-chat` | Linux, Consumption Plan, Node 20 | Hosts the Timer Trigger |
-| Action Group `ag-status-page-to-chat` | | Email recipient for alerts |
-| Alert Rule | Metric Alert | "FunctionExecutionCount < 1 in 15 min" |
+A single Docker container running on the Raptus Synology NAS (RS1619xs+, Intel Xeon, x86_64). Image built via GitHub Actions and published to GitHub Container Registry (GHCR).
 
-Defined in **`infra/main.bicep`**.
+| Piece | Where | Purpose |
+|---|---|---|
+| Image | `ghcr.io/raptus/status-page-to-chat:latest` | Built on every push to `main` |
+| Container | Synology Container Manager project `status-page-to-chat` | Runs the long-lived Node.js process |
+| Volume | Named volume `status-page-to-chat_state` (or host path `/volume1/docker/status-page-to-chat/data`) | Holds `state.sqlite` |
+| Env var `WEBHOOK_URL` | Container Manager environment settings | Google Chat or Teams webhook URL — the only secret |
+| Logs | Docker `json-file` driver (5×10 MB rotation) | Visible in Container Manager UI |
+
+Configuration (`config/providers.yaml`) is baked into the image. Changes flow via Git → CI rebuild → image pull. Override by mounting a file over `/app/config/providers.yaml` and setting `CONFIG_PATH` if ever needed.
 
 ## Prerequisites (operator)
 
-- Azure CLI installed and logged in: `az login`
-- Access to the correct subscription: `az account set --subscription <name>`
-- Sufficient roles: `Contributor` on subscription or resource group
-- Webhook URL for Google Chat or Teams prepared
-- Email address for alerts (group mail recommended)
+- DSM admin access on the Raptus NAS with Container Manager installed
+- GitHub account with access to the `raptus/status-page-to-chat` repository (to pull from GHCR)
+- Webhook URL for Google Chat **or** Microsoft Teams (see [Teams setup](#teams-webhook-setup) below)
 
 ## First deployment
 
-### 1. Create resource group
+### 1. Wait for the image to build
 
-```bash
-az group create \
-  --name rg-status-page-to-chat \
-  --location switzerlandnorth
+After the first push to `main` that includes the Docker workflow, GitHub Actions publishes `ghcr.io/raptus/status-page-to-chat:latest`. Verify under **GitHub → Packages**.
+
+### 2. Configure GHCR pull credentials on the NAS
+
+Since the image is private, Container Manager needs credentials. In DSM:
+
+1. **Package Center → Container Manager → Registry**
+2. **Add → Custom registry**
+   - Name: `GitHub`
+   - Registry URL: `https://ghcr.io`
+   - Username: a GitHub username with read access
+   - Password: a Personal Access Token with `read:packages` scope
+3. **Save** and set this registry as the active one.
+
+### 3. Create the container project
+
+1. **Container Manager → Project → Create**
+2. Name: `status-page-to-chat`
+3. Path: `/volume1/docker/status-page-to-chat` (create the folder beforehand under File Station)
+4. Source: **Create docker-compose.yml** and paste:
+
+```yaml
+services:
+  status-poller:
+    image: ghcr.io/raptus/status-page-to-chat:latest
+    container_name: status-page-to-chat
+    restart: unless-stopped
+    environment:
+      WEBHOOK_URL: ${WEBHOOK_URL:?must be set}
+    volumes:
+      - state:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  state:
 ```
 
-### 2. Deploy infrastructure
+5. On the next screen, set the **environment variable** `WEBHOOK_URL` to the actual webhook URL.
+6. **Next → Done**. Container Manager pulls the image and starts the container.
 
-```bash
-az deployment group create \
-  --resource-group rg-status-page-to-chat \
-  --template-file infra/main.bicep \
-  --parameters \
-      webhookUrl='<GOOGLE_CHAT_OR_TEAMS_WEBHOOK>' \
-      alertEmail='<ops@raptus.ch>'
-```
+### 4. Verify
 
-### 3. Deploy Function code
+In Container Manager → Container → `status-page-to-chat`:
 
-```bash
-pnpm build
-func azure functionapp publish func-status-page-to-chat
-```
-
-### 4. Verify configuration
-
-- Portal: Function App → Functions → `poll` → invocations → first run visible?
-- Test: a known open incident should trigger a chat message on the next timer run.
+- **Status** is `running`
+- **Logs** show within 30 seconds a `Poller scheduled` line followed by a `run_summary` entry
+- A real or manually triggered incident leads to a chat message on the next poll cycle
 
 ## Ongoing deployment (updates)
 
-- Changes to **`config/providers.yaml`**: delivered with the next `func azure functionapp publish`.
-- Changes to adapter code: same publish process.
-- Infrastructure changes: run `az deployment group create` again.
+- **Code or provider changes** merged to `main` → GitHub Actions rebuilds and tags the image as `latest` and `<sha>`.
+- On the NAS: **Container Manager → Project → status-page-to-chat → Actions → Rebuild** (pulls the new `latest` and restarts).
+- Alternatively enable **Auto-update** for the project; DSM then polls GHCR periodically.
 
-The GitHub Actions workflow `.github/workflows/deploy.yml` deploys automatically on push to `main`. CI (Build + Lint + Test) also runs on every pull request via `.github/workflows/ci.yml`.
-
-## GitHub Actions Setup (one-time)
-
-The deployment uses **Azure OIDC Federation** instead of Service Principal secrets. Once set up — no rotating credentials.
-
-### 1. Create App Registration with Federated Credential
-
-```bash
-# Adjust variables
-APP_NAME="github-actions-status-page-to-chat"
-GITHUB_ORG="raptus"
-GITHUB_REPO="status-page-to-chat"
-RESOURCE_GROUP="rg-status-page-to-chat"
-SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-
-# Create App Registration
-APP_ID=$(az ad app create --display-name "$APP_NAME" --query appId -o tsv)
-az ad sp create --id "$APP_ID"
-
-# Federated Credential for main branch (deploy workflow)
-az ad app federated-credential create \
-  --id "$APP_ID" \
-  --parameters "{
-    \"name\": \"main-branch\",
-    \"issuer\": \"https://token.actions.githubusercontent.com\",
-    \"subject\": \"repo:${GITHUB_ORG}/${GITHUB_REPO}:ref:refs/heads/main\",
-    \"audiences\": [\"api://AzureADTokenExchange\"]
-  }"
-
-# Federated Credential for environment "production" (recommended)
-az ad app federated-credential create \
-  --id "$APP_ID" \
-  --parameters "{
-    \"name\": \"production-env\",
-    \"issuer\": \"https://token.actions.githubusercontent.com\",
-    \"subject\": \"repo:${GITHUB_ORG}/${GITHUB_REPO}:environment:production\",
-    \"audiences\": [\"api://AzureADTokenExchange\"]
-  }"
-
-# Assign role on resource group
-az role assignment create \
-  --role "Contributor" \
-  --assignee "$APP_ID" \
-  --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}"
-
-# Output values for GitHub Secrets
-TENANT_ID=$(az account show --query tenantId -o tsv)
-echo "AZURE_CLIENT_ID=$APP_ID"
-echo "AZURE_TENANT_ID=$TENANT_ID"
-echo "AZURE_SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
-```
-
-### 2. Set GitHub Secrets
-
-In the repo under **Settings → Secrets and variables → Actions**:
-
-| Secret | Value |
-|---|---|
-| `AZURE_CLIENT_ID` | App ID from step 1 |
-| `AZURE_TENANT_ID` | Tenant ID from step 1 |
-| `AZURE_SUBSCRIPTION_ID` | Subscription ID from step 1 |
-
-### 3. Create GitHub Environment "production" (optional, recommended)
-
-Under **Settings → Environments → New environment**: `production`. Optionally define Protection Rules (Approvals, Wait Timer) so deployments are reviewed.
+Container Manager keeps the old image as a rollback target until pruned.
 
 ## Secrets
 
-Secrets are stored as **Application Settings** on the Function App — never in the repo.
+Only `WEBHOOK_URL` is secret. It lives in the Container Manager project environment — never in the repo, never in the image.
 
-| Setting | Source |
-|---|---|
-| `WEBHOOK_URL` | Set via Bicep parameter |
-| `ALERT_EMAIL` | Set via Bicep parameter (Action Group) |
-| `AzureWebJobsStorage` | Automatically set by Bicep |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Automatically set by Bicep |
-| `GITHUB_TOKEN` (optional) | Set afterwards if needed: `az functionapp config appsettings set` |
+Rotating the webhook:
 
-Rotating the webhook URL:
-
-```bash
-az functionapp config appsettings set \
-  --name func-status-page-to-chat \
-  --resource-group rg-status-page-to-chat \
-  --settings WEBHOOK_URL='<new-webhook>'
-```
+1. Generate a new webhook in the target chat channel.
+2. Container Manager → Project → status-page-to-chat → **Edit** → environment → update `WEBHOOK_URL` → Save → Rebuild.
 
 ## Rollback
 
-- Deployments are **immutable packages**. Rollback = redeploy an older package.
-- Configuration rollback: `git revert` on `providers.yaml` and republish.
+- Rollback image: edit the compose file to pin a previous tag (`ghcr.io/raptus/status-page-to-chat:sha-<old>`) and rebuild.
+- Rollback config: `git revert` the offending commit on `main`. CI rebuilds `latest`, NAS pulls the rollback.
 
-## Monitoring queries (App Insights)
+## Teams webhook setup
 
-**Has the timer fired in the last 15 minutes?**
-
-```kusto
-traces
-| where cloud_RoleName == "func-status-page-to-chat"
-| where message startswith "run_summary"
-| where timestamp > ago(15m)
-| count
-```
-
-**Errors per adapter (24 h)**:
-
-```kusto
-traces
-| where cloud_RoleName == "func-status-page-to-chat"
-| where severityLevel >= 3
-| where timestamp > ago(24h)
-| summarize count() by tostring(customDimensions.providerKey)
-```
+See `docs/CONFIGURATION.md` for the step-by-step procedure to create a Teams webhook via the Workflows app.
 
 ## Running locally
 
-See also "Local development" section in [AGENTS.md](AGENTS.md).
-
-1. Create `local.settings.json` (from `local.settings.json.example`):
-
-```json
-{
-  "IsEncrypted": false,
-  "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "node",
-    "WEBHOOK_URL": "https://webhook.site/<your-test-slot>"
-  }
-}
+```bash
+pnpm install
+pnpm build
+pnpm test
 ```
 
-2. Start Azurite (local Azure Storage emulator): `azurite --silent`
-3. `pnpm install && pnpm build && func start`
-4. Monitor the test webhook target via [webhook.site](https://webhook.site).
+For a full local run against a dummy target:
 
-## Cost control
+```bash
+echo "WEBHOOK_URL=https://webhook.site/<your-test-slot>" > .env
+docker compose up --build
+```
 
-- Set up a **Budget Alert**: Portal → Cost Management → Budget for `rg-status-page-to-chat`, threshold CHF 2/month, email to ops.
-- Set App Insights **Daily Cap** to e.g. 100 MB to prevent a logging runaway from inflating the bill.
+The SQLite file ends up in the named volume; tear down with `docker compose down -v` to reset state.
+
+## Self-monitoring
+
+Synology Container Manager's built-in **Notifications** fire on:
+
+- Container stops unexpectedly
+- Container enters a restart loop
+
+Configure under **DSM → Control Panel → Notification**. This covers the common failure modes. A frozen-but-running process (cron loop hung) is not detected by Container Manager alone — a heartbeat file plus a DSM Task Scheduler check can be added later if that failure mode ever materialises.

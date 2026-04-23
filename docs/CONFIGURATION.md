@@ -31,7 +31,7 @@ raptus-status-monitor/<version> (+https://github.com/raptus/status-page-to-chat;
 
 This follows the common practice for well-behaved pollers, respects the logs of status page operators, and makes it easy to get in touch if we are stressing an endpoint. The version is pulled from `package.json` at runtime.
 
-**Global override** — via App Setting `USER_AGENT` (rarely needed, e.g. for tests).
+**Global override** — via environment variable `USER_AGENT` (rarely needed, e.g. for tests).
 
 **Per-provider override** — via the optional field `userAgent` in `providers.yaml`. Use only for documented exceptions:
 
@@ -42,7 +42,7 @@ This follows the common practice for well-behaved pollers, respects the logs of 
 
 ## Validation
 
-The file is validated with **`zod`** on Function startup. Errors are logged and prevent startup. Minimum requirements:
+The file is validated with **`zod`** on container startup. Errors are logged and prevent startup. Minimum requirements:
 
 - `chatTarget` ∈ `{googleChat, teams}`
 - at least one entry in `providers`
@@ -131,28 +131,29 @@ providers:
     repo: status
 ```
 
-## App Settings (secrets, not in YAML)
+## Environment variables (secrets and runtime overrides)
 
-Webhook URLs and alert recipients are stored **not** in `providers.yaml` but in the Azure Function App Settings:
+Everything that is not in `providers.yaml` lives as an environment variable on the container. Only `WEBHOOK_URL` is secret.
 
-| Setting | Description |
-|---|---|
-| `WEBHOOK_URL` | Google Chat Incoming Webhook **or** Teams Incoming Webhook — depending on `chatTarget` |
-| `ALERT_EMAIL` | Recipient for self-monitoring alerts (Azure Monitor) |
-| `USER_AGENT` | optional — overrides the default User-Agent globally |
-| `AzureWebJobsStorage` | Set automatically by Bicep |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Set automatically by Bicep |
+| Variable | Required | Description |
+|---|---|---|
+| `WEBHOOK_URL` | yes | Google Chat Incoming Webhook **or** Teams (Workflows) webhook URL — matches `chatTarget` |
+| `CONFIG_PATH` | no | Absolute path to an alternative `providers.yaml`. Default: `./config/providers.yaml` inside the image. Use this to mount a host file over the baked-in default. |
+| `STATE_DB_PATH` | no | Path to the SQLite file. Default in the container: `/data/state.sqlite`. |
+| `POLL_CRON` | no | Cron expression for the scheduler. Default: `*/5 * * * *`. |
+| `LOG_LEVEL` | no | pino log level (`debug`, `info`, `warn`, `error`). Default: `info`. |
+| `USER_AGENT` | no | Overrides the default User-Agent globally (rarely needed, e.g. for tests). |
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for setting values.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for how these are set in Synology Container Manager.
 
 ## Adding a status page (workflow)
 
 1. Add a new entry to `config/providers.yaml` with the appropriate adapter (see [ADAPTERS.md](ADAPTERS.md)).
 2. Open a pull request → review by a second person.
-3. After merge: deployment triggers automatically (or `func azure functionapp publish`).
-4. In the next 5-minute cycle the service is active.
+3. After merge: GitHub Actions rebuilds the image and pushes to GHCR as `latest`.
+4. On the NAS: Container Manager → rebuild the project (or let auto-update pick it up). In the next poll cycle the new provider is live.
 
 ## Removing a status page
 
 - Delete the entry from `providers.yaml` and merge.
-- Optional: delete the corresponding rows in Azure Table Storage (PartitionKey = `key`). Otherwise they remain inactive.
+- Optional: remove its rows in SQLite — `DELETE FROM incidents WHERE provider_key = '<key>'`. Otherwise the rows just sit idle.
