@@ -2,27 +2,31 @@
   "name": "status-page-to-chat",
   "version": "1.0.0",
   "description": "Ueberwacht Status-Pages externer Anbieter und postet Stoerungen in Google Chat oder Teams",
-  "main": "dist/src/functions/poll.js",
+  "main": "dist/src/main.js",
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src/ tests/ && prettier --check src/ tests/",
     "format": "prettier --write src/ tests/",
-    "start": "func start"
+    "start": "node dist/src/main.js"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3"]
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
-    "@azure/data-tables": "^13.2.2",
-    "@azure/functions": "^4.5.1",
+    "better-sqlite3": "^12.9.0",
+    "croner": "^10.0.1",
     "pino": "^9.6.0",
     "undici": "^7.3.0",
     "yaml": "^2.7.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.17.0",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^10.0.0",

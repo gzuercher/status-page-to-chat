@@ -67,7 +67,8 @@ export type AppConfig = z.infer<typeof configSchema>;
  * On validation error, logs and exits the process.
  */
 export function loadConfig(configPath?: string): AppConfig {
-  const filePath = configPath ?? resolve(process.cwd(), "config", "providers.yaml");
+  const filePath =
+    configPath ?? process.env.CONFIG_PATH ?? resolve(process.cwd(), "config", "providers.yaml");
 
   let raw: string;
   try {
