@@ -2,7 +2,8 @@ import pino from "pino";
 
 /**
  * Central logger for the entire application.
- * In Azure the output is captured by Application Insights.
+ * Emits structured JSON to stdout; in the containerised deployment this
+ * is captured by the Docker logging driver.
  */
 export const logger = pino({
   level: process.env.LOG_LEVEL ?? "info",
