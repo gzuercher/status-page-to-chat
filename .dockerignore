@@ -1,0 +1,14 @@
+**/.git
+**/.github
+**/.vscode
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/.env.*
+**/*.log
+tests
+docs
+infra
+.eslintcache
+.prettierignore

@@ -1,0 +1,26 @@
+services:
+  status-poller:
+    # Use the locally built image for dev; swap to
+    # ghcr.io/raptus/status-page-to-chat:latest on the NAS.
+    build: .
+    image: ghcr.io/raptus/status-page-to-chat:latest
+    container_name: status-page-to-chat
+    restart: unless-stopped
+    environment:
+      WEBHOOK_URL: ${WEBHOOK_URL:?WEBHOOK_URL must be set in .env}
+      # Optional overrides:
+      # CONFIG_PATH: /config/providers.yaml
+      # POLL_CRON: "*/5 * * * *"
+      # LOG_LEVEL: info
+    volumes:
+      - state:/data
+      # Mount a host file if CONFIG_PATH is set:
+      # - ./config/providers.yaml:/config/providers.yaml:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  state:
