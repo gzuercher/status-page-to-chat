@@ -119,6 +119,7 @@ providers:
   - key: wedos
     displayName: WEDOS
     adapter: wedos-status-online
+    baseUrl: https://wedos.status.online
 
   # --- GitHub-Issues als Status-Tracker ---
   - key: onetimesecret
