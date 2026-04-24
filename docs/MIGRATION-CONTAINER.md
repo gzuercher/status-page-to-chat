@@ -2,6 +2,78 @@
 
 > ⚠️ **Review recommended** — this document describes a platform change, including infrastructure removal and secret handling. Read and confirm before execution.
 
+## Current status (2026-04-24)
+
+**Branch**: `feat/container-stack` (local, not pushed). Working tree clean.
+
+**Verified green**:
+
+- `pnpm build` — compiles
+- `pnpm test` — 40/40 (36 existing + 4 new SQLite CRUD tests)
+- `pnpm lint` — clean
+- Entrypoint smoke test: `node dist/src/main.js` with a dummy `WEBHOOK_URL` loads the config, opens the SQLite store, registers the cron schedule, and fetches live incidents from all 19 configured adapters without error.
+
+**NOT verified locally** (no Docker daemon in the dev environment; rootless install was denied by policy):
+
+- `docker build` against the new `Dockerfile`
+- `docker compose up` end-to-end
+- GHCR workflow run
+
+The CI workflow `.github/workflows/image.yml` will validate the Docker build on the first push.
+
+**Commits on the branch** (oldest → newest):
+
+| # | SHA | Subject |
+|---|---|---|
+| 1 | `e852eaa` | Synchronisiere Test-Erwartungen und Formatierung mit uebersetztem Code |
+| 2 | `6496423` | Dokumentiere geplanten Umbau auf Docker-Container auf Synology-NAS |
+| 3 | `766acbf` | Ersetze Azure-Timer-Trigger durch Container-Entrypoint mit SQLite-State |
+| 4 | `e234e68` | Ergaenze Dockerfile und docker-compose fuer Container-Deployment |
+| 5 | `58c7e8b` | Ersetze Azure-Deploy-Workflow durch GHCR-Image-Build |
+| 6 | `458dcb5` | Entferne Azure-Altlasten aus Repository |
+| 7 | `a0fe127` | Aktualisiere Dokumentation auf Container-Stack |
+| 8 | `764774b` | Ergaenze fehlenden baseUrl fuer WEDOS-Provider |
+
+Commits 1 and 8 are orthogonal to the migration (pre-existing bugs on `main`) and can be cherry-picked to `main` independently if desired.
+
+## How to resume
+
+### If the branch still looks good to you
+
+```bash
+git push -u origin feat/container-stack
+gh pr create --fill   # or open the PR in the GitHub UI
+```
+
+CI runs build + test + lint; the first push to `main` (after merge) triggers the image build on GHCR.
+
+### Then, operator-side (not scripted)
+
+1. **Azure teardown** — the `RG-STATUS-PAGE-TO-CHAT` resource group and the auto-created managed RG for App Insights still exist and still bill. Delete when convenient:
+
+   ```bash
+   az group delete --name RG-STATUS-PAGE-TO-CHAT --yes --no-wait
+   az group delete --name 'ai_appi-status-page-to-chat_96e87743-dad4-4bec-a372-024df6b8f54b_managed' --yes --no-wait
+   ```
+
+2. **Synology bring-up** — Container Manager project, GHCR credentials, `WEBHOOK_URL` env var, pull the image. Full steps in `docs/DEPLOYMENT.md`.
+
+### If you want to rework something first
+
+The migration plan and rationale are below (unchanged from the pre-implementation draft). Adjust, then redo the affected commits.
+
+### Environment notes for the next session
+
+The dev shell has Node + pnpm via nvm:
+
+```bash
+export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh"
+node --version   # v20.20.2
+pnpm --version   # 10.33.2
+```
+
+Docker is installed but the daemon is not running (rootless setup was blocked by policy). For local Docker work, that still needs to be sorted.
+
 ## Why
 
 The current Azure setup (Function App + Table Storage + Application Insights + Log Analytics Workspace + Action Group + Metric Alert + Bicep + OIDC federation) is disproportionate for the actual workload: a cron job that polls ~15 HTTP endpoints every 5 minutes and posts a webhook on state change. Raptus operates a Synology RS1619xs+ (Intel Xeon D-1527, x86_64, 32 GB RAM) with Container Manager already running similar small services. Hosting this service there removes one cloud dependency and collapses seven Azure resources into one container.
