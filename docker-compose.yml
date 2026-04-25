@@ -1,9 +1,9 @@
 services:
   status-poller:
     # Use the locally built image for dev; swap to
-    # ghcr.io/raptus/status-page-to-chat:latest on the NAS.
+    # ghcr.io/gzuercher/status-page-to-chat:latest on the NAS.
     build: .
-    image: ghcr.io/raptus/status-page-to-chat:latest
+    image: ghcr.io/gzuercher/status-page-to-chat:latest
     container_name: status-page-to-chat
     restart: unless-stopped
     environment:

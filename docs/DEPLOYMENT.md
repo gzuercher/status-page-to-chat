@@ -8,7 +8,7 @@ A single Docker container, deployed and managed via **Portainer**. The Docker ho
 
 | Piece | Where | Purpose |
 |---|---|---|
-| Image | `ghcr.io/raptus/status-page-to-chat:latest` | Built on every push to `main` |
+| Image | `ghcr.io/gzuercher/status-page-to-chat:latest` | Built on every push to `main` |
 | Container | Portainer stack `status-page-to-chat` | Runs the long-lived Node.js process |
 | Volume | Named Docker volume `status-page-to-chat_state` (managed by the stack) | Holds `state.sqlite` |
 | Env var `WEBHOOK_URL` | Portainer stack environment | Google Chat or Teams webhook URL — the only secret |
@@ -19,14 +19,14 @@ Configuration (`config/providers.yaml`) is baked into the image. Changes flow vi
 ## Prerequisites (operator)
 
 - Portainer admin access on the Docker host
-- A GitHub Personal Access Token with `read:packages` scope, owned by an account that has access to the `raptus` org packages (for pulling the private GHCR image)
+- A GitHub Personal Access Token with `read:packages` scope, owned by an account that has read access to `github.com/gzuercher/status-page-to-chat` (for pulling the private GHCR image). If the repo is later moved to a Raptus org, update the image path and PAT scope accordingly.
 - A webhook URL for Google Chat **or** Microsoft Teams
 
 ## First deployment
 
 ### 1. Wait for the image to build
 
-After the first push to `main` that contains the Docker workflow, GitHub Actions publishes `ghcr.io/raptus/status-page-to-chat:latest`. Verify on **GitHub → the repo → Packages**.
+After the first push to `main` that contains the Docker workflow, GitHub Actions publishes `ghcr.io/gzuercher/status-page-to-chat:latest`. Verify on **GitHub → the repo → Packages**.
 
 ### 2. Register GHCR credentials in Portainer
 
@@ -46,7 +46,7 @@ Portainer now uses these credentials when pulling images whose hostname matches 
 1. **Portainer → Stacks → Add stack**
 2. Name: `status-page-to-chat`
 3. **Build method**: choose one:
-   - **Repository** (recommended): URL `https://github.com/raptus/status-page-to-chat`, reference `refs/heads/main`, compose file `docker-compose.yml`. Portainer pulls the compose file from Git and stays in sync if you enable **automatic updates**.
+   - **Repository** (recommended): URL `https://github.com/gzuercher/status-page-to-chat`, reference `refs/heads/main`, compose file `docker-compose.yml`. Portainer pulls the compose file from Git and stays in sync if you enable **automatic updates**.
    - **Web editor**: paste the contents of `docker-compose.yml` from the repo.
 4. Under **Environment variables**, set:
    - `WEBHOOK_URL` = the actual webhook URL
@@ -85,7 +85,7 @@ Rotating the webhook:
 
 ## Rollback
 
-- Image rollback: edit the stack to pin a previous tag (e.g. `ghcr.io/raptus/status-page-to-chat:sha-<old>`), update the stack.
+- Image rollback: edit the stack to pin a previous tag (e.g. `ghcr.io/gzuercher/status-page-to-chat:sha-<old>`), update the stack.
 - Configuration rollback: `git revert` the offending commit on `main`. CI rebuilds `latest`; redeploy the stack to pull the rollback image.
 
 ## Teams webhook setup

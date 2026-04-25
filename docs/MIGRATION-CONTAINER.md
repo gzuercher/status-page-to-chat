@@ -156,7 +156,7 @@ The current Azure setup (Function App + Table Storage + Application Insights + L
 
 7. **`.github/workflows/image.yml`** (replaces `deploy.yml`)
    - Trigger: push to `main`, tags `v*`, manual dispatch
-   - Build and push to `ghcr.io/raptus/status-page-to-chat:{sha, latest}`
+   - Build and push to `ghcr.io/gzuercher/status-page-to-chat:{sha, latest}`
    - Use GitHub OIDC for GHCR auth (no PAT secret needed)
    - Synology pulls the image manually (or via Container Manager auto-update if enabled)
 
