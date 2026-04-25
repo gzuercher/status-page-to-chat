@@ -26,7 +26,7 @@ providers:
 All outgoing HTTP requests send a uniform, descriptive User-Agent by default:
 
 ```
-raptus-status-monitor/<version> (+https://github.com/raptus/status-page-to-chat; ops@raptus.ch)
+status-page-to-chat/<version> (+https://github.com/gzuercher/status-page-to-chat)
 ```
 
 This follows the common practice for well-behaved pollers, respects the logs of status page operators, and makes it easy to get in touch if we are stressing an endpoint. The version is pulled from `package.json` at runtime.
@@ -80,19 +80,19 @@ providers:
     displayName: Zendesk Help Center
     adapter: atlassian-statuspage
     baseUrl: https://status.zendesk.com
-    componentFilter: raptus-helpcenter      # only alerts for our subdomain
+    componentFilter: example-helpcenter     # placeholder — replace with your subdomain
 
   - key: kaseya-itglue
     displayName: Kaseya IT Glue
     adapter: atlassian-statuspage
     baseUrl: https://status.kaseya.com
-    componentFilter: IT Glue                # only IT Glue is relevant for us
+    componentFilter: IT Glue                # only the IT Glue product
 
   - key: gravityzone-bitdefender
     displayName: Bitdefender GravityZone
     adapter: atlassian-statuspage
     baseUrl: https://status.gravityzone.bitdefender.com
-    componentFilter:                        # only cloud instances used by Raptus
+    componentFilter:                        # only the cloud instances actually used
       - cloudgz.gravityzone.bitdefender.com
       - cloud.gravityzone.bitdefender.com
 

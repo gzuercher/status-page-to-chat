@@ -1,3 +1,11 @@
+# Default provider configuration.
+#
+# This file is bundled into the Docker image and used by every container
+# instance unless CONFIG_PATH points to an alternative file. Adapt it to
+# the services *you* care about — fork the repo or mount your own file.
+#
+# Schema and adapter docs: docs/CONFIGURATION.md, docs/ADAPTERS.md.
+
 chatTarget: googleChat
 
 providers:
@@ -56,19 +64,19 @@ providers:
     displayName: Zendesk Help Center
     adapter: atlassian-statuspage
     baseUrl: https://status.zendesk.com
-    componentFilter: raptus-helpcenter      # nur Meldungen zu unserer Subdomain
+    componentFilter: example-helpcenter     # placeholder — replace with your Zendesk subdomain
 
   - key: kaseya-itglue
     displayName: Kaseya IT Glue
     adapter: atlassian-statuspage
     baseUrl: https://status.kaseya.com
-    componentFilter: IT Glue                # nur IT Glue ist für uns relevant
+    componentFilter: IT Glue                # only the IT Glue product
 
   - key: gravityzone-bitdefender
     displayName: Bitdefender GravityZone
     adapter: atlassian-statuspage
     baseUrl: https://status.gravityzone.bitdefender.com
-    componentFilter:                        # nur Cloud-Instanzen, die Raptus nutzt
+    componentFilter:                        # only the cloud instances actually used
       - cloudgz.gravityzone.bitdefender.com
       - cloud.gravityzone.bitdefender.com
 
@@ -76,31 +84,27 @@ providers:
     displayName: Figma
     adapter: atlassian-statuspage
     baseUrl: https://status.figma.com
-    # kein componentFilter: nur 3 generische Komponenten, alle relevant
+    # No componentFilter: only 3 generic components, all relevant.
 
-  # --- Sophos: ZURUECKGESTELLT (siehe ROADMAP.md → Spätere Erweiterungen) ---
-  # WAS: Integration von status.sophos.com in den Chat-Notifier.
-  # WARUM NICHT JETZT: status.sophos.com laeuft zwar auf Atlassian Statuspage,
-  #   aber der Betreiber hat saemtliche maschinenlesbaren Endpoints deaktiviert.
-  #   Alle Pfade unter /api/v2/* sowie /history.atom, /history.rss, /history.json
-  #   antworten mit HTTP 200, liefern jedoch eine generische 1034-Byte 404-HTML-
-  #   Seite statt JSON/Atom — auch mit realistischem Browser-User-Agent. Der
-  #   `atlassian-statuspage`-Adapter kann Sophos daher nicht abdecken.
-  # VORAUSSETZUNG FUER AKTIVIERUNG:
-  #   (a) Sophos schaltet die oeffentliche JSON-API frei, ODER
-  #   (b) wir implementieren einen HTML-Scraping-Adapter (siehe ROADMAP Etappe
-  #       "Spätere Erweiterungen" → "HTML-Scraping-Adapter für Status-Pages ohne
-  #       API"). Browser-Tarnung ist laut CONFIGURATION.md keine Option.
+  # --- Sophos: DEFERRED (see ROADMAP.md → "Later extensions") ---
+  # status.sophos.com runs on Atlassian Statuspage but the operator has
+  # disabled all machine-readable endpoints. /api/v2/*, /history.atom,
+  # /history.rss and /history.json all respond HTTP 200 with a generic
+  # 1034-byte 404 HTML page instead of JSON/Atom — even with a realistic
+  # browser User-Agent. The atlassian-statuspage adapter therefore cannot
+  # cover Sophos. Enable when (a) Sophos opens the JSON API, or (b) an
+  # HTML-scraping adapter exists. Browser impersonation is rejected as
+  # a workaround per docs/CONFIGURATION.md.
   # - key: sophos
   #   displayName: Sophos
-  #   adapter: atlassian-statuspage   # bzw. kuenftig: html-scraping
+  #   adapter: atlassian-statuspage   # or: html-scraping (future)
   #   baseUrl: https://status.sophos.com
 
   - key: claude
     displayName: Claude
     adapter: atlassian-statuspage
     baseUrl: https://status.claude.com
-    componentFilter:                        # nur die fuer Raptus genutzten Produkte
+    componentFilter:                        # only the products actually used
       - claude.ai
       - Claude Code
       - api.anthropic.com
@@ -121,7 +125,7 @@ providers:
     adapter: wedos-status-online
     baseUrl: https://wedos.status.online
 
-  # --- GitHub-Issues als Status-Tracker ---
+  # --- GitHub Issues as a status tracker ---
   - key: onetimesecret
     displayName: Onetime Secret
     adapter: github-issues

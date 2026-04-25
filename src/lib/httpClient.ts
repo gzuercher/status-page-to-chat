@@ -8,19 +8,24 @@ const REQUEST_TIMEOUT_MS = 10_000;
 
 /**
  * Determines the default User-Agent from package.json.
- * Format: raptus-status-monitor/<version> (+https://github.com/raptus/status-page-to-chat; ops@raptus.ch)
+ * Format: status-page-to-chat/<version> (+https://github.com/gzuercher/status-page-to-chat)
+ *
+ * Override with the `USER_AGENT` env var, e.g. to add a contact address
+ * for the operator running this instance:
+ *   USER_AGENT='status-page-to-chat/1.2.3 (+https://example.com; ops@example.com)'
  */
 function getDefaultUserAgent(): string {
   if (process.env.USER_AGENT) {
     return process.env.USER_AGENT;
   }
+  const projectUrl = "https://github.com/gzuercher/status-page-to-chat";
   try {
     const pkg = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf-8")) as {
       version: string;
     };
-    return `raptus-status-monitor/${pkg.version} (+https://github.com/raptus/status-page-to-chat; ops@raptus.ch)`;
+    return `status-page-to-chat/${pkg.version} (+${projectUrl})`;
   } catch {
-    return "raptus-status-monitor/0.0.0 (+https://github.com/raptus/status-page-to-chat; ops@raptus.ch)";
+    return `status-page-to-chat/0.0.0 (+${projectUrl})`;
   }
 }
 

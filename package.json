@@ -1,7 +1,7 @@
 {
   "name": "status-page-to-chat",
   "version": "1.0.0",
-  "description": "Ueberwacht Status-Pages externer Anbieter und postet Stoerungen in Google Chat oder Teams",
+  "description": "Self-hosted poller that watches external status pages and posts incidents to Google Chat or Microsoft Teams",
   "main": "dist/src/main.js",
   "scripts": {
     "build": "tsc",

@@ -1,39 +1,61 @@
 # status-page-to-chat
 
-A small service that monitors the status pages of external providers (Cloudflare, Bexio, Webflow, Bitwarden, Zendesk, and many more) and automatically posts new incidents and their resolutions to **Google Chat** or **Microsoft Teams**.
+A small self-hosted service that monitors the status pages of external providers and posts new incidents and their resolutions to **Google Chat** or **Microsoft Teams**.
 
-Operator: [Raptus AG](https://raptus.ch), Lyss.
+Designed to be cheap and forgettable: a single Docker container, SQLite for state, a webhook URL as the only secret. Five providers (Atlassian Statuspage, Google Workspace, Metanet RSS, WEDOS, GitHub Issues) cover dozens of services out of the box.
 
 ---
 
-## Motivation
+## Quick deploy (5 minutes)
 
-- The team should be proactively informed about disruptions with external services before customers ask.
-- Support requests ("Our website is down") can be assessed more quickly when it's known that, for example, Webflow is currently reporting an incident.
-- Questions like "Is it working for you?" become unnecessary.
+You need a Docker host. Anywhere will do — a Synology with Portainer, a Raspberry Pi, a small VM, your laptop while you try it out.
 
-## How it works (summary)
+1. **Get a webhook URL** for your chat target (Google Chat: channel `⋮` → Apps & integrations → Webhooks; Teams: channel `…` → Workflows → "Post to a channel when a webhook request is received"). Copy the URL.
+2. **Pick the services you want to watch**. Either fork this repo and edit `config/providers.yaml`, or start with the default config (which monitors a fairly wide set of common SaaS products) and adapt later.
+3. **Deploy**:
 
-1. A long-running Node.js process (containerised) polls every 5 minutes.
+   ```bash
+   mkdir status-page-to-chat && cd status-page-to-chat
+   curl -O https://raw.githubusercontent.com/gzuercher/status-page-to-chat/main/docker-compose.yml
+   echo "WEBHOOK_URL=https://chat.googleapis.com/v1/spaces/..." > .env
+   docker compose up -d
+   ```
+
+   Or in **Portainer → Stacks → Add stack → Web editor**, paste the contents of `docker-compose.yml`, set `WEBHOOK_URL` under **Environment variables**, deploy.
+4. **Watch the logs**: `docker compose logs -f` — you should see `Configuration loaded`, `Poller scheduled`, and a `run_summary` line within ~30 seconds.
+5. **Update later**: `docker compose pull && docker compose up -d` (or click "Update the stack" in Portainer with re-pull enabled).
+
+That's it. No cloud account, no infrastructure setup.
+
+## How it works
+
+1. A long-running Node.js process polls every 5 minutes.
 2. For each configured service, the status page is queried via the appropriate **adapter** (Atlassian Statuspage, Google Workspace, Metanet RSS, WEDOS, GitHub Issues).
 3. New or newly resolved incidents are compared against the last known state (SQLite).
-4. On state change, a formatted message is sent via webhook to the configured chat channel.
+4. On state change, a formatted message is posted via webhook.
 
 **Message format**:
 
 - **New**: `⚠️ <Provider> has reported an incident: "<Title>"` + link to incident
 - **Resolved**: `✅ <Provider> has resolved the incident: "<Title>"` + link
 
-## Hosting and costs
+## Configuration
 
-- **Platform**: Docker container, deployed via Portainer on the Raptus Synology NAS
-- **Runtime**: Node.js 20 on `node:20-alpine`
-- **Scheduler**: In-process cron (`croner`), default `*/5 * * * *`
-- **State**: SQLite file on a Docker volume (`/data/state.sqlite`)
-- **Logs**: stdout → Docker JSON file driver → Portainer log view
-- **Self-monitoring**: Docker `unless-stopped` restart policy plus Portainer event notifications
+All runtime configuration lives in `config/providers.yaml` in the image. To customise:
 
-No cloud dependency, no recurring cost beyond the NAS that Raptus already runs.
+- **Easiest**: fork the repo, edit `config/providers.yaml`, push — your fork's CI rebuilds the image and you point your stack at it.
+- **No fork**: mount your own `providers.yaml` into the container and set `CONFIG_PATH=/config/providers.yaml`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+Environment variables you can set:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `WEBHOOK_URL` | required | Google Chat or Teams webhook URL |
+| `CONFIG_PATH` | `./config/providers.yaml` | Path to a custom providers config |
+| `STATE_DB_PATH` | `/data/state.sqlite` | SQLite file location |
+| `POLL_CRON` | `*/5 * * * *` | When the poller runs |
+| `LOG_LEVEL` | `info` | pino log level |
+| `USER_AGENT` | `status-page-to-chat/<version> (+<repo>)` | Override the outbound User-Agent (e.g. add a contact address) |
 
 ## Documentation
 
@@ -43,11 +65,8 @@ No cloud dependency, no recurring cost beyond the NAS that Raptus already runs.
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Format of `config/providers.yaml` and env vars |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Specification per status page adapter |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment via Portainer, step by step |
-| [docs/AGENTS.md](docs/AGENTS.md) | Multi-agent work and responsibilities |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Implementation order and open items |
-| [docs/PLAN.md](docs/PLAN.md) | Original architecture plan (historical reference) |
 
-## Quick start (local development)
+## Development
 
 ```bash
 pnpm install
@@ -56,23 +75,8 @@ pnpm test
 WEBHOOK_URL='https://webhook.site/<your-slot>' STATE_DB_PATH=./data/state.sqlite pnpm start
 ```
 
-Or with Docker:
-
-```bash
-echo "WEBHOOK_URL=https://webhook.site/<your-slot>" > .env
-docker compose up --build
-```
-
-## Prerequisites (for development)
-
-- Node.js 20+
-- pnpm (via `corepack enable`)
-- Optional: Docker + Docker Compose for container work
+Requirements: Node.js 20+, pnpm (via `corepack enable`). Optional: Docker for container work.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
-## Raptus Claude Playbook
-
-This repo also contains the [Raptus Claude Playbook](CLAUDE.md) with team rules for collaboration with Claude Code. See `CLAUDE.md` and `.claude/rules/`.
+MIT — see [LICENSE](LICENSE). Use, fork, modify, redeploy as you wish.

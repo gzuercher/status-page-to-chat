@@ -1,21 +1,20 @@
 services:
   status-poller:
-    # Use the locally built image for dev; swap to
-    # ghcr.io/gzuercher/status-page-to-chat:latest on the NAS.
-    build: .
     image: ghcr.io/gzuercher/status-page-to-chat:latest
     container_name: status-page-to-chat
     restart: unless-stopped
     environment:
-      WEBHOOK_URL: ${WEBHOOK_URL:?WEBHOOK_URL must be set in .env}
+      WEBHOOK_URL: ${WEBHOOK_URL:?WEBHOOK_URL must be set in .env or stack environment}
       # Optional overrides:
       # CONFIG_PATH: /config/providers.yaml
       # POLL_CRON: "*/5 * * * *"
       # LOG_LEVEL: info
+      # USER_AGENT: "status-page-to-chat/1.0.0 (+https://example.com; ops@example.com)"
     volumes:
       - state:/data
-      # Mount a host file if CONFIG_PATH is set:
-      # - ./config/providers.yaml:/config/providers.yaml:ro
+      # Mount your own providers.yaml if you want to override the bundled
+      # default without forking the repo (and set CONFIG_PATH above):
+      # - ./providers.yaml:/config/providers.yaml:ro
     logging:
       driver: json-file
       options:

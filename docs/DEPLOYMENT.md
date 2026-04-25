@@ -4,7 +4,7 @@
 
 ## Target state
 
-A single Docker container, deployed and managed via **Portainer**. The Docker host is the Raptus Synology (RS1619xs+, Intel Xeon, x86_64), but the deployment process is host-agnostic — any Docker host with Portainer would work the same way. The image is built by GitHub Actions and published to GitHub Container Registry (GHCR).
+A single Docker container deployed and managed via **Portainer**. The deployment is host-agnostic — any Docker host with Portainer works. The image is built by GitHub Actions and published as a public image on GitHub Container Registry (GHCR).
 
 | Piece | Where | Purpose |
 |---|---|---|
@@ -19,8 +19,9 @@ Configuration (`config/providers.yaml`) is baked into the image. Changes flow vi
 ## Prerequisites (operator)
 
 - Portainer admin access on the Docker host
-- A GitHub Personal Access Token with `read:packages` scope, owned by an account that has read access to `github.com/gzuercher/status-page-to-chat` (for pulling the private GHCR image). If the repo is later moved to a Raptus org, update the image path and PAT scope accordingly.
 - A webhook URL for Google Chat **or** Microsoft Teams
+
+The image is public, so no GHCR credentials are needed. (If you fork the repo and keep your fork private, you'll need a GitHub Personal Access Token with `read:packages` for your fork's image.)
 
 ## First deployment
 
@@ -28,20 +29,7 @@ Configuration (`config/providers.yaml`) is baked into the image. Changes flow vi
 
 After the first push to `main` that contains the Docker workflow, GitHub Actions publishes `ghcr.io/gzuercher/status-page-to-chat:latest`. Verify on **GitHub → the repo → Packages**.
 
-### 2. Register GHCR credentials in Portainer
-
-Portainer needs to authenticate against GHCR to pull the private image.
-
-1. **Portainer → Registries → Add registry**
-2. Provider: **Custom registry**
-3. Name: `GHCR`
-4. URL: `https://ghcr.io`
-5. **Authentication** on, username = the GitHub user, password = the PAT with `read:packages`
-6. **Add registry**
-
-Portainer now uses these credentials when pulling images whose hostname matches `ghcr.io`.
-
-### 3. Create the stack
+### 2. Create the stack
 
 1. **Portainer → Stacks → Add stack**
 2. Name: `status-page-to-chat`
@@ -52,9 +40,9 @@ Portainer now uses these credentials when pulling images whose hostname matches 
    - `WEBHOOK_URL` = the actual webhook URL
 5. **Deploy the stack**.
 
-Portainer pulls the image (using the GHCR credentials registered in step 2), creates the named volume `status-page-to-chat_state`, and starts the container.
+Portainer pulls the public image from GHCR, creates the named volume `status-page-to-chat_state`, and starts the container.
 
-### 4. Verify
+### 3. Verify
 
 In **Portainer → Containers → status-page-to-chat → Logs** you should see, within ~30 seconds:
 
