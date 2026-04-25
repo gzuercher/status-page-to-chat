@@ -53,7 +53,7 @@ Optional (`componentFilter`): string **or** list of strings. An incident is incl
 
 Examples:
 
-- `componentFilter: "raptus-helpcenter"` — single substring
+- `componentFilter: "example-helpcenter"` — single substring
 - `componentFilter: ["cloudgz.gravityzone", "cloud.gravityzone"]` — multiple substrings (e.g. multiple geographic instances of one provider)
 
 ### Configuration

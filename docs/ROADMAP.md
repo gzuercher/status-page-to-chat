@@ -67,27 +67,27 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 
 **Done**: All 5 adapters implemented and tested. 36 tests total, all green.
 
-## Stage 7 — Infrastructure
+## Stage 7 — Containerisation
 
-- [x] `infra/main.bicep` — Function App, Storage, App Insights, Action Group, Alert Rule
-- [x] Bicep parameters for `webhookUrl`, `alertEmail`, `location`
-- [ ] Test "Deployment" section with dummy subscription
+- [x] `src/main.ts` container entrypoint with in-process scheduler (`croner`) and SIGTERM/SIGINT graceful shutdown
+- [x] `src/state/store.ts` SQLite state store (via `better-sqlite3`) replacing the earlier Table-Storage implementation
+- [x] `CONFIG_PATH`, `STATE_DB_PATH`, `POLL_CRON`, `LOG_LEVEL` env vars
+- [x] Multi-stage `Dockerfile` (`node:20-alpine`) with non-root user and `/data` volume
+- [x] `docker-compose.yml` with named volume and log rotation
 
-**Done when**: `az deployment group create` creates all resources correctly. (Bicep written, deployment pending)
+**Done**: `pnpm test` passes (40 tests); container definition ready to build.
 
 ## Stage 8 — CI/CD
 
 - [x] GitHub Actions: Build, Test, Lint on every PR (`.github/workflows/ci.yml`)
-- [x] GitHub Actions: Deploy (Function code) on push to `main` (`.github/workflows/deploy.yml`)
-- [x] Azure OIDC Federation instead of Service Principal secret (setup guide in `docs/DEPLOYMENT.md`)
-- [x] `.funcignore` for lean deployment packages
+- [x] GitHub Actions: Build and publish image to GHCR on push to `main` and on version tags (`.github/workflows/image.yml`)
 
 ## Stage 9 — First Deployment and Acceptance
 
-- [ ] Deployment to Azure tenant
+- [ ] Create Portainer stack from `docker-compose.yml`, image pulled from GHCR
 - [ ] Configure real webhook against a test chat room
 - [ ] Wait and observe → first real incident triggered
-- [ ] Manually trigger Alert Rule (disable Function) → email received
+- [ ] Manually stop container → restart policy kicks in, Portainer event visible
 - [ ] Team acceptance
 
 ## Later extensions (deliberately not in V1)

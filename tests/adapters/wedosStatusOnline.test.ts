@@ -62,6 +62,6 @@ describe("WedosStatusOnlineAdapter", () => {
     });
 
     const adapter = new WedosStatusOnlineAdapter(config);
-    await expect(adapter.fetchIncidents()).rejects.toThrow("Unerwarteter Content-Type");
+    await expect(adapter.fetchIncidents()).rejects.toThrow("Unexpected Content-Type");
   });
 });

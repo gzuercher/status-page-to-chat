@@ -1,0 +1,13 @@
+# Local development override.
+#
+# Docker Compose auto-merges this file with docker-compose.yml when both
+# exist alongside each other. It tells the local Compose CLI to build the
+# image from the working tree instead of pulling from GHCR.
+#
+# Production deployments (Portainer Web Editor, `curl`-and-deploy etc.)
+# never see this file — they only have docker-compose.yml.
+services:
+  status-poller:
+    build: .
+    image: status-page-to-chat:local
+    pull_policy: never

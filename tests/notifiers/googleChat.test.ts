@@ -72,6 +72,6 @@ describe("GoogleChatNotifier", () => {
 
     const notifier = new GoogleChatNotifier("https://chat.googleapis.com/test");
 
-    await expect(notifier.notifyOpened(testIncident)).rejects.toThrow("Retry fehlgeschlagen");
+    await expect(notifier.notifyOpened(testIncident)).rejects.toThrow("Retry failed");
   });
 });

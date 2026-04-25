@@ -1,46 +1,60 @@
-# Contributing – Claude Code at Raptus
+# Contributing
 
-## Getting started
+## How to ship a change
 
-1. Clone the repo or use the template
-2. Start `claude` in the project directory
-3. `/help` shows available commands
+The whole shipping process is **one mental step: open a PR and merge it.** Everything else runs automatically.
 
-## Available commands
+1. Make changes on a branch.
+   ```bash
+   git checkout -b my-change
+   # edit, commit
+   git push -u origin my-change
+   ```
+2. Open a Pull Request. The `git push` output prints the exact URL — just click it. Or in the GitHub UI: **Pull requests → New pull request → Compare → Create pull request**.
+3. CI runs on the PR (build, lint, tests). Wait until it's green.
+4. Click **Merge pull request → Confirm merge**.
 
-- `/commit-push-pr` — automate the git workflow
-- `/review` — code review of the current branch
-- `/build-and-test` — run build and tests
+That's it. After the merge:
 
-## When Claude makes a mistake
+- GitHub Actions rebuilds the Docker image (`.github/workflows/image.yml`).
+- The image is pushed to GHCR as `ghcr.io/gzuercher/status-page-to-chat:latest` (and tagged with the merge commit's short SHA).
+- In Portainer, click **Update the stack** with re-pull enabled — the new image is now live.
 
-1. **Correct it immediately.** Don't let it run through.
-2. **Document the lesson:** Tell Claude: "Document this lesson in lessons.md"
-3. **Note in the PR:** If it's a recurring issue, update CLAUDE.md or a rule
+You do not need to tag anything, run any CLI commands, or remember release procedures. The PR merge IS the release.
 
-## Code review with Claude
+## Where things happen
 
-On pull reviews you can tag `@.claude` (requires the Claude Code GitHub Action). Claude can then:
-- Add errors to CLAUDE.md
-- Add entries to lessons.md
-- Directly suggest improvements
+| What | Where |
+|---|---|
+| CI status (build, lint, tests) | the PR page itself, or **GitHub → Actions** |
+| Image build status | **GitHub → Actions → "Build and publish image"** |
+| Published images | **GitHub → Packages** (or `https://github.com/users/gzuercher/packages/container/status-page-to-chat`) |
+| Logs of running container | Portainer → Containers → `status-page-to-chat` → Logs |
 
-## Extending rules
+## When something is wrong
 
-If you need a new rule:
-1. Create a `.md` file in `.claude/rules/`
-2. Set `globs` in the frontmatter for the relevant file types
-3. Keep the rule short and concrete
-4. Create a PR
+- **CI red on the PR**: open the PR's Checks tab → click into the failing step. Fix locally, push again — the PR auto-updates.
+- **Image build red on main** (after merge): the Dockerfile broke. Check the Actions log for the failing step. The previous image stays on GHCR and is still pullable, so the production container is unaffected until you pull.
+- **Container won't start in Portainer**: check the container's Logs view. Usually `WEBHOOK_URL` not set or providers.yaml invalid — the log says which.
 
-## Personal settings
+## Local development
 
-For personal customisations: `.claude/settings.local.json` (git-ignored).
-This file overrides team settings locally.
+```bash
+pnpm install
+pnpm build
+pnpm test
+WEBHOOK_URL='https://webhook.site/<your-slot>' STATE_DB_PATH=./data/state.sqlite pnpm start
+```
 
-## Important
+For container-level testing (matches what GHCR will run):
 
-- **Keep CLAUDE.md lean.** Only what every session needs.
-- **Rules for specifics.** Security, quality, a11y are separate.
-- **Hooks for determinism.** What always must happen (formatting) belongs in hooks.
-- **Maintain lessons.md.** Every documented error saves the team time.
+```bash
+echo "WEBHOOK_URL=https://webhook.site/<your-slot>" > .env
+docker compose up --build
+```
+
+## When Claude Code makes a mistake
+
+1. Correct it immediately.
+2. Ask Claude: "document this lesson in `lessons.md`" — the file has a one-line-per-lesson format with the date.
+3. If it's a recurring class of error, add a rule in `.claude/rules/` or update `CLAUDE.md`.

@@ -126,9 +126,7 @@ describe("AtlassianStatuspageAdapter", () => {
 
     const adapter = new AtlassianStatuspageAdapter(baseConfig);
 
-    await expect(adapter.fetchIncidents()).rejects.toThrow(
-      "moeglicherweise ist die JSON-API deaktiviert",
-    );
+    await expect(adapter.fetchIncidents()).rejects.toThrow("the JSON API may be disabled");
   });
 
   it("wirft Fehler bei HTTP-Fehler", async () => {

@@ -103,4 +103,3 @@ export class TeamsNotifier implements Notifier {
     }
   }
 }
-

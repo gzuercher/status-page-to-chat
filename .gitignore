@@ -12,8 +12,12 @@ node_modules/
 dist/
 .turbo/
 
-# Azure Functions
-local.settings.json
+# Lokaler SQLite-State (Docker-Volume-Mount Ziel)
+/data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
 
 # PHP
 vendor/

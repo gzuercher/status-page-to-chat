@@ -1,204 +1,106 @@
 # Deployment
 
-> ⚠️ **Review recommended** — this document describes Azure infrastructure. Before first deployment to the production subscription, have a second person verify the values.
+> ⚠️ **Review recommended** — this document describes infrastructure and secret handling. Confirm the values with a second person before first production start-up.
 
 ## Target state
 
-| Resource | Type | Purpose |
-|---|---|---|
-| Resource Group `rg-status-page-to-chat` | | Container for all resources |
-| Storage Account `stspagetochat...` | Standard_LRS | Function runtime + `incidents` table |
-| Application Insights `appi-status-page-to-chat` | | Logs, metrics, traces |
-| Function App `func-status-page-to-chat` | Linux, Consumption Plan, Node 20 | Hosts the Timer Trigger |
-| Action Group `ag-status-page-to-chat` | | Email recipient for alerts |
-| Alert Rule | Metric Alert | "FunctionExecutionCount < 1 in 15 min" |
+A single Docker container deployed and managed via **Portainer**. The deployment is host-agnostic — any Docker host with Portainer works. The image is built by GitHub Actions and published as a public image on GitHub Container Registry (GHCR).
 
-Defined in **`infra/main.bicep`**.
+| Piece | Where | Purpose |
+|---|---|---|
+| Image | `ghcr.io/gzuercher/status-page-to-chat:latest` | Built on every push to `main` |
+| Container | Portainer stack `status-page-to-chat` | Runs the long-lived Node.js process |
+| Volume | Named Docker volume `status-page-to-chat_state` (managed by the stack) | Holds `state.sqlite` |
+| Env var `WEBHOOK_URL` | Portainer stack environment | Google Chat or Teams webhook URL — the only secret |
+| Logs | Docker `json-file` driver (5×10 MB rotation) | Visible in the Portainer container log view |
+
+Configuration (`config/providers.yaml`) is baked into the image. Changes flow via Git → CI rebuild → image pull. Override by mounting a host file over `/app/config/providers.yaml` and setting `CONFIG_PATH` if ever needed.
 
 ## Prerequisites (operator)
 
-- Azure CLI installed and logged in: `az login`
-- Access to the correct subscription: `az account set --subscription <name>`
-- Sufficient roles: `Contributor` on subscription or resource group
-- Webhook URL for Google Chat or Teams prepared
-- Email address for alerts (group mail recommended)
+- Portainer admin access on the Docker host
+- A webhook URL for Google Chat **or** Microsoft Teams
+
+The image is public, so no GHCR credentials are needed. (If you fork the repo and keep your fork private, you'll need a GitHub Personal Access Token with `read:packages` for your fork's image.)
 
 ## First deployment
 
-### 1. Create resource group
+### 1. Wait for the image to build
 
-```bash
-az group create \
-  --name rg-status-page-to-chat \
-  --location switzerlandnorth
-```
+After the first push to `main` that contains the Docker workflow, GitHub Actions publishes `ghcr.io/gzuercher/status-page-to-chat:latest`. Verify on **GitHub → the repo → Packages**.
 
-### 2. Deploy infrastructure
+### 2. Create the stack
 
-```bash
-az deployment group create \
-  --resource-group rg-status-page-to-chat \
-  --template-file infra/main.bicep \
-  --parameters \
-      webhookUrl='<GOOGLE_CHAT_OR_TEAMS_WEBHOOK>' \
-      alertEmail='<ops@raptus.ch>'
-```
+1. **Portainer → Stacks → Add stack**
+2. Name: `status-page-to-chat`
+3. **Build method**: choose one:
+   - **Repository** (recommended): URL `https://github.com/gzuercher/status-page-to-chat`, reference `refs/heads/main`, compose file `docker-compose.yml`. Portainer pulls the compose file from Git and stays in sync if you enable **automatic updates**.
+   - **Web editor**: paste the contents of `docker-compose.yml` from the repo.
+4. Under **Environment variables**, set:
+   - `WEBHOOK_URL` = the actual webhook URL
+5. **Deploy the stack**.
 
-### 3. Deploy Function code
+Portainer pulls the public image from GHCR, creates the named volume `status-page-to-chat_state`, and starts the container.
 
-```bash
-pnpm build
-func azure functionapp publish func-status-page-to-chat
-```
+### 3. Verify
 
-### 4. Verify configuration
+In **Portainer → Containers → status-page-to-chat → Logs** you should see, within ~30 seconds:
 
-- Portal: Function App → Functions → `poll` → invocations → first run visible?
-- Test: a known open incident should trigger a chat message on the next timer run.
+- A `Configuration loaded` line with `providerCount: 19`
+- A `Poller scheduled` line listing the next cron run
+- One or more `incidents fetched` lines per provider
+- A `run_summary` line with counters (`providersTotal`, `providersSucceeded`, …)
+
+A real or manually injected incident triggers a chat message on the next poll cycle.
 
 ## Ongoing deployment (updates)
 
-- Changes to **`config/providers.yaml`**: delivered with the next `func azure functionapp publish`.
-- Changes to adapter code: same publish process.
-- Infrastructure changes: run `az deployment group create` again.
+- **Code or provider changes** merged to `main` → GitHub Actions rebuilds and publishes the image as `latest` and `<sha>`.
+- **Pulling the new image** in Portainer:
+  - **Stacks → status-page-to-chat → Editor → Update the stack** (with **Re-pull image** enabled), or
+  - With **Stack auto-update** turned on (Portainer Business or via the Edge agent), Portainer polls GHCR periodically and applies updates automatically.
 
-The GitHub Actions workflow `.github/workflows/deploy.yml` deploys automatically on push to `main`. CI (Build + Lint + Test) also runs on every pull request via `.github/workflows/ci.yml`.
-
-## GitHub Actions Setup (one-time)
-
-The deployment uses **Azure OIDC Federation** instead of Service Principal secrets. Once set up — no rotating credentials.
-
-### 1. Create App Registration with Federated Credential
-
-```bash
-# Adjust variables
-APP_NAME="github-actions-status-page-to-chat"
-GITHUB_ORG="raptus"
-GITHUB_REPO="status-page-to-chat"
-RESOURCE_GROUP="rg-status-page-to-chat"
-SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-
-# Create App Registration
-APP_ID=$(az ad app create --display-name "$APP_NAME" --query appId -o tsv)
-az ad sp create --id "$APP_ID"
-
-# Federated Credential for main branch (deploy workflow)
-az ad app federated-credential create \
-  --id "$APP_ID" \
-  --parameters "{
-    \"name\": \"main-branch\",
-    \"issuer\": \"https://token.actions.githubusercontent.com\",
-    \"subject\": \"repo:${GITHUB_ORG}/${GITHUB_REPO}:ref:refs/heads/main\",
-    \"audiences\": [\"api://AzureADTokenExchange\"]
-  }"
-
-# Federated Credential for environment "production" (recommended)
-az ad app federated-credential create \
-  --id "$APP_ID" \
-  --parameters "{
-    \"name\": \"production-env\",
-    \"issuer\": \"https://token.actions.githubusercontent.com\",
-    \"subject\": \"repo:${GITHUB_ORG}/${GITHUB_REPO}:environment:production\",
-    \"audiences\": [\"api://AzureADTokenExchange\"]
-  }"
-
-# Assign role on resource group
-az role assignment create \
-  --role "Contributor" \
-  --assignee "$APP_ID" \
-  --scope "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}"
-
-# Output values for GitHub Secrets
-TENANT_ID=$(az account show --query tenantId -o tsv)
-echo "AZURE_CLIENT_ID=$APP_ID"
-echo "AZURE_TENANT_ID=$TENANT_ID"
-echo "AZURE_SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
-```
-
-### 2. Set GitHub Secrets
-
-In the repo under **Settings → Secrets and variables → Actions**:
-
-| Secret | Value |
-|---|---|
-| `AZURE_CLIENT_ID` | App ID from step 1 |
-| `AZURE_TENANT_ID` | Tenant ID from step 1 |
-| `AZURE_SUBSCRIPTION_ID` | Subscription ID from step 1 |
-
-### 3. Create GitHub Environment "production" (optional, recommended)
-
-Under **Settings → Environments → New environment**: `production`. Optionally define Protection Rules (Approvals, Wait Timer) so deployments are reviewed.
+The previous image stays cached on the host until pruned, providing a quick rollback target.
 
 ## Secrets
 
-Secrets are stored as **Application Settings** on the Function App — never in the repo.
+Only `WEBHOOK_URL` is secret. It lives in the Portainer stack environment — never in the repo, never in the image.
 
-| Setting | Source |
-|---|---|
-| `WEBHOOK_URL` | Set via Bicep parameter |
-| `ALERT_EMAIL` | Set via Bicep parameter (Action Group) |
-| `AzureWebJobsStorage` | Automatically set by Bicep |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Automatically set by Bicep |
-| `GITHUB_TOKEN` (optional) | Set afterwards if needed: `az functionapp config appsettings set` |
+Rotating the webhook:
 
-Rotating the webhook URL:
-
-```bash
-az functionapp config appsettings set \
-  --name func-status-page-to-chat \
-  --resource-group rg-status-page-to-chat \
-  --settings WEBHOOK_URL='<new-webhook>'
-```
+1. Generate a new webhook in the target chat channel.
+2. Portainer → Stacks → status-page-to-chat → **Editor** → environment variables → update `WEBHOOK_URL` → **Update the stack**. Portainer recreates the container with the new value.
 
 ## Rollback
 
-- Deployments are **immutable packages**. Rollback = redeploy an older package.
-- Configuration rollback: `git revert` on `providers.yaml` and republish.
+- Image rollback: edit the stack to pin a previous tag (e.g. `ghcr.io/gzuercher/status-page-to-chat:sha-<old>`), update the stack.
+- Configuration rollback: `git revert` the offending commit on `main`. CI rebuilds `latest`; redeploy the stack to pull the rollback image.
 
-## Monitoring queries (App Insights)
+## Teams webhook setup
 
-**Has the timer fired in the last 15 minutes?**
-
-```kusto
-traces
-| where cloud_RoleName == "func-status-page-to-chat"
-| where message startswith "run_summary"
-| where timestamp > ago(15m)
-| count
-```
-
-**Errors per adapter (24 h)**:
-
-```kusto
-traces
-| where cloud_RoleName == "func-status-page-to-chat"
-| where severityLevel >= 3
-| where timestamp > ago(24h)
-| summarize count() by tostring(customDimensions.providerKey)
-```
+See `docs/CONFIGURATION.md` for the step-by-step procedure to create a Teams webhook via the Workflows app.
 
 ## Running locally
 
-See also "Local development" section in [AGENTS.md](AGENTS.md).
-
-1. Create `local.settings.json` (from `local.settings.json.example`):
-
-```json
-{
-  "IsEncrypted": false,
-  "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "node",
-    "WEBHOOK_URL": "https://webhook.site/<your-test-slot>"
-  }
-}
+```bash
+pnpm install
+pnpm build
+pnpm test
 ```
 
-2. Start Azurite (local Azure Storage emulator): `azurite --silent`
-3. `pnpm install && pnpm build && func start`
-4. Monitor the test webhook target via [webhook.site](https://webhook.site).
+For a full local run against a dummy target:
 
-## Cost control
+```bash
+echo "WEBHOOK_URL=https://webhook.site/<your-test-slot>" > .env
+docker compose up --build
+```
 
-- Set up a **Budget Alert**: Portal → Cost Management → Budget for `rg-status-page-to-chat`, threshold CHF 2/month, email to ops.
-- Set App Insights **Daily Cap** to e.g. 100 MB to prevent a logging runaway from inflating the bill.
+The SQLite file lives in the named volume; `docker compose down -v` resets state.
+
+## Self-monitoring
+
+- **Container restart policy**: `unless-stopped` in the compose file — Docker restarts the container on crash.
+- **Portainer events**: Portainer surfaces container state changes in its UI and can be wired up to webhook/email notifications under **Settings → Notifications** (Portainer Business) or via an external watcher (e.g. `containrrr/watchtower` or a small `docker events` script) on Community.
+- **Run-level observability**: every poll cycle emits a structured `run_summary` JSON log line. Use `docker logs` or the Portainer log view to inspect, or forward to an external log collector if needed later.
+
+A frozen-but-running process (cron loop hung) is not detected by container-state monitors. If that failure mode ever materialises, add a heartbeat file the poller touches each cycle plus a host-side check (cron or systemd timer) of its mtime — kept out of v1 deliberately.

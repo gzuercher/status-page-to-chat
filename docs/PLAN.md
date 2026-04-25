@@ -1,5 +1,7 @@
 # Plan: Status Page to Chat Notification Service
 
+> **Note (historical document)**: This is the original architecture plan, preserved for context. The hosting decision was later revised: instead of Azure Functions + Table Storage, the service now runs as a Docker container on the Raptus Synology NAS with SQLite for state. Current architecture: see [ARCHITECTURE.md](ARCHITECTURE.md). Current deployment: see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ## Context
 
 The Raptus team should be automatically notified when external services (Cloudflare, Bexio, Webflow, Bitwarden, Zendesk, and more) experience incidents or resolve them. Goals:
