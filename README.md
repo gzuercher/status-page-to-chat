@@ -77,6 +77,10 @@ WEBHOOK_URL='https://webhook.site/<your-slot>' STATE_DB_PATH=./data/state.sqlite
 
 Requirements: Node.js 20+, pnpm (via `corepack enable`). Optional: Docker for container work.
 
+## Shipping a change
+
+One step: **open a Pull Request and merge it.** Everything else (Docker build, image push to GHCR, `:latest` tag update) runs automatically — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Use, fork, modify, redeploy as you wish.
