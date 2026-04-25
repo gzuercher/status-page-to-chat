@@ -144,14 +144,14 @@ Everything that is not in `providers.yaml` lives as an environment variable on t
 | `LOG_LEVEL` | no | pino log level (`debug`, `info`, `warn`, `error`). Default: `info`. |
 | `USER_AGENT` | no | Overrides the default User-Agent globally (rarely needed, e.g. for tests). |
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for how these are set in Synology Container Manager.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for how these are set in Portainer.
 
 ## Adding a status page (workflow)
 
 1. Add a new entry to `config/providers.yaml` with the appropriate adapter (see [ADAPTERS.md](ADAPTERS.md)).
 2. Open a pull request → review by a second person.
 3. After merge: GitHub Actions rebuilds the image and pushes to GHCR as `latest`.
-4. On the NAS: Container Manager → rebuild the project (or let auto-update pick it up). In the next poll cycle the new provider is live.
+4. In Portainer → Stacks → status-page-to-chat → **Update the stack** (with re-pull image enabled). In the next poll cycle the new provider is live.
 
 ## Removing a status page
 

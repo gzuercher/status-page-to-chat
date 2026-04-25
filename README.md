@@ -26,12 +26,12 @@ Operator: [Raptus AG](https://raptus.ch), Lyss.
 
 ## Hosting and costs
 
-- **Platform**: Docker container on the Raptus Synology NAS (Container Manager)
+- **Platform**: Docker container, deployed via Portainer on the Raptus Synology NAS
 - **Runtime**: Node.js 20 on `node:20-alpine`
 - **Scheduler**: In-process cron (`croner`), default `*/5 * * * *`
 - **State**: SQLite file on a Docker volume (`/data/state.sqlite`)
-- **Logs**: stdout → Docker JSON file driver → Container Manager log viewer
-- **Self-monitoring**: Synology Container Manager notification on container stop / restart loop
+- **Logs**: stdout → Docker JSON file driver → Portainer log view
+- **Self-monitoring**: Docker `unless-stopped` restart policy plus Portainer event notifications
 
 No cloud dependency, no recurring cost beyond the NAS that Raptus already runs.
 
@@ -42,7 +42,7 @@ No cloud dependency, no recurring cost beyond the NAS that Raptus already runs.
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, modules, data flow |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Format of `config/providers.yaml` and env vars |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Specification per status page adapter |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment to Synology, step by step |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment via Portainer, step by step |
 | [docs/AGENTS.md](docs/AGENTS.md) | Multi-agent work and responsibilities |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Implementation order and open items |
 | [docs/PLAN.md](docs/PLAN.md) | Original architecture plan (historical reference) |

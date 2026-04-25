@@ -84,10 +84,10 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 
 ## Stage 9 — First Deployment and Acceptance
 
-- [ ] Pull image onto the Raptus Synology (Container Manager project)
+- [ ] Create Portainer stack from `docker-compose.yml`, image pulled from GHCR
 - [ ] Configure real webhook against a test chat room
 - [ ] Wait and observe → first real incident triggered
-- [ ] Manually stop container → Synology notification received
+- [ ] Manually stop container → restart policy kicks in, Portainer event visible
 - [ ] Team acceptance
 
 ## Later extensions (deliberately not in V1)

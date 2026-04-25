@@ -116,8 +116,8 @@ WAL mode is enabled (`journal_mode = WAL`) for crash safety; the DB file is atom
 
 ## Self-monitoring
 
-- Container runtime health: Synology Container Manager notifies when the container stops or enters a restart loop.
-- Observability: every run emits a structured `run_summary` log entry (JSON) with counters for providers, incidents and notifications. Visible in `docker logs` and in Container Manager's log viewer.
+- Container runtime health: Docker `unless-stopped` restart policy keeps the container alive on crash; Portainer surfaces container state and event history in its UI.
+- Observability: every run emits a structured `run_summary` log entry (JSON) with counters for providers, incidents and notifications. Visible via `docker logs` or in the Portainer log view.
 
 ## Security
 

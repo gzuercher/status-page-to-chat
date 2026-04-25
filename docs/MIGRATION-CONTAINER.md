@@ -56,7 +56,7 @@ CI runs build + test + lint; the first push to `main` (after merge) triggers the
    az group delete --name 'ai_appi-status-page-to-chat_96e87743-dad4-4bec-a372-024df6b8f54b_managed' --yes --no-wait
    ```
 
-2. **Synology bring-up** — Container Manager project, GHCR credentials, `WEBHOOK_URL` env var, pull the image. Full steps in `docs/DEPLOYMENT.md`.
+2. **Portainer bring-up** on the NAS — register GHCR credentials, create the stack from the repo's `docker-compose.yml`, set `WEBHOOK_URL`, deploy. Full steps in `docs/DEPLOYMENT.md`. (Originally planned via Synology Container Manager; switched to Portainer post-implementation. The Compose definition is unchanged.)
 
 ### If you want to rework something first
 
