@@ -9,9 +9,14 @@ import {
   createStore,
   diffIncidents,
   getStoredIncidents,
+  setMetadata,
   upsertIncident,
   type Store,
 } from "./state/store.js";
+import { runValidate } from "./cli/validate.js";
+import { runHealthcheck } from "./cli/health.js";
+
+export const LAST_RUN_METADATA_KEY = "last_run_at";
 
 /**
  * Runs one full poll cycle:
@@ -104,6 +109,11 @@ async function runPoll(config: AppConfig, notifier: Notifier, store: Store): Pro
     logger.fatal({ err }, "Critical error in poll run");
   } finally {
     summary.durationMs = Date.now() - startTime;
+    try {
+      setMetadata(store, LAST_RUN_METADATA_KEY, new Date().toISOString());
+    } catch (err) {
+      logger.error({ err }, "Failed to persist last_run_at metadata");
+    }
     logger.info({ run_summary: summary }, "run_summary");
   }
 }
@@ -165,7 +175,20 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
-main().catch((err: unknown) => {
-  logger.fatal({ err }, "Poller failed to start");
-  process.exit(1);
-});
+const subcommand = process.argv[2];
+
+if (subcommand === "validate") {
+  runValidate();
+} else if (subcommand === "health") {
+  runHealthcheck();
+} else if (subcommand === undefined || subcommand === "poll") {
+  main().catch((err: unknown) => {
+    logger.fatal({ err }, "Poller failed to start");
+    process.exit(1);
+  });
+} else {
+  process.stderr.write(
+    `Unknown subcommand: ${subcommand}\n` + `Usage: node dist/src/main.js [poll|validate|health]\n`,
+  );
+  process.exit(2);
+}

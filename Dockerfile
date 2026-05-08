@@ -45,4 +45,11 @@ ENV NODE_ENV=production \
 
 VOLUME ["/data"]
 
+# Healthcheck queries the state DB for the last completed poll. Detects
+# "process up but poll loop hung" — pure liveness on the entrypoint would
+# not. start_period is generous because the first poll fetches ~19 status
+# pages over the network.
+HEALTHCHECK --interval=2m --timeout=15s --start-period=2m --retries=2 \
+  CMD node dist/src/main.js health || exit 1
+
 CMD ["node", "dist/src/main.js"]

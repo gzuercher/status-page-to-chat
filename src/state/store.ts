@@ -17,6 +17,10 @@ const CREATE_TABLE_SQL = `
     notified_resolved  INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (provider_key, external_id)
   );
+  CREATE TABLE IF NOT EXISTS metadata (
+    key   TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `;
 
 /**
@@ -160,4 +164,26 @@ export async function upsertIncident(
     { providerKey: incident.providerKey, externalId: incident.externalId, status: incident.status },
     "Incident written to state store",
   );
+}
+
+/**
+ * Stores a single string metadata value, overwriting any prior value for the key.
+ */
+export function setMetadata(store: Store, key: string, value: string): void {
+  store
+    .prepare(
+      `INSERT INTO metadata (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    )
+    .run(key, value);
+}
+
+/**
+ * Reads a single string metadata value. Returns undefined if absent.
+ */
+export function getMetadata(store: Store, key: string): string | undefined {
+  const row = store
+    .prepare<[string], { value: string }>(`SELECT value FROM metadata WHERE key = ?`)
+    .get(key);
+  return row?.value;
 }
