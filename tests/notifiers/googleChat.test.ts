@@ -18,7 +18,7 @@ const testIncident: NormalizedIncident = {
   externalId: "inc-001",
   providerKey: "bexio",
   displayName: "Bexio",
-  title: "API nicht erreichbar",
+  title: "API unreachable",
   status: "open",
   url: "https://stspg.io/test001",
   startedAt: "2026-04-15T10:00:00Z",
@@ -30,7 +30,7 @@ describe("GoogleChatNotifier", () => {
     vi.clearAllMocks();
   });
 
-  it("sendet Card v2 mit korrektem Format fuer geoeffneten Incident", async () => {
+  it("sends Card v2 with correct format for opened incident", async () => {
     mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
 
     const notifier = new GoogleChatNotifier("https://chat.googleapis.com/test");
@@ -44,7 +44,7 @@ describe("GoogleChatNotifier", () => {
     expect(card.cardsV2[0].card.header.title).toContain("Bexio");
   });
 
-  it("sendet Card v2 fuer resolved Incident", async () => {
+  it("sends Card v2 for resolved incident", async () => {
     mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
 
     const resolved = { ...testIncident, status: "resolved" as const };
@@ -54,7 +54,7 @@ describe("GoogleChatNotifier", () => {
     expect(mockedHttpPost).toHaveBeenCalledOnce();
   });
 
-  it("macht Retry bei erstem Fehler", async () => {
+  it("retries once on first failure", async () => {
     mockedHttpPost
       .mockRejectedValueOnce(new Error("Network error"))
       .mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
@@ -65,7 +65,7 @@ describe("GoogleChatNotifier", () => {
     expect(mockedHttpPost).toHaveBeenCalledTimes(2);
   });
 
-  it("wirft Fehler wenn Retry auch fehlschlaegt", async () => {
+  it("throws when the retry also fails", async () => {
     mockedHttpPost
       .mockRejectedValueOnce(new Error("Network error"))
       .mockResolvedValueOnce({ status: 500, contentType: "", body: "Internal Error" });

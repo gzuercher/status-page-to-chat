@@ -30,7 +30,7 @@ describe("TeamsNotifier", () => {
     vi.clearAllMocks();
   });
 
-  it("sendet Adaptive Card fuer geoeffneten Incident", async () => {
+  it("sends Adaptive Card for opened incident", async () => {
     mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
 
     const notifier = new TeamsNotifier("https://teams.webhook.office.com/test");
@@ -45,7 +45,7 @@ describe("TeamsNotifier", () => {
     expect(msg.attachments[0].contentType).toBe("application/vnd.microsoft.card.adaptive");
   });
 
-  it("sendet Adaptive Card fuer resolved Incident", async () => {
+  it("sends Adaptive Card for resolved incident", async () => {
     mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
 
     const resolved = { ...testIncident, status: "resolved" as const };
@@ -55,7 +55,7 @@ describe("TeamsNotifier", () => {
     expect(mockedHttpPost).toHaveBeenCalledOnce();
   });
 
-  it("macht Retry bei erstem Fehler", async () => {
+  it("retries once on first failure", async () => {
     mockedHttpPost
       .mockRejectedValueOnce(new Error("Timeout"))
       .mockResolvedValueOnce({ status: 200, contentType: "", body: "" });

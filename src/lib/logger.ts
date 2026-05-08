@@ -13,4 +13,10 @@ export const logger = pino({
     },
   },
   timestamp: pino.stdTimeFunctions.isoTime,
+  // Defense in depth: never leak the webhook URL or related error fields
+  // into structured logs, even if a future code path passes them in.
+  redact: {
+    paths: ["webhookUrl", "*.webhookUrl", "err.url", "err.input", "err.config.url"],
+    censor: "[redacted]",
+  },
 });
