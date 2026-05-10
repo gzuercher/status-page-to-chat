@@ -4,7 +4,7 @@
   "description": "Self-hosted poller that watches external status pages and posts incidents to Google Chat or Microsoft Teams",
   "main": "dist/src/main.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"require('node:fs').mkdirSync('dist/src/api', {recursive: true}); require('node:fs').copyFileSync('src/api/openapi.json', 'dist/src/api/openapi.json')\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src/ tests/ && prettier --check src/ tests/",
