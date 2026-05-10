@@ -1,0 +1,253 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "status-page-to-chat",
+    "version": "1.0.0",
+    "description": "Manage the providers monitored by status-page-to-chat and inspect runtime state. Designed for chat-based maintenance via Langdock or any OpenAPI-aware LLM tool."
+  },
+  "servers": [{ "url": "/" }],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer" }
+    },
+    "schemas": {
+      "Provider": {
+        "type": "object",
+        "required": ["key", "displayName", "adapter"],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$",
+            "description": "Unique identifier, lowercase ASCII letters, digits and hyphens only."
+          },
+          "displayName": { "type": "string", "minLength": 1 },
+          "adapter": {
+            "type": "string",
+            "enum": [
+              "atlassian-statuspage",
+              "google-workspace",
+              "metanet-rss",
+              "wedos-status-online",
+              "github-issues"
+            ]
+          },
+          "baseUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Required for atlassian-statuspage and wedos-status-online."
+          },
+          "owner": { "type": "string", "description": "Required for github-issues." },
+          "repo": { "type": "string", "description": "Required for github-issues." },
+          "componentFilter": {
+            "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
+            "description": "Substring match against component names. Only relevant for atlassian-statuspage."
+          },
+          "userAgent": { "type": "string" }
+        }
+      },
+      "Incident": {
+        "type": "object",
+        "required": [
+          "providerKey",
+          "externalId",
+          "title",
+          "status",
+          "url",
+          "startedAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "providerKey": { "type": "string" },
+          "externalId": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "type": "string", "enum": ["open", "resolved"] },
+          "url": { "type": "string", "format": "uri" },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RunSummary": {
+        "type": "object",
+        "properties": {
+          "providersTotal": { "type": "integer" },
+          "providersSucceeded": { "type": "integer" },
+          "providersFailed": { "type": "integer" },
+          "incidentsOpen": { "type": "integer" },
+          "incidentsResolved": { "type": "integer" },
+          "notificationsSent": { "type": "integer" },
+          "notificationsFailed": { "type": "integer" },
+          "durationMs": { "type": "integer" },
+          "completedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string" },
+          "details": { "type": "object", "additionalProperties": true }
+        }
+      }
+    }
+  },
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Liveness probe",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Service is alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok"] },
+                    "lastRunAt": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers": {
+      "get": {
+        "summary": "List monitored providers",
+        "responses": {
+          "200": {
+            "description": "Current provider list",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Provider" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers/{key}": {
+      "parameters": [
+        { "name": "key", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "summary": "Get a single provider",
+        "responses": {
+          "200": {
+            "description": "Provider entry",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Provider" } }
+            }
+          },
+          "404": { "description": "Not found" }
+        }
+      },
+      "put": {
+        "summary": "Add or update a provider",
+        "description": "If the key already exists, the entry is replaced in place. If it is new, the entry is appended. The full configuration is re-validated before the file is written.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Provider" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Provider updated",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Provider" } }
+            }
+          },
+          "201": {
+            "description": "Provider created",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Provider" } }
+            }
+          },
+          "400": {
+            "description": "Invalid payload",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a provider",
+        "responses": {
+          "204": { "description": "Removed" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/api/providers/validate": {
+      "post": {
+        "summary": "Validate a provider payload without saving",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/Provider" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payload is valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "ok": { "type": "boolean", "enum": [true] } }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Payload is invalid",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents/open": {
+      "get": {
+        "summary": "List currently open incidents",
+        "responses": {
+          "200": {
+            "description": "Open incidents across all providers",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Incident" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/last-run": {
+      "get": {
+        "summary": "Summary of the most recent poll cycle",
+        "responses": {
+          "200": {
+            "description": "Run summary",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/RunSummary" } }
+            }
+          },
+          "404": { "description": "No poll has completed yet" }
+        }
+      }
+    },
+    "/api/openapi.json": {
+      "get": {
+        "summary": "This OpenAPI specification",
+        "security": [],
+        "responses": { "200": { "description": "OpenAPI 3.1 document" } }
+      }
+    }
+  }
+}
