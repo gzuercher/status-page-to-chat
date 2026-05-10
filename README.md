@@ -62,14 +62,20 @@ Environment variables you can set:
 | `USER_AGENT` | `status-page-to-chat/<version> (+<repo>)` | Override the outbound User-Agent (e.g. add a contact address) |
 | `HEALTH_MAX_AGE_SECONDS` | `900` | Healthcheck threshold — container is reported unhealthy if no poll completed within this window |
 
+## Configure via chat (Langdock)
+
+You can hand over day-to-day maintenance — adding, removing, and inspecting providers — to a backoffice colleague who never touches the host. The container exposes a small management API; point a Langdock assistant at it, share an `API_TOKEN`, and they manage the watch list in natural language. See [docs/LANGDOCK.md](docs/LANGDOCK.md) for the step-by-step setup and [docs/API.md](docs/API.md) for the underlying endpoints.
+
 ## Documentation
 
 | Document | Content |
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, modules, data flow |
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Format of `config/providers.yaml` and env vars |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Format of `providers.yaml` and env vars |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Specification per status page adapter |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment via Portainer, step by step |
+| [docs/API.md](docs/API.md) | Management API reference with `curl` examples |
+| [docs/LANGDOCK.md](docs/LANGDOCK.md) | Chat-based maintenance for non-technical users |
 
 ## Development
 
