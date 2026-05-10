@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # ---- Build stage: compile TypeScript and resolve production deps -----------
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 
 # Native deps for better-sqlite3 build
 RUN apk add --no-cache python3 make g++
@@ -22,7 +22,7 @@ RUN pnpm build
 RUN pnpm prune --prod
 
 # ---- Runtime stage: minimal image, non-root user ---------------------------
-FROM node:20-alpine AS runtime
+FROM node:26-alpine AS runtime
 
 # Runtime only needs node itself; better-sqlite3's prebuilt native module is
 # self-contained once installed.
