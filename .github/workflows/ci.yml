@@ -37,3 +37,7 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Audit dependencies
+        run: pnpm audit --prod --audit-level=high
+        continue-on-error: true

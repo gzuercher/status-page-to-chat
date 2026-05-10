@@ -6,11 +6,9 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 
 ## Stage 1 — Foundation
 
-- [x] `package.json` with dependencies: `@azure/functions`, `@azure/data-tables`, `zod`, `yaml`, `pino`, `undici`
-- [x] Dev deps: `typescript`, `vitest`, `eslint`, `prettier`, `@types/node`
+- [x] `package.json` with dependencies: `better-sqlite3`, `croner`, `zod`, `yaml`, `pino`, `undici`
+- [x] Dev deps: `typescript`, `vitest`, `eslint`, `prettier`, `@types/node`, `@types/better-sqlite3`
 - [x] `tsconfig.json` (strict, target ES2022)
-- [x] `host.json` (Functions v4)
-- [x] `local.settings.json.example`
 - [x] `eslint.config.mjs`, `.prettierrc`
 - [x] Scripts: `build`, `test`, `lint`, `format`
 - [x] `src/lib/types.ts` with `NormalizedIncident`, `StatusProvider`, `Notifier`
@@ -22,9 +20,9 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 
 - [x] `src/lib/config.ts`: load YAML, zod schema, read environment variables
 - [x] `config/providers.yaml` with starter entries (pulled forward; currently contains 19 providers including Atlassian, Google Workspace, Metanet, WEDOS and GitHub Issues entries)
-- [x] `src/state/tableStore.ts`: CRUD on Azure Table Storage, diff logic
+- [x] `src/state/store.ts`: CRUD on SQLite (via `better-sqlite3`), diff logic
 - [x] `src/lib/httpClient.ts`: central HTTP client with User-Agent and timeout
-- [x] Unit tests for state diff (6 tests)
+- [x] Unit tests for state diff (10 tests)
 
 **Done**: Tests green, state diff correctly identifies New/Resolved/Unchanged.
 
@@ -51,7 +49,7 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 
 ## Stage 5 — Orchestration
 
-- [x] `src/functions/poll.ts` Timer Trigger
+- [x] `src/main.ts` container entrypoint with `croner` schedule
 - [x] Error isolation per provider (Promise.allSettled)
 - [x] Structured `run_summary` log per run
 - [x] State diff with notification tracking (notifiedOpened/notifiedResolved)
