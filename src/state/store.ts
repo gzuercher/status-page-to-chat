@@ -4,6 +4,9 @@ import type { DiffResult, NormalizedIncident, StoredIncident } from "../lib/type
 
 export type Store = Database.Database;
 
+/** ISO timestamp of the last completed poll cycle, in the metadata table. */
+export const LAST_RUN_METADATA_KEY = "last_run_at";
+
 const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS incidents (
     provider_key       TEXT    NOT NULL,

@@ -5,6 +5,7 @@ import type { Notifier, RunSummary } from "./lib/types.js";
 import { createAdapter } from "./adapters/index.js";
 import { createNotifier } from "./notifiers/index.js";
 import {
+  LAST_RUN_METADATA_KEY,
   closeStore,
   createStore,
   diffIncidents,
@@ -16,8 +17,6 @@ import {
 import { runValidate } from "./cli/validate.js";
 import { runHealthcheck } from "./cli/health.js";
 import { startApiServer, type LastRunRef } from "./api/server.js";
-
-export const LAST_RUN_METADATA_KEY = "last_run_at";
 
 /**
  * Runs one full poll cycle:

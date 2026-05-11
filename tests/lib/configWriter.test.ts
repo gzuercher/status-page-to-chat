@@ -98,6 +98,39 @@ providers:
     expect(readFileSync(oneEntry, "utf-8")).toBe(before);
   });
 
+  it("preserves YAML anchors used in unaffected entries", () => {
+    const yamlWithAnchors = `chatTarget: googleChat
+providers:
+  - &shared-ua
+    key: bitbucket
+    displayName: Bitbucket
+    adapter: atlassian-statuspage
+    baseUrl: https://bitbucket.status.atlassian.com
+    userAgent: shared-ua/1.0
+
+  - key: figma
+    displayName: Figma
+    adapter: atlassian-statuspage
+    baseUrl: https://status.figma.com
+`;
+    const anchored = join(dir, "anchored.yaml");
+    writeFileSync(anchored, yamlWithAnchors, "utf-8");
+
+    upsertProviderInYaml(
+      {
+        key: "webflow",
+        displayName: "Webflow",
+        adapter: "atlassian-statuspage",
+        baseUrl: "https://status.webflow.com",
+      },
+      anchored,
+    );
+
+    const after = readFileSync(anchored, "utf-8");
+    expect(after).toContain("&shared-ua");
+    expect(after).toContain("key: webflow");
+  });
+
   it("rejects an upsert with an invalid adapter/baseUrl combination", () => {
     expect(() =>
       upsertProviderInYaml(

@@ -5,9 +5,17 @@ import { z } from "zod";
 import { logger } from "./logger.js";
 
 /**
- * zod schema for a single provider entry in providers.yaml.
+ * Caps YAML anchor expansion to prevent a "YAML bomb" mounted file from
+ * exhausting memory. 100 is well above any realistic legitimate use.
  */
-const providerSchema = z
+const YAML_PARSE_OPTIONS = { maxAliasCount: 100 } as const;
+
+/**
+ * zod schema for a single provider entry in providers.yaml.
+ * Exported so the API server can validate incoming PUT payloads against
+ * the same rules the poller enforces.
+ */
+export const providerSchema = z
   .object({
     key: z.string().regex(/^[a-z0-9-]+$/, "key may only contain a-z, 0-9 and -"),
     displayName: z.string().min(1),
@@ -46,7 +54,7 @@ const providerSchema = z
 /**
  * zod schema for the entire providers.yaml.
  */
-const configSchema = z
+export const configSchema = z
   .object({
     chatTarget: z.enum(["googleChat", "teams"]),
     providers: z.array(providerSchema).min(1, "At least one provider must be configured"),
@@ -83,31 +91,14 @@ function resolveConfigPath(configPath?: string): string {
 }
 
 /**
- * Parses and validates the configuration without side effects.
- * Returns a Result. Use this from CLI subcommands and the API server,
- * where exit-on-error is wrong.
+ * Validates a YAML string in-memory and returns a Result. Used by the
+ * API server's configWriter to validate proposed edits before writing
+ * them to disk, without the temp-file dance.
  */
-export function parseConfig(configPath?: string): ConfigResult {
-  const filePath = resolveConfigPath(configPath);
-
-  let raw: string;
-  try {
-    raw = readFileSync(filePath, "utf-8");
-  } catch (err) {
-    return {
-      ok: false,
-      error: {
-        kind: "read",
-        filePath,
-        message: `Configuration file could not be loaded: ${(err as Error).message}`,
-        cause: err,
-      },
-    };
-  }
-
+export function parseConfigFromString(raw: string, filePath = "<in-memory>"): ConfigResult {
   let parsed: unknown;
   try {
-    parsed = parseYaml(raw);
+    parsed = parseYaml(raw, YAML_PARSE_OPTIONS);
   } catch (err) {
     return {
       ok: false,
@@ -135,6 +126,32 @@ export function parseConfig(configPath?: string): ConfigResult {
   }
 
   return { ok: true, config: result.data };
+}
+
+/**
+ * Parses and validates the configuration without side effects.
+ * Returns a Result. Use this from CLI subcommands and the API server,
+ * where exit-on-error is wrong.
+ */
+export function parseConfig(configPath?: string): ConfigResult {
+  const filePath = resolveConfigPath(configPath);
+
+  let raw: string;
+  try {
+    raw = readFileSync(filePath, "utf-8");
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        kind: "read",
+        filePath,
+        message: `Configuration file could not be loaded: ${(err as Error).message}`,
+        cause: err,
+      },
+    };
+  }
+
+  return parseConfigFromString(raw, filePath);
 }
 
 /**

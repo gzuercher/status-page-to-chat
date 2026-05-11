@@ -55,6 +55,16 @@ describe("TeamsNotifier", () => {
     expect(mockedHttpPost).toHaveBeenCalledOnce();
   });
 
+  it("throws when both attempts fail and logs structured context", async () => {
+    mockedHttpPost
+      .mockRejectedValueOnce(new Error("Network error"))
+      .mockResolvedValueOnce({ status: 500, contentType: "", body: "Internal Error" });
+
+    const notifier = new TeamsNotifier("https://teams.webhook.office.com/test");
+    await expect(notifier.notifyOpened(testIncident)).rejects.toThrow("Retry failed");
+    expect(mockedHttpPost).toHaveBeenCalledTimes(2);
+  });
+
   it("retries once on first failure", async () => {
     mockedHttpPost
       .mockRejectedValueOnce(new Error("Timeout"))

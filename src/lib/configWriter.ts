@@ -1,7 +1,12 @@
-import { readFileSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, renameSync } from "node:fs";
 import { resolve } from "node:path";
 import * as YAML from "yaml";
-import { parseConfig, type ProviderConfig } from "./config.js";
+import { parseConfigFromString, type ProviderConfig } from "./config.js";
+
+// maxAliasCount lives on ToJSOptions, not ParseOptions — anchor expansion
+// happens during the toJS conversion (i.e. inside parseConfigFromString,
+// which calls yaml.parse()). parseDocument keeps anchors as aliases in the
+// document tree, so it does not need the limit here.
 
 function resolveConfigPath(configPath?: string): string {
   return (
@@ -114,26 +119,18 @@ export function removeProviderFromYaml(key: string, configPath?: string): boolea
 }
 
 /**
- * Re-parses the serialised document through parseConfig() so the same
- * zod schema that the poller uses gates every write. Keeps schema
- * enforcement in one place.
+ * Re-validates the serialised document in-memory through parseConfigFromString
+ * so the same zod schema that the poller uses gates every write. Avoids the
+ * temp-file dance — important when the YAML lives on a read-only mount
+ * where only the target file is writable.
  */
 function validateOrThrow(doc: YAML.Document.Parsed, filePath: string): void {
-  const tmp = `${filePath}.validate.${process.pid}.${Date.now()}`;
-  writeFileSync(tmp, doc.toString(), "utf-8");
-  try {
-    const result = parseConfig(tmp);
-    if (!result.ok) {
-      const detail = result.error.fieldErrors
-        ? JSON.stringify(result.error.fieldErrors)
-        : result.error.message;
-      throw new Error(`Resulting config is invalid: ${detail}`);
-    }
-  } finally {
-    try {
-      unlinkSync(tmp);
-    } catch {
-      // best-effort cleanup
-    }
+  const serialised = doc.toString();
+  const result = parseConfigFromString(serialised, filePath);
+  if (!result.ok) {
+    const detail = result.error.fieldErrors
+      ? JSON.stringify(result.error.fieldErrors)
+      : result.error.message;
+    throw new Error(`Resulting config is invalid: ${detail}`);
   }
 }

@@ -1,6 +1,6 @@
 # Management API
 
-The container exposes a small REST API on port `8080` for runtime maintenance: listing and editing the monitored providers, validating payloads, and inspecting the most recent poll result. It is the same surface that Langdock (or any other OpenAPI-aware LLM tool) speaks to — see [LANGDOCK.md](LANGDOCK.md) for a chat-driven setup.
+The container exposes a small REST API on port `8080` for runtime maintenance: listing and editing the monitored providers, validating payloads, and inspecting the most recent poll result. The OpenAPI 3.1 description at `/api/openapi.json` makes it consumable by any tool that understands OpenAPI — including LLM platforms like Langdock, OpenWebUI, ChatGPT Custom GPTs, Claude Desktop (via a custom connector), n8n, or your own scripts. See [LLM-INTEGRATION.md](LLM-INTEGRATION.md) for chat-driven setups.
 
 The API edits the live `providers.yaml` on the host. The next poll cycle (within 5 minutes) picks up the new file. If a write would produce an invalid config, it is rejected before the file is touched — the running container is never left in a broken state.
 
@@ -8,9 +8,11 @@ The API edits the live `providers.yaml` on the host. The next poll cycle (within
 
 By default a bearer token is required. Set `API_TOKEN` in your environment (e.g. via `.env` next to `docker-compose.yml`) to any reasonably random string and pass it as `Authorization: Bearer <token>` on every request.
 
-To disable auth (only acceptable on a trusted private network), set `API_AUTH_DISABLED=true`. The startup log will warn that the API is open.
+To disable auth (only acceptable on a trusted private network), set `API_AUTH_DISABLED=true` (literal lowercase). The startup log will warn that the API is open.
 
 Two endpoints are always public: `/api/health` and `/api/openapi.json`.
+
+Every authentication failure — missing header, malformed header, wrong token, or `API_TOKEN` not configured — returns the same `401 Unauthorized` with body `{"error":"unauthorized"}`. There is no oracle that would let a caller distinguish "your token is wrong" from "the server forgot to set a token". The token comparison is constant-time.
 
 ## Endpoints
 
@@ -24,7 +26,7 @@ Two endpoints are always public: `/api/health` and `/api/openapi.json`.
 | `POST` | `/api/providers/validate` | Validate a payload without saving. |
 | `GET` | `/api/incidents/open` | Open incidents across all providers, from local state. |
 | `GET` | `/api/last-run` | Summary of the most recent poll cycle. 404 if none yet. |
-| `GET` | `/api/openapi.json` | OpenAPI 3.1 spec — point Langdock at this URL. |
+| `GET` | `/api/openapi.json` | OpenAPI 3.1 spec — point your LLM platform at this URL. |
 
 ## Examples
 

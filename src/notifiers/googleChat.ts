@@ -89,15 +89,27 @@ export class GoogleChatNotifier implements Notifier {
       // Single retry with backoff
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      const response = await httpPost(this.webhookUrl, payload);
-      if (response.status < 200 || response.status >= 300) {
-        throw new Error(`Retry failed: HTTP ${response.status}: ${response.body}`);
+      try {
+        const response = await httpPost(this.webhookUrl, payload);
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`Retry failed: HTTP ${response.status}: ${response.body}`);
+        }
+        logger.info(
+          { provider: incident.providerKey, type, incidentId: incident.externalId },
+          "Google Chat message sent (after retry)",
+        );
+      } catch (retryError) {
+        logger.error(
+          {
+            provider: incident.providerKey,
+            type,
+            incidentId: incident.externalId,
+            err: retryError,
+          },
+          "Google Chat message failed on retry",
+        );
+        throw retryError;
       }
-
-      logger.info(
-        { provider: incident.providerKey, type, incidentId: incident.externalId },
-        "Google Chat message sent (after retry)",
-      );
     }
   }
 }
