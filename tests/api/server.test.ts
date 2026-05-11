@@ -102,6 +102,27 @@ describe("API server", () => {
     expect(r.status).toBe(401);
   });
 
+  it("returns the same generic 401 for every auth failure mode (no oracle)", async () => {
+    const missing = await request("/api/providers", { token: null });
+    const malformed = await fetch(`${baseUrl}/api/providers`, {
+      headers: { Authorization: "NotBearer foo" },
+    });
+    const wrong = await request("/api/providers", { token: "definitely-wrong" });
+
+    expect(missing.status).toBe(401);
+    expect(malformed.status).toBe(401);
+    expect(wrong.status).toBe(401);
+
+    // All three responses use the same generic body — nothing distinguishes
+    // "missing header" from "wrong token" from "token unset on server".
+    const missingBody = missing.body as { error: string };
+    const malformedBody = JSON.parse(await malformed.text()) as { error: string };
+    const wrongBody = wrong.body as { error: string };
+    expect(missingBody.error).toBe("unauthorized");
+    expect(malformedBody.error).toBe("unauthorized");
+    expect(wrongBody.error).toBe("unauthorized");
+  });
+
   it("lists current providers", async () => {
     const r = await request("/api/providers");
     expect(r.status).toBe(200);

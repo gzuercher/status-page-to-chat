@@ -1,6 +1,5 @@
-import { closeStore, createStore, getMetadata } from "../state/store.js";
+import { LAST_RUN_METADATA_KEY, closeStore, createStore, getMetadata } from "../state/store.js";
 
-const LAST_RUN_METADATA_KEY = "last_run_at";
 const DEFAULT_MAX_AGE_SECONDS = 15 * 60;
 
 /**

@@ -1,7 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { parseConfig } from "../lib/config.js";
+import { timingSafeEqual } from "node:crypto";
+import { parseConfig, providerSchema, type ProviderConfig } from "../lib/config.js";
 import { upsertProviderInYaml, removeProviderFromYaml } from "../lib/configWriter.js";
 import { logger } from "../lib/logger.js";
 import type { RunSummary, StoredIncident } from "../lib/types.js";
@@ -43,38 +44,8 @@ export type ApiContext = {
   lastRun: LastRunRef;
 };
 
-/**
- * Mirrors the zod schema in src/lib/config.ts. Duplicated here so that
- * PUT/validate can return precise field errors per request without having
- * to re-export schemas across the module boundary.
- */
-const providerPayloadSchema = z
-  .object({
-    key: z.string().regex(/^[a-z0-9-]+$/),
-    displayName: z.string().min(1),
-    adapter: z.enum([
-      "atlassian-statuspage",
-      "google-workspace",
-      "metanet-rss",
-      "wedos-status-online",
-      "github-issues",
-    ]),
-    baseUrl: z.string().url().optional(),
-    owner: z.string().optional(),
-    repo: z.string().optional(),
-    componentFilter: z.union([z.string(), z.array(z.string())]).optional(),
-    userAgent: z.string().optional(),
-  })
-  .refine((p) => {
-    if (p.adapter === "atlassian-statuspage" || p.adapter === "wedos-status-online") {
-      return !!p.baseUrl;
-    }
-    return true;
-  }, "baseUrl is required for atlassian-statuspage and wedos-status-online")
-  .refine(
-    (p) => p.adapter !== "github-issues" || (!!p.owner && !!p.repo),
-    "owner and repo are required for github-issues",
-  );
+/** Re-export so existing call sites keep working. */
+const providerPayloadSchema = providerSchema;
 
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   const body = JSON.stringify(payload);
@@ -96,18 +67,28 @@ function sendNoContent(res: ServerResponse): void {
 async function readBody(req: IncomingMessage, maxBytes = 64 * 1024): Promise<string> {
   return new Promise((resolvePromise, rejectPromise) => {
     let total = 0;
+    let aborted = false;
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => {
+      if (aborted) return;
       total += chunk.length;
       if (total > maxBytes) {
+        aborted = true;
         rejectPromise(new Error("payload too large"));
         req.destroy();
         return;
       }
       chunks.push(chunk);
     });
-    req.on("end", () => resolvePromise(Buffer.concat(chunks).toString("utf-8")));
-    req.on("error", rejectPromise);
+    req.on("end", () => {
+      if (aborted) return;
+      resolvePromise(Buffer.concat(chunks).toString("utf-8"));
+    });
+    req.on("error", (err) => {
+      if (aborted) return;
+      aborted = true;
+      rejectPromise(err);
+    });
   });
 }
 
@@ -132,27 +113,38 @@ async function parseJsonBody<T>(req: IncomingMessage, res: ServerResponse): Prom
 }
 
 /**
+ * Constant-time string comparison via timingSafeEqual. Avoids leaking the
+ * configured token length or prefix through response timing on short tokens.
+ */
+function tokensMatch(presented: string, expected: string): boolean {
+  const a = Buffer.from(presented);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+/**
  * Bearer-token check. Required by default; bypassed only when the operator
  * explicitly sets API_AUTH_DISABLED=true (with a startup warning logged in
  * configureAuth()). Returns true when the request may proceed.
+ *
+ * Every failure mode returns the same 401 with a generic message — no
+ * 503/401 oracle that would tell an attacker whether the service is open,
+ * mis-configured, or simply rejecting their token.
  */
 function checkAuth(req: IncomingMessage, res: ServerResponse): boolean {
   if (process.env.API_AUTH_DISABLED === "true") return true;
 
   const token = process.env.API_TOKEN;
-  if (!token) {
-    sendError(res, 503, "API is not configured (API_TOKEN unset and auth not explicitly disabled)");
-    return false;
-  }
-
   const header = req.headers["authorization"];
-  if (!header || !header.startsWith("Bearer ")) {
-    sendError(res, 401, "missing bearer token");
+
+  if (!token || !header || !header.startsWith("Bearer ")) {
+    sendError(res, 401, "unauthorized");
     return false;
   }
   const presented = header.slice("Bearer ".length).trim();
-  if (presented !== token) {
-    sendError(res, 401, "invalid bearer token");
+  if (!tokensMatch(presented, token)) {
+    sendError(res, 401, "unauthorized");
     return false;
   }
   return true;
@@ -185,7 +177,7 @@ function getOpenapiDocument(): string {
   return cachedOpenapi;
 }
 
-type Provider = z.infer<typeof providerPayloadSchema>;
+type Provider = ProviderConfig;
 
 function listProviders(): Provider[] {
   const result = parseConfig();

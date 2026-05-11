@@ -86,7 +86,7 @@ pnpm test
 WEBHOOK_URL='https://webhook.site/<your-slot>' STATE_DB_PATH=./data/state.sqlite pnpm start
 ```
 
-Requirements: Node.js 20+, pnpm (via `corepack enable`). Optional: Docker for container work.
+Requirements: Node.js 22.19+, pnpm (via `corepack enable`). Optional: Docker for container work.
 
 ## Shipping a change
 

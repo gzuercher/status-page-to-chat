@@ -83,7 +83,7 @@ The commands and agents defined in the Raptus Playbook are also available here:
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22.19+
 - pnpm (`npm i -g pnpm`)
 - Azure Functions Core Tools (`npm i -g azure-functions-core-tools@4 --unsafe-perm true`)
 - Azurite as local storage emulator (`npm i -g azurite`)
