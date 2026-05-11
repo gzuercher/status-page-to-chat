@@ -2,15 +2,18 @@
 
 This guide is for the person who maintains the list of monitored status pages — typically a backoffice or operations role. No SSH, no Docker commands. They add providers, remove them, and check on the system through a chat interface backed by an LLM.
 
-The container exposes a small **REST API** described by an **OpenAPI 3.1** spec. Any LLM platform that understands OpenAPI (sometimes called "Actions", "Tools", or a "Custom Connector") can drive it. This document covers the generic shape of the integration plus concrete walkthroughs for the platforms we've used.
+The container exposes a small **REST API** described by an **OpenAPI 3.1** spec at `/api/openapi.json`. Any LLM platform that understands OpenAPI tools (sometimes also called "Actions", "Tools", "Custom Connectors", or "Skills") can drive it. Many modern LLM platforms support both **OpenAPI** and **MCP (Model Context Protocol)** as tool-integration mechanisms — for those, either route works against this service:
 
-> A note on MCP: this service does **not** ship a Model Context Protocol server. We chose OpenAPI because the API is a thin CRUD layer over a YAML file — the LLM provides the intelligence — and OpenAPI is simpler to host and easier to plug into the most common platforms. If your platform of choice only speaks MCP, you can run a generic OpenAPI-to-MCP bridge (community projects exist) in front of `/api/openapi.json`.
+- **OpenAPI directly** — paste `/api/openapi.json`, configure bearer auth, done. Simplest path.
+- **MCP via OpenAPI bridge** — if your platform only speaks MCP, run a generic OpenAPI-to-MCP bridge (community projects exist) in front of `/api/openapi.json`. The bridge auto-derives MCP tools from the spec.
+
+This service does **not** ship a native MCP server. We chose OpenAPI because the API is a thin CRUD layer over a YAML file — the LLM provides the intelligence, the service has none. OpenAPI is easier to host, easier to test, and natively understood by most enterprise LLM platforms. Native MCP would buy nothing here, would add another listener to maintain, and any platform that wants MCP can use a bridge.
 
 ## What the maintainer needs
 
 1. The **base URL** of the running status-page-to-chat instance (e.g. `https://status-bot.example.com` or `http://192.168.1.20:8080`). Your administrator sets this up.
 2. The **`API_TOKEN`** — the bearer token. Treat it like a password.
-3. An account on an **LLM platform** that supports OpenAPI tools (see "Concrete walkthroughs" below).
+3. An account on an **LLM platform** that supports OpenAPI tools (or MCP via a bridge — see "Concrete walkthroughs" below).
 
 ## Generic setup (any OpenAPI-aware platform)
 
@@ -46,13 +49,15 @@ The LLM figures out which adapter to use based on URL patterns. If unsure it wil
 
 ### Langdock
 
-Langdock is a German enterprise LLM platform with built-in OpenAPI tool support.
+Langdock is a German enterprise LLM platform. It supports **both OpenAPI and MCP** for tool integrations — either works against this service. OpenAPI is the lower-friction route:
 
 1. Create a new assistant.
-2. Open **Tools** (or **Actions**) and choose **Add tool → OpenAPI**.
+2. Open **Tools** (or **Actions**) and choose **Add tool → OpenAPI** (the wording may also be "Custom Connector").
 3. Paste the spec URL: `https://YOUR-HOST/api/openapi.json`.
 4. Choose **Bearer token** authentication and paste the `API_TOKEN`.
 5. Save.
+
+If you prefer to register the tool as an MCP server in Langdock instead, run a generic OpenAPI-to-MCP bridge in front of `/api/openapi.json` and point Langdock's MCP-server config at the bridge.
 
 ### ChatGPT (Custom GPT)
 
