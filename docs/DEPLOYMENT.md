@@ -66,30 +66,21 @@ cd /volume1/docker/status-page-to-chat
 
 > On Synology, `/volume1/docker/<name>` is the convention used by Container Manager projects. On QNAP, `/share/Container/<name>`. On a generic VM, anywhere your user can write.
 
-### 3. Drop the three files
+### 3. Drop two files
 
 ```bash
 # The compose file
 curl -O https://raw.githubusercontent.com/gzuercher/status-page-to-chat/main/docker-compose.yml
 
-# The provider list — defaults to empty, you add entries later
-curl -o providers.yaml https://raw.githubusercontent.com/gzuercher/status-page-to-chat/main/providers.yaml.example
-
 # Secrets
-cat > .env <<'EOF'
+cat > .env <<EOF
 WEBHOOK_URL=https://chat.googleapis.com/v1/spaces/...
-API_TOKEN=replace-with-output-of-openssl-rand-hex-32
+API_TOKEN=$(openssl rand -hex 32)
 EOF
 chmod 600 .env
 ```
 
-The `providers.yaml` you just downloaded contains `providers: []` and commented-out examples. The service starts in that "zero providers configured" state — no chat messages until you fill in entries. Add them either by uncommenting/editing this file (next poll cycle picks it up) or via `PUT /api/providers/<key>` on the management API after the container is running.
-
-Generate a strong API token:
-
-```bash
-openssl rand -hex 32
-```
+The container ships with an empty `providers.yaml` baked in; on first start it seeds that file into the data volume. No host-side provider file needed. The service starts in that "zero providers configured" state — no chat messages until you add entries via the API or via `docker compose cp`.
 
 ### 4. Start the container
 

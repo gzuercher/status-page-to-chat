@@ -12,7 +12,7 @@
     "start": "node dist/src/main.js"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3"]
+    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
   },
   "engines": {
     "node": ">=22.19.0"

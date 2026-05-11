@@ -16,7 +16,6 @@ You need a Docker host. Anywhere will do — a Synology, a Raspberry Pi, a small
    ```bash
    mkdir status-page-to-chat && cd status-page-to-chat
    curl -O https://raw.githubusercontent.com/gzuercher/status-page-to-chat/main/docker-compose.yml
-   curl -o providers.yaml https://raw.githubusercontent.com/gzuercher/status-page-to-chat/main/providers.yaml.example
    cat > .env <<EOF
    WEBHOOK_URL=https://chat.googleapis.com/v1/spaces/...
    API_TOKEN=$(openssl rand -hex 32)
@@ -25,12 +24,12 @@ You need a Docker host. Anywhere will do — a Synology, a Raspberry Pi, a small
    docker compose up -d
    ```
 
-   The container is now running with an **empty provider list**. Logs will show `providerCount: 0` and quiet poll cycles. No webhook traffic until you add at least one entry. `API_TOKEN` is the bearer credential the management API will check — save the value somewhere safe (it's also in `.env`).
+   That's literally it. The container brings its own empty `providers.yaml` and seeds it into the data volume on first start. Logs show `providerCount: 0` and quiet poll cycles. No webhook traffic until you add at least one provider. `API_TOKEN` is the bearer credential for the management API — save the value somewhere safe.
 
 3. **Add the services you want to watch**. Two ways:
 
-   - **Edit `providers.yaml` on the host** — see the examples already commented in the file. Save, wait up to 5 minutes for the next poll cycle.
-   - **Use the management API** — `PUT /api/providers/<key>` with a small JSON body. Convenient from a chat-driven LLM assistant; see [docs/LLM-INTEGRATION.md](docs/LLM-INTEGRATION.md).
+   - **Use the management API** — `PUT /api/providers/<key>` with a small JSON body. Easiest from a chat-driven LLM assistant; see [docs/LLM-INTEGRATION.md](docs/LLM-INTEGRATION.md). `curl` examples in [docs/API.md](docs/API.md).
+   - **Edit the file directly** — `docker compose cp status-poller:/data/providers.yaml ./providers.yaml`, edit, `docker compose cp ./providers.yaml status-poller:/data/providers.yaml`. The next poll cycle (within 5 min) picks it up automatically.
 
 4. **Watch the logs**: `docker compose logs -f` — you should see `Configuration loaded`, `Poller scheduled`, and a `run_summary` line within ~30 seconds.
 
@@ -52,7 +51,18 @@ That's it. No cloud account, no fork, no infrastructure setup. Adding providers 
 
 ## Configuration
 
-The default deploy mounts `./providers.yaml` from the host into the container at `/data/providers.yaml`. Edit that file directly to add, remove, or adjust providers — the next poll cycle (max 5 min) picks up changes automatically. If the edited file is invalid, the container keeps running on the previous configuration and logs a warning, so a typo never takes the service down.
+The container seeds an empty `providers.yaml` into its named data volume on first start (template baked into the image). Edit the live file via the REST API or `docker compose cp` — the next poll cycle (max 5 min) picks up changes automatically. If an edit produces invalid YAML, the container keeps running on the previous configuration and logs a warning, so a typo never takes the service down.
+
+If you prefer a host-side bind mount (so you can edit `providers.yaml` in your usual editor), add a `docker-compose.override.yml` next to the compose file:
+
+```yaml
+services:
+  status-poller:
+    volumes:
+      - ./providers.yaml:/data/providers.yaml:rw
+```
+
+Then `docker compose cp status-poller:/data/providers.yaml ./providers.yaml` once to extract the seeded default, and `docker compose up -d` again. Subsequent edits live on the host.
 
 For schema details and per-adapter options see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 

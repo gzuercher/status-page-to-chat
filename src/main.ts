@@ -1,3 +1,4 @@
+import { existsSync, copyFileSync } from "node:fs";
 import { Cron } from "croner";
 import { loadConfig, parseConfig, type AppConfig } from "./lib/config.js";
 import { logger } from "./lib/logger.js";
@@ -130,12 +131,43 @@ async function runPoll(
 const CRON_EXPRESSION = process.env.POLL_CRON ?? "*/5 * * * *";
 
 /**
+ * Seeds the providers.yaml at CONFIG_PATH from PROVIDERS_TEMPLATE_PATH
+ * on first start. Enables "docker compose up -d with zero host files" —
+ * the named state volume starts empty, the template gets copied in once.
+ * Subsequent restarts find the file already there and skip.
+ *
+ * Both env vars are set by the Dockerfile in the container image.
+ * Outside the container they are typically unset, and this function is
+ * a no-op.
+ */
+function seedProvidersFileIfMissing(): void {
+  const configPath = process.env.CONFIG_PATH;
+  const templatePath = process.env.PROVIDERS_TEMPLATE_PATH;
+  if (!configPath || !templatePath) return;
+  if (existsSync(configPath)) return;
+  if (!existsSync(templatePath)) {
+    logger.warn(
+      { configPath, templatePath },
+      "Seed template not found, skipping providers.yaml bootstrap",
+    );
+    return;
+  }
+  try {
+    copyFileSync(templatePath, configPath);
+    logger.info({ from: templatePath, to: configPath }, "Seeded providers.yaml from template");
+  } catch (err) {
+    logger.error({ err, configPath, templatePath }, "Failed to seed providers.yaml");
+  }
+}
+
+/**
  * Container entrypoint: loads config, opens resources, runs one poll
  * immediately (so container logs show activity fast), then schedules
  * subsequent runs. Handles SIGTERM/SIGINT for clean shutdown on
  * container restart.
  */
 async function main(): Promise<void> {
+  seedProvidersFileIfMissing();
   let currentConfig = loadConfig();
   const notifier = createNotifier(currentConfig);
   const store = createStore();
