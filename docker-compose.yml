@@ -17,17 +17,21 @@ services:
       # USER_AGENT: "status-page-to-chat/1.0.0 (+https://example.com; ops@example.com)"
       # HEALTH_MAX_AGE_SECONDS: "900"
     ports:
-      # Management API for Langdock / curl. Bind to localhost if you put
-      # a reverse proxy in front; expose to the LAN if you trust your
-      # network.
+      # Management API. Bind to localhost if you put a reverse proxy in
+      # front; expose to the LAN if you trust your network.
       - "127.0.0.1:8080:8080"
     volumes:
-      # SQLite state. Survives container restarts and image updates.
+      # Holds both state.sqlite AND providers.yaml. The container seeds
+      # an empty providers.yaml from /app/providers.yaml.example on first
+      # start, so `docker compose up -d` works with no host-side files.
+      #
+      # To inspect/edit providers from the host: use the REST API (see
+      # docs/API.md, docs/LLM-INTEGRATION.md), or
+      #   docker compose cp status-poller:/data/providers.yaml ./providers.yaml
+      #   $EDITOR providers.yaml
+      #   docker compose cp ./providers.yaml status-poller:/data/providers.yaml
+      # (next poll cycle within 5 min picks the change up).
       - state:/data
-      # The list of monitored providers. Edit this file on the host —
-      # the next poll cycle (every 5 min) picks up the change. Copy
-      # providers.yaml.example to providers.yaml before first start.
-      - ./providers.yaml:/data/providers.yaml:rw
     logging:
       driver: json-file
       options:

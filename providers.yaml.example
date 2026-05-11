@@ -1,13 +1,15 @@
 # status-page-to-chat — provider configuration.
 #
-# This file lives next to docker-compose.yml on the host and is mounted
-# into the container at /data/providers.yaml. The default is empty — the
-# service starts in "no providers configured" state and quietly polls
-# nothing until you add entries. Two ways to add them:
+# This file lives inside the container at /data/providers.yaml. On first
+# start the container seeds it from this template, so `docker compose
+# up -d` works with no host-side setup. The default is empty — the
+# service polls nothing until you add entries. Two ways to add them:
 #
-#   - edit this file directly (next poll cycle within 5 min picks it up); or
 #   - call PUT /api/providers/<key> on the management API (e.g. via a
-#     chat-driven LLM assistant — see docs/LLM-INTEGRATION.md).
+#     chat-driven LLM assistant — see docs/LLM-INTEGRATION.md); or
+#   - `docker compose cp status-poller:/data/providers.yaml ./providers.yaml`,
+#     edit on the host, `docker compose cp` back. Next poll cycle
+#     (within 5 min) picks it up automatically.
 #
 # Schema and adapter docs: docs/CONFIGURATION.md, docs/ADAPTERS.md.
 

@@ -37,11 +37,17 @@ COPY --from=builder --chown=app:app /app/node_modules ./node_modules
 COPY --from=builder --chown=app:app /app/dist ./dist
 COPY --from=builder --chown=app:app /app/package.json ./package.json
 COPY --chown=app:app config ./config
+# Seed template for first-run bootstrap. main.ts copies this to
+# /data/providers.yaml when CONFIG_PATH points there and the file is
+# missing — that way `docker compose up -d` works with zero host files.
+COPY --chown=app:app providers.yaml.example ./providers.yaml.example
 
 USER app
 
 ENV NODE_ENV=production \
-    STATE_DB_PATH=/data/state.sqlite
+    STATE_DB_PATH=/data/state.sqlite \
+    CONFIG_PATH=/data/providers.yaml \
+    PROVIDERS_TEMPLATE_PATH=/app/providers.yaml.example
 
 VOLUME ["/data"]
 
