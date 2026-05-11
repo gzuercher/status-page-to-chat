@@ -62,40 +62,103 @@ const configSchema = z
 export type ProviderConfig = z.infer<typeof providerSchema>;
 export type AppConfig = z.infer<typeof configSchema>;
 
+export type ConfigErrorKind = "read" | "parse" | "validate";
+
+export type ConfigError = {
+  kind: ConfigErrorKind;
+  filePath: string;
+  message: string;
+  /** zod field-level errors when kind === "validate". */
+  fieldErrors?: Record<string, string[]>;
+  /** Underlying error for read/parse failures. */
+  cause?: unknown;
+};
+
+export type ConfigResult = { ok: true; config: AppConfig } | { ok: false; error: ConfigError };
+
+function resolveConfigPath(configPath?: string): string {
+  return (
+    configPath ?? process.env.CONFIG_PATH ?? resolve(process.cwd(), "config", "providers.yaml")
+  );
+}
+
 /**
- * Loads and validates the configuration from config/providers.yaml.
- * On validation error, logs and exits the process.
+ * Parses and validates the configuration without side effects.
+ * Returns a Result. Use this from CLI subcommands and the API server,
+ * where exit-on-error is wrong.
  */
-export function loadConfig(configPath?: string): AppConfig {
-  const filePath =
-    configPath ?? process.env.CONFIG_PATH ?? resolve(process.cwd(), "config", "providers.yaml");
+export function parseConfig(configPath?: string): ConfigResult {
+  const filePath = resolveConfigPath(configPath);
 
   let raw: string;
   try {
     raw = readFileSync(filePath, "utf-8");
   } catch (err) {
-    logger.fatal({ err, filePath }, "Configuration file could not be loaded");
-    process.exit(1);
+    return {
+      ok: false,
+      error: {
+        kind: "read",
+        filePath,
+        message: `Configuration file could not be loaded: ${(err as Error).message}`,
+        cause: err,
+      },
+    };
   }
 
   let parsed: unknown;
   try {
     parsed = parseYaml(raw);
   } catch (err) {
-    logger.fatal({ err, filePath }, "YAML could not be parsed");
-    process.exit(1);
+    return {
+      ok: false,
+      error: {
+        kind: "parse",
+        filePath,
+        message: `YAML could not be parsed: ${(err as Error).message}`,
+        cause: err,
+      },
+    };
   }
 
   const result = configSchema.safeParse(parsed);
   if (!result.success) {
-    logger.fatal({ errors: result.error.flatten(), filePath }, "Configuration is invalid");
+    const flat = result.error.flatten();
+    return {
+      ok: false,
+      error: {
+        kind: "validate",
+        filePath,
+        message: "Configuration is invalid",
+        fieldErrors: { _root: flat.formErrors, ...flat.fieldErrors },
+      },
+    };
+  }
+
+  return { ok: true, config: result.data };
+}
+
+/**
+ * Loads and validates the configuration. On error, logs and exits.
+ * Thin wrapper around parseConfig() for the long-running poller entrypoint.
+ */
+export function loadConfig(configPath?: string): AppConfig {
+  const result = parseConfig(configPath);
+  if (!result.ok) {
+    logger.fatal(
+      {
+        err: result.error.cause,
+        filePath: result.error.filePath,
+        errors: result.error.fieldErrors,
+      },
+      result.error.message,
+    );
     process.exit(1);
   }
 
   logger.info(
-    { providerCount: result.data.providers.length, chatTarget: result.data.chatTarget },
+    { providerCount: result.config.providers.length, chatTarget: result.config.chatTarget },
     "Configuration loaded",
   );
 
-  return result.data;
+  return result.config;
 }

@@ -1,5 +1,5 @@
 import { Cron } from "croner";
-import { loadConfig, type AppConfig } from "./lib/config.js";
+import { loadConfig, parseConfig, type AppConfig } from "./lib/config.js";
 import { logger } from "./lib/logger.js";
 import type { Notifier, RunSummary } from "./lib/types.js";
 import { createAdapter } from "./adapters/index.js";
@@ -9,9 +9,15 @@ import {
   createStore,
   diffIncidents,
   getStoredIncidents,
+  setMetadata,
   upsertIncident,
   type Store,
 } from "./state/store.js";
+import { runValidate } from "./cli/validate.js";
+import { runHealthcheck } from "./cli/health.js";
+import { startApiServer, type LastRunRef } from "./api/server.js";
+
+export const LAST_RUN_METADATA_KEY = "last_run_at";
 
 /**
  * Runs one full poll cycle:
@@ -24,7 +30,12 @@ import {
  * run never throws, it always produces a structured `run_summary` log
  * entry so the caller can observe the run outcome.
  */
-async function runPoll(config: AppConfig, notifier: Notifier, store: Store): Promise<void> {
+async function runPoll(
+  config: AppConfig,
+  notifier: Notifier,
+  store: Store,
+  lastRun?: LastRunRef,
+): Promise<void> {
   const startTime = Date.now();
 
   const summary: RunSummary = {
@@ -104,6 +115,15 @@ async function runPoll(config: AppConfig, notifier: Notifier, store: Store): Pro
     logger.fatal({ err }, "Critical error in poll run");
   } finally {
     summary.durationMs = Date.now() - startTime;
+    const completedAt = new Date().toISOString();
+    try {
+      setMetadata(store, LAST_RUN_METADATA_KEY, completedAt);
+    } catch (err) {
+      logger.error({ err }, "Failed to persist last_run_at metadata");
+    }
+    if (lastRun) {
+      lastRun.current = { ...summary, completedAt };
+    }
     logger.info({ run_summary: summary }, "run_summary");
   }
 }
@@ -117,9 +137,13 @@ const CRON_EXPRESSION = process.env.POLL_CRON ?? "*/5 * * * *";
  * container restart.
  */
 async function main(): Promise<void> {
-  const config = loadConfig();
-  const notifier = createNotifier(config);
+  let currentConfig = loadConfig();
+  const notifier = createNotifier(currentConfig);
   const store = createStore();
+  const lastRun: LastRunRef = { current: null };
+
+  const apiPort = Number(process.env.API_PORT ?? 8080);
+  const apiServer = startApiServer({ store, lastRun }, apiPort);
 
   let isRunning = false;
   let shuttingDown = false;
@@ -128,7 +152,19 @@ async function main(): Promise<void> {
     if (shuttingDown || isRunning) return;
     isRunning = true;
     try {
-      await runPoll(config, notifier, store);
+      // Reload config from disk before each cycle so on-host edits and
+      // API-driven changes take effect without a restart. If the file is
+      // currently broken, keep running on the last good config.
+      const reloaded = parseConfig();
+      if (reloaded.ok) {
+        currentConfig = reloaded.config;
+      } else {
+        logger.warn(
+          { reason: reloaded.error.message, filePath: reloaded.error.filePath },
+          "Config reload failed, continuing with previous config",
+        );
+      }
+      await runPoll(currentConfig, notifier, store, lastRun);
     } finally {
       isRunning = false;
     }
@@ -148,6 +184,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     logger.info({ signal }, "Shutdown signal received, stopping scheduler");
     job.stop();
+    apiServer.close();
 
     const waitForRun = (): void => {
       if (!isRunning) {
@@ -165,7 +202,20 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
-main().catch((err: unknown) => {
-  logger.fatal({ err }, "Poller failed to start");
-  process.exit(1);
-});
+const subcommand = process.argv[2];
+
+if (subcommand === "validate") {
+  runValidate();
+} else if (subcommand === "health") {
+  runHealthcheck();
+} else if (subcommand === undefined || subcommand === "poll") {
+  main().catch((err: unknown) => {
+    logger.fatal({ err }, "Poller failed to start");
+    process.exit(1);
+  });
+} else {
+  process.stderr.write(
+    `Unknown subcommand: ${subcommand}\n` + `Usage: node dist/src/main.js [poll|validate|health]\n`,
+  );
+  process.exit(2);
+}

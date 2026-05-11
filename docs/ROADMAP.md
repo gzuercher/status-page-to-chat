@@ -88,6 +88,17 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 - [ ] Manually stop container → restart policy kicks in, Portainer event visible
 - [ ] Team acceptance
 
+## Stage 10 — Self-Service Maintenance (V3)
+
+- [x] Management REST API on port 8080, gated by bearer token
+- [x] OpenAPI 3.1 spec exposed at `/api/openapi.json` for Langdock and similar LLM platforms
+- [x] Document-preserving YAML writes (comments survive every edit)
+- [x] Config reload before each poll cycle; broken file does not crash the poller
+- [x] CLI `validate` and `health` subcommands for dry-runs and `HEALTHCHECK`
+- [x] `docs/LANGDOCK.md` walking a non-technical maintainer through the assistant setup
+
+**Done**: backoffice users can manage the watched providers in natural language via Langdock; the project itself stays dumb.
+
 ## Later extensions (deliberately not in V1)
 
 - Update messages between `open` and `resolved` (e.g. "monitoring", "identified")

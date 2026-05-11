@@ -5,16 +5,29 @@ services:
     restart: unless-stopped
     environment:
       WEBHOOK_URL: ${WEBHOOK_URL:?WEBHOOK_URL must be set in .env or stack environment}
+      CONFIG_PATH: /data/providers.yaml
+      # Bearer token guarding the management API. Required unless you set
+      # API_AUTH_DISABLED=true (only do that behind a private network).
+      API_TOKEN: ${API_TOKEN:-}
+      # API_AUTH_DISABLED: "true"
       # Optional overrides:
-      # CONFIG_PATH: /config/providers.yaml
+      # API_PORT: "8080"
       # POLL_CRON: "*/5 * * * *"
       # LOG_LEVEL: info
       # USER_AGENT: "status-page-to-chat/1.0.0 (+https://example.com; ops@example.com)"
+      # HEALTH_MAX_AGE_SECONDS: "900"
+    ports:
+      # Management API for Langdock / curl. Bind to localhost if you put
+      # a reverse proxy in front; expose to the LAN if you trust your
+      # network.
+      - "127.0.0.1:8080:8080"
     volumes:
+      # SQLite state. Survives container restarts and image updates.
       - state:/data
-      # Mount your own providers.yaml if you want to override the bundled
-      # default without forking the repo (and set CONFIG_PATH above):
-      # - ./providers.yaml:/config/providers.yaml:ro
+      # The list of monitored providers. Edit this file on the host —
+      # the next poll cycle (every 5 min) picks up the change. Copy
+      # providers.yaml.example to providers.yaml before first start.
+      - ./providers.yaml:/data/providers.yaml:rw
     logging:
       driver: json-file
       options:
