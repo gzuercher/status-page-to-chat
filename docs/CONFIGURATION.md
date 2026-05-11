@@ -1,6 +1,11 @@
 # Configuration
 
-All runtime configuration lives in **`config/providers.yaml`** in the repo. Changes are versioned, reviewable in pull requests, and become active with the next deployment.
+There are two configuration surfaces:
+
+- **`providers.yaml`** — the list of monitored status pages. With the default Docker Compose setup it lives on the host (next to `docker-compose.yml`) and is bind-mounted into the container at `/data/providers.yaml`. Edit the file and the next poll cycle (within 5 min) picks up the change. The same file can also be edited via the REST API (see [API.md](API.md)) — handy for chat-driven maintenance via any OpenAPI-aware LLM platform; see [LLM-INTEGRATION.md](LLM-INTEGRATION.md).
+- **Environment variables** — set on the container (webhook URL, API token, timing knobs). See the table further down.
+
+The repository also ships `config/providers.yaml` baked into the image, but that's only relevant for the advanced fork-based workflow where you don't want a separate file on the host. The mounted-file path is the documented default.
 
 ## Schema
 
@@ -138,22 +143,28 @@ Everything that is not in `providers.yaml` lives as an environment variable on t
 | Variable | Required | Description |
 |---|---|---|
 | `WEBHOOK_URL` | yes | Google Chat Incoming Webhook **or** Teams (Workflows) webhook URL — matches `chatTarget` |
-| `CONFIG_PATH` | no | Absolute path to an alternative `providers.yaml`. Default: `./config/providers.yaml` inside the image. Use this to mount a host file over the baked-in default. |
+| `CONFIG_PATH` | no | Absolute path to the providers config. Compose sets this to `/data/providers.yaml`. If unset, the image falls back to its baked-in `config/providers.yaml`. |
 | `STATE_DB_PATH` | no | Path to the SQLite file. Default in the container: `/data/state.sqlite`. |
 | `POLL_CRON` | no | Cron expression for the scheduler. Default: `*/5 * * * *`. |
 | `LOG_LEVEL` | no | pino log level (`debug`, `info`, `warn`, `error`). Default: `info`. |
 | `USER_AGENT` | no | Overrides the default User-Agent globally (rarely needed, e.g. for tests). |
+| `API_TOKEN` | no | Bearer token guarding the management REST API. Required unless `API_AUTH_DISABLED=true`. |
+| `API_AUTH_DISABLED` | no | Set to literal `true` to disable API auth entirely (only on trusted networks). |
+| `API_PORT` | no | Port the management API listens on. Default: `8080`. |
+| `HEALTH_MAX_AGE_SECONDS` | no | Healthcheck threshold for "no recent poll" → unhealthy. Default: `900` (15 min). |
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for how these are set in Portainer.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for how these are set with plain Docker Compose or Portainer.
 
-## Adding a status page (workflow)
+## Adding or removing a status page
 
-1. Add a new entry to `config/providers.yaml` with the appropriate adapter (see [ADAPTERS.md](ADAPTERS.md)).
-2. Open a pull request → review by a second person.
-3. After merge: GitHub Actions rebuilds the image and pushes to GHCR as `latest`.
-4. In Portainer → Stacks → status-page-to-chat → **Update the stack** (with re-pull image enabled). In the next poll cycle the new provider is live.
+Three ways, pick what fits:
 
-## Removing a status page
+1. **Edit `providers.yaml` on the host.** The next poll cycle (within 5 min) picks up the change automatically — no restart. Use `docker compose run --rm status-poller node dist/src/main.js validate` to dry-run a change before saving.
+2. **Use the REST API.** `PUT /api/providers/<key>` to add or update, `DELETE /api/providers/<key>` to remove. See [API.md](API.md) and [LLM-INTEGRATION.md](LLM-INTEGRATION.md). Same validation gate, same atomic write, comments in the YAML are preserved.
+3. **Fork-based (advanced).** Edit `config/providers.yaml` in the repo, open a PR, merge → CI rebuilds the image → Portainer/compose pulls the new image. Use this when you want every config change tracked in Git.
 
-- Delete the entry from `providers.yaml` and merge.
-- Optional: remove its rows in SQLite — `DELETE FROM incidents WHERE provider_key = '<key>'`. Otherwise the rows just sit idle.
+To clean up SQLite state for a removed provider (optional, only saves a few rows):
+
+```sql
+DELETE FROM incidents WHERE provider_key = '<key>';
+```

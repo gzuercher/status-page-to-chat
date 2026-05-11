@@ -73,7 +73,7 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 - [x] Multi-stage `Dockerfile` (`node:20-alpine`) with non-root user and `/data` volume
 - [x] `docker-compose.yml` with named volume and log rotation
 
-**Done**: `pnpm test` passes (40 tests); container definition ready to build.
+**Done**: `pnpm test` passes (40 tests at that point; 82 today after API tests and post-merge hardening); container definition ready to build.
 
 ## Stage 8 — CI/CD
 

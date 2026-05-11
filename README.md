@@ -62,9 +62,9 @@ Environment variables you can set:
 | `USER_AGENT` | `status-page-to-chat/<version> (+<repo>)` | Override the outbound User-Agent (e.g. add a contact address) |
 | `HEALTH_MAX_AGE_SECONDS` | `900` | Healthcheck threshold — container is reported unhealthy if no poll completed within this window |
 
-## Configure via chat (Langdock)
+## Configure via chat
 
-You can hand over day-to-day maintenance — adding, removing, and inspecting providers — to a backoffice colleague who never touches the host. The container exposes a small management API; point a Langdock assistant at it, share an `API_TOKEN`, and they manage the watch list in natural language. See [docs/LANGDOCK.md](docs/LANGDOCK.md) for the step-by-step setup and [docs/API.md](docs/API.md) for the underlying endpoints.
+You can hand over day-to-day maintenance — adding, removing, and inspecting providers — to a backoffice colleague who never touches the host. The container ships an OpenAPI-described REST API; point any OpenAPI-aware LLM platform at it (Langdock, ChatGPT Custom GPTs, OpenWebUI, your own assistant) and they manage the watch list in natural language. See [docs/LLM-INTEGRATION.md](docs/LLM-INTEGRATION.md) for platform-specific setup walkthroughs and [docs/API.md](docs/API.md) for the underlying endpoints.
 
 ## Documentation
 
@@ -75,7 +75,7 @@ You can hand over day-to-day maintenance — adding, removing, and inspecting pr
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Specification per status page adapter |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment via Portainer, step by step |
 | [docs/API.md](docs/API.md) | Management API reference with `curl` examples |
-| [docs/LANGDOCK.md](docs/LANGDOCK.md) | Chat-based maintenance for non-technical users |
+| [docs/LLM-INTEGRATION.md](docs/LLM-INTEGRATION.md) | Chat-based maintenance via any OpenAPI-aware LLM platform |
 
 ## Development
 

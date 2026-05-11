@@ -1,6 +1,6 @@
 # Migration: Azure Functions → Docker container on Synology NAS
 
-> ⚠️ **Review recommended** — this document describes a platform change, including infrastructure removal and secret handling. Read and confirm before execution.
+> 🗄️ **Historical record (completed 2026-04-25).** The migration described below was carried out as planned; the project no longer runs on Azure. Preserved here for context on **why** the container stack exists. Current architecture: [ARCHITECTURE.md](ARCHITECTURE.md). Current deployment: [DEPLOYMENT.md](DEPLOYMENT.md). The Node version mentioned in this doc (20) was later upgraded to 22.19+ for undici 8 compatibility.
 
 ## Current status (2026-04-24)
 

@@ -45,9 +45,9 @@ To minimise merge conflicts, the project is divided into **independent zones**:
 
 | Zone | Responsible agent / branch | Typical files |
 |---|---|---|
-| Foundation | `core` | `package.json`, `tsconfig.json`, `host.json`, `src/lib/types.ts` |
-| Config | `config` | `src/lib/config.ts`, `config/providers.yaml` |
-| State | `state` | `src/state/tableStore.ts` |
+| Foundation | `core` | `package.json`, `tsconfig.json`, `Dockerfile`, `src/lib/types.ts` |
+| Config | `config` | `src/lib/config.ts`, `src/lib/configWriter.ts`, `config/providers.yaml` |
+| State | `state` | `src/state/store.ts` |
 | Adapter: Atlassian | `adapter-atlassian` | `src/adapters/atlassianStatuspage.ts` + test |
 | Adapter: Google | `adapter-google` | `src/adapters/googleWorkspace.ts` + test |
 | Adapter: Metanet | `adapter-metanet` | `src/adapters/metanetRss.ts` + test |
@@ -55,11 +55,12 @@ To minimise merge conflicts, the project is divided into **independent zones**:
 | Adapter: GitHub | `adapter-github` | `src/adapters/githubIssues.ts` + test |
 | Notifier: Google Chat | `notifier-gchat` | `src/notifiers/googleChat.ts` + test |
 | Notifier: Teams | `notifier-teams` | `src/notifiers/teams.ts` + test |
-| Orchestration | `orchestration` | `src/functions/poll.ts` |
-| Infrastructure | `infra` | `infra/main.bicep` |
+| Orchestration | `orchestration` | `src/main.ts`, `src/cli/*` |
+| Management API | `api` | `src/api/server.ts`, `src/api/openapi.json` |
+| Container / CI | `infra` | `Dockerfile`, `docker-compose.yml`, `.github/workflows/*` |
 | Docs | `docs` | `docs/*.md` |
 
-**Order matters**: Foundation → Types → Config → State → Adapters/Notifiers (parallel) → Orchestration → Infra. Adapter agents should pause until the foundation is in place.
+**Order matters**: Foundation → Types → Config → State → Adapters/Notifiers (parallel) → Orchestration → API → Container/CI. Adapter agents should pause until the foundation is in place.
 
 ### Coordination
 
@@ -83,10 +84,9 @@ The commands and agents defined in the Raptus Playbook are also available here:
 
 ### Prerequisites
 
-- Node.js 22.19+
-- pnpm (`npm i -g pnpm`)
-- Azure Functions Core Tools (`npm i -g azure-functions-core-tools@4 --unsafe-perm true`)
-- Azurite as local storage emulator (`npm i -g azurite`)
+- Node.js 22.19+ (the SQLite native module needs to match the runtime)
+- pnpm via Corepack (`corepack enable`)
+- Optional: Docker for container-level work
 
 ### Initial setup
 
@@ -94,23 +94,31 @@ The commands and agents defined in the Raptus Playbook are also available here:
 git clone git@github.com:gzuercher/status-page-to-chat.git
 cd status-page-to-chat
 pnpm install
-cp local.settings.json.example local.settings.json  # then adjust values
 ```
 
 ### Development cycle
 
 ```bash
-pnpm build         # compile TypeScript
-pnpm test          # vitest
+pnpm build         # tsc + copy api/openapi.json to dist/
+pnpm test          # vitest run (82 tests)
 pnpm lint          # eslint + prettier check
-azurite --silent & # start local storage
-func start         # run Function locally
+pnpm format        # prettier --write
+
+# Smoke runs from dist/
+WEBHOOK_URL='https://webhook.site/<slot>' \
+  STATE_DB_PATH=./data/state.sqlite \
+  CONFIG_PATH=./config/providers.yaml \
+  pnpm start
+
+# CLI subcommands
+node dist/src/main.js validate
+node dist/src/main.js health
 ```
 
 ## Important limits (for agents)
 
-- **No irreversible actions** without explicit confirmation: no `git push --force`, no `rm -rf`, no Azure resource deletion.
-- **No secrets in code**: webhook URLs, tokens, passwords belong in App Settings.
+- **No irreversible actions** without explicit confirmation: no `git push --force`, no `rm -rf`, no deletion of shared state.
+- **No secrets in code**: webhook URLs, tokens, passwords belong in environment variables (compose `.env` or Portainer stack env).
 - **No `--no-verify`** on commits.
 - **When uncertain about scope**: ask rather than "do everything" (Raptus rule: no uninvited refactoring).
 - **On error corrections**: document the lesson in `lessons.md` (format: `- [YYYY-MM-DD]: [What was wrong] → [Correct approach]`).
