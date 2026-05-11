@@ -91,8 +91,6 @@ Generate a strong API token:
 openssl rand -hex 32
 ```
 
-Open `providers.yaml` in your favourite editor (e.g. `vi providers.yaml`) and remove the providers you don't care about. The file is your live configuration — every edit takes effect within the next poll cycle (5 min).
-
 ### 4. Start the container
 
 ```bash
