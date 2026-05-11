@@ -6,12 +6,12 @@ Designed to be cheap and forgettable: a single Docker container, SQLite for stat
 
 ---
 
-## Quick deploy (5 minutes)
+## Quick deploy (3 minutes)
 
-You need a Docker host. Anywhere will do — a Synology with Portainer, a Raspberry Pi, a small VM, your laptop while you try it out.
+You need a Docker host. Anywhere will do — a Synology, a Raspberry Pi, a small VM, your laptop while you try it out.
 
 1. **Get a webhook URL** for your chat target (Google Chat: channel `⋮` → Apps & integrations → Webhooks; Teams: channel `…` → Workflows → "Post to a channel when a webhook request is received"). Copy the URL.
-2. **Deploy**:
+2. **Deploy with zero providers configured**:
 
    ```bash
    mkdir status-page-to-chat && cd status-page-to-chat
@@ -21,14 +21,18 @@ You need a Docker host. Anywhere will do — a Synology with Portainer, a Raspbe
    docker compose up -d
    ```
 
-   The `providers.yaml` you just downloaded lists which status pages to watch. Edit it on the host whenever you want — the next poll cycle (every 5 min) picks up your changes, no restart needed.
+   The container is now running with an **empty provider list**. Logs will show `providerCount: 0` and quiet poll cycles. No webhook traffic until you add at least one entry.
 
-   **Portainer**: Stacks → Add stack → Web editor, paste the contents of `docker-compose.yml`, set `WEBHOOK_URL` under Environment variables. You'll also need to drop a `providers.yaml` next to it on the host (e.g. via the File Station) — Portainer reads it from the bind mount.
-3. **Watch the logs**: `docker compose logs -f` — you should see `Configuration loaded`, `Poller scheduled`, and a `run_summary` line within ~30 seconds.
-4. **Verify a config edit before applying**: `docker compose run --rm status-poller node dist/src/main.js validate` — exits 0 with a one-line summary, or 1 with a human-readable error.
-5. **Update later**: `docker compose pull && docker compose up -d` (or click "Update the stack" in Portainer with re-pull enabled).
+3. **Add the services you want to watch**. Two ways:
 
-That's it. No cloud account, no fork, no infrastructure setup.
+   - **Edit `providers.yaml` on the host** — see the examples already commented in the file. Save, wait up to 5 minutes for the next poll cycle.
+   - **Use the management API** — `PUT /api/providers/<key>` with a small JSON body. Convenient from a chat-driven LLM assistant; see [docs/LLM-INTEGRATION.md](docs/LLM-INTEGRATION.md).
+
+4. **Watch the logs**: `docker compose logs -f` — you should see `Configuration loaded`, `Poller scheduled`, and a `run_summary` line within ~30 seconds.
+
+5. **Update later**: `docker compose pull && docker compose up -d`.
+
+That's it. No cloud account, no fork, no infrastructure setup. Adding providers happens after the container is already running, not before.
 
 ## How it works
 
