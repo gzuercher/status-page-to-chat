@@ -2,33 +2,41 @@
 
 A small self-hosted service that monitors the status pages of external providers and posts new incidents and their resolutions to **Google Chat** or **Microsoft Teams**.
 
-Designed to be cheap and forgettable: a single Docker container, SQLite for state, a webhook URL as the only secret. Five providers (Atlassian Statuspage, Google Workspace, Metanet RSS, WEDOS, GitHub Issues) cover dozens of services out of the box.
+Designed to be cheap and forgettable: a single Docker container, SQLite for state, a webhook URL as the only required secret. Five adapter types (Atlassian Statuspage, Google Workspace, Metanet RSS, WEDOS, GitHub Issues) cover dozens of services — you wire up the ones you care about after the container is running.
 
 ---
 
-## Quick deploy (5 minutes)
+## Quick deploy (3 minutes)
 
-You need a Docker host. Anywhere will do — a Synology with Portainer, a Raspberry Pi, a small VM, your laptop while you try it out.
+You need a Docker host. Anywhere will do — a Synology, a Raspberry Pi, a small VM, your laptop while you try it out.
 
 1. **Get a webhook URL** for your chat target (Google Chat: channel `⋮` → Apps & integrations → Webhooks; Teams: channel `…` → Workflows → "Post to a channel when a webhook request is received"). Copy the URL.
-2. **Deploy**:
+2. **Deploy with zero providers configured**:
 
    ```bash
    mkdir status-page-to-chat && cd status-page-to-chat
    curl -O https://raw.githubusercontent.com/gzuercher/status-page-to-chat/main/docker-compose.yml
    curl -o providers.yaml https://raw.githubusercontent.com/gzuercher/status-page-to-chat/main/providers.yaml.example
-   echo "WEBHOOK_URL=https://chat.googleapis.com/v1/spaces/..." > .env
+   cat > .env <<EOF
+   WEBHOOK_URL=https://chat.googleapis.com/v1/spaces/...
+   API_TOKEN=$(openssl rand -hex 32)
+   EOF
+   chmod 600 .env
    docker compose up -d
    ```
 
-   The `providers.yaml` you just downloaded lists which status pages to watch. Edit it on the host whenever you want — the next poll cycle (every 5 min) picks up your changes, no restart needed.
+   The container is now running with an **empty provider list**. Logs will show `providerCount: 0` and quiet poll cycles. No webhook traffic until you add at least one entry. `API_TOKEN` is the bearer credential the management API will check — save the value somewhere safe (it's also in `.env`).
 
-   **Portainer**: Stacks → Add stack → Web editor, paste the contents of `docker-compose.yml`, set `WEBHOOK_URL` under Environment variables. You'll also need to drop a `providers.yaml` next to it on the host (e.g. via the File Station) — Portainer reads it from the bind mount.
-3. **Watch the logs**: `docker compose logs -f` — you should see `Configuration loaded`, `Poller scheduled`, and a `run_summary` line within ~30 seconds.
-4. **Verify a config edit before applying**: `docker compose run --rm status-poller node dist/src/main.js validate` — exits 0 with a one-line summary, or 1 with a human-readable error.
-5. **Update later**: `docker compose pull && docker compose up -d` (or click "Update the stack" in Portainer with re-pull enabled).
+3. **Add the services you want to watch**. Two ways:
 
-That's it. No cloud account, no fork, no infrastructure setup.
+   - **Edit `providers.yaml` on the host** — see the examples already commented in the file. Save, wait up to 5 minutes for the next poll cycle.
+   - **Use the management API** — `PUT /api/providers/<key>` with a small JSON body. Convenient from a chat-driven LLM assistant; see [docs/LLM-INTEGRATION.md](docs/LLM-INTEGRATION.md).
+
+4. **Watch the logs**: `docker compose logs -f` — you should see `Configuration loaded`, `Poller scheduled`, and a `run_summary` line within ~30 seconds.
+
+5. **Update later**: `docker compose pull && docker compose up -d`.
+
+That's it. No cloud account, no fork, no infrastructure setup. Adding providers happens after the container is already running, not before.
 
 ## How it works
 
@@ -55,6 +63,9 @@ Environment variables you can set:
 | Variable | Default | Purpose |
 |---|---|---|
 | `WEBHOOK_URL` | required | Google Chat or Teams webhook URL |
+| `API_TOKEN` | — | Bearer token for the management API. Required unless `API_AUTH_DISABLED=true`. |
+| `API_AUTH_DISABLED` | — | Set to literal `true` to disable API auth (only on trusted networks) |
+| `API_PORT` | `8080` | Port the management API listens on |
 | `CONFIG_PATH` | `/data/providers.yaml` (in compose) | Path to the providers config |
 | `STATE_DB_PATH` | `/data/state.sqlite` | SQLite file location |
 | `POLL_CRON` | `*/5 * * * *` | When the poller runs |
@@ -73,7 +84,7 @@ You can hand over day-to-day maintenance — adding, removing, and inspecting pr
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, modules, data flow |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Format of `providers.yaml` and env vars |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Specification per status page adapter |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment via Portainer, step by step |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Three deployment paths: plain Docker via SSH, Portainer stack, local laptop |
 | [docs/API.md](docs/API.md) | Management API reference with `curl` examples |
 | [docs/LLM-INTEGRATION.md](docs/LLM-INTEGRATION.md) | Chat-based maintenance via any OpenAPI-aware LLM platform |
 

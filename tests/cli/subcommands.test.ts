@@ -15,7 +15,7 @@ providers:
     baseUrl: https://bitbucket.status.atlassian.com
 `;
 
-const INVALID_YAML = `chatTarget: googleChat
+const INVALID_YAML = `chatTarget: schmiddel
 providers: []
 `;
 
@@ -60,6 +60,14 @@ describe("CLI subcommands", () => {
       const r = runCli(["validate"], { CONFIG_PATH: configPath });
       expect(r.code).toBe(0);
       expect(r.stdout).toMatch(/^OK/);
+    });
+
+    it("accepts an empty providers list as valid (zero-config startup)", () => {
+      const configPath = join(dir, "providers.yaml");
+      writeFileSync(configPath, "chatTarget: googleChat\nproviders: []\n", "utf-8");
+      const r = runCli(["validate"], { CONFIG_PATH: configPath });
+      expect(r.code).toBe(0);
+      expect(r.stdout).toMatch(/0 provider/);
     });
 
     it("returns 1 with a readable error on schema violation", () => {

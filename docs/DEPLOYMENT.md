@@ -72,7 +72,7 @@ cd /volume1/docker/status-page-to-chat
 # The compose file
 curl -O https://raw.githubusercontent.com/gzuercher/status-page-to-chat/main/docker-compose.yml
 
-# The provider list (template — edit before first start)
+# The provider list — defaults to empty, you add entries later
 curl -o providers.yaml https://raw.githubusercontent.com/gzuercher/status-page-to-chat/main/providers.yaml.example
 
 # Secrets
@@ -83,13 +83,13 @@ EOF
 chmod 600 .env
 ```
 
+The `providers.yaml` you just downloaded contains `providers: []` and commented-out examples. The service starts in that "zero providers configured" state — no chat messages until you fill in entries. Add them either by uncommenting/editing this file (next poll cycle picks it up) or via `PUT /api/providers/<key>` on the management API after the container is running.
+
 Generate a strong API token:
 
 ```bash
 openssl rand -hex 32
 ```
-
-Open `providers.yaml` in your favourite editor (e.g. `vi providers.yaml`) and remove the providers you don't care about. The file is your live configuration — every edit takes effect within the next poll cycle (5 min).
 
 ### 4. Start the container
 

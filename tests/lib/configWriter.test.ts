@@ -76,11 +76,7 @@ describe("configWriter", () => {
     expect(removeProviderFromYaml("does-not-exist", configPath)).toBe(false);
   });
 
-  it("rejects writes that would produce an invalid config", () => {
-    expect(() => removeProviderFromYaml("bitbucket", join(dir, "with-one-left.yaml"))).toThrow();
-
-    // Single-entry file → removing the last provider must fail the
-    // "at least one provider" rule and leave the file untouched.
+  it("allows removing the last provider — empty list is a valid config", () => {
     const oneEntry = join(dir, "single.yaml");
     writeFileSync(
       oneEntry,
@@ -93,9 +89,12 @@ providers:
 `,
       "utf-8",
     );
-    const before = readFileSync(oneEntry, "utf-8");
-    expect(() => removeProviderFromYaml("only", oneEntry)).toThrow();
-    expect(readFileSync(oneEntry, "utf-8")).toBe(before);
+    expect(removeProviderFromYaml("only", oneEntry)).toBe(true);
+    expect(readFileSync(oneEntry, "utf-8")).not.toContain("key: only");
+  });
+
+  it("throws when the target file does not exist", () => {
+    expect(() => removeProviderFromYaml("any", join(dir, "missing.yaml"))).toThrow();
   });
 
   it("preserves YAML anchors used in unaffected entries", () => {

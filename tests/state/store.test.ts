@@ -21,8 +21,8 @@ describe("diffIncidents", () => {
   });
 
   const makeStored = (id: string, status: "open" | "resolved"): StoredIncident => ({
-    partitionKey: "test",
-    rowKey: id,
+    providerKey: "test",
+    externalId: id,
     title: `Incident ${id}`,
     status,
     startedAt: "2026-04-15T10:00:00Z",

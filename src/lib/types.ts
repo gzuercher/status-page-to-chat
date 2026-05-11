@@ -41,11 +41,14 @@ export interface Notifier {
 }
 
 /**
- * Stored state of an incident in Table Storage.
+ * Stored state of an incident in the SQLite state store. Field names match
+ * the NormalizedIncident shape; the two `notified*` flags track which
+ * notifications we have already sent to the chat target so retries on
+ * subsequent poll cycles don't double-fire.
  */
 export type StoredIncident = {
-  partitionKey: string;
-  rowKey: string;
+  providerKey: string;
+  externalId: string;
   title: string;
   status: "open" | "resolved";
   startedAt: string;

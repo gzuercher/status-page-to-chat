@@ -57,7 +57,10 @@ export const providerSchema = z
 export const configSchema = z
   .object({
     chatTarget: z.enum(["googleChat", "teams"]),
-    providers: z.array(providerSchema).min(1, "At least one provider must be configured"),
+    // Empty list is valid — the service starts in "no providers configured"
+    // state and the operator adds entries via the REST API or by editing the
+    // mounted providers.yaml. Poll cycles log a zero-count run_summary.
+    providers: z.array(providerSchema),
   })
   .refine(
     (c) => {
