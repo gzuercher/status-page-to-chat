@@ -13,7 +13,7 @@ import { z } from "zod";
 // which after tsc compile points at dist/src/api at runtime.
 const OPENAPI_PATH = resolve(__dirname, "openapi.json");
 
-/** Subset of NormalizedIncident exposed to the API (rowKey/partitionKey renamed). */
+/** Subset of StoredIncident exposed to the API (drops the notified-* flags). */
 type IncidentDto = {
   providerKey: string;
   externalId: string;
@@ -26,8 +26,8 @@ type IncidentDto = {
 
 function toIncidentDto(stored: StoredIncident): IncidentDto {
   return {
-    providerKey: stored.partitionKey,
-    externalId: stored.rowKey,
+    providerKey: stored.providerKey,
+    externalId: stored.externalId,
     title: stored.title,
     status: stored.status,
     url: stored.url,

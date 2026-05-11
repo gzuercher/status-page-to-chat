@@ -1,13 +1,12 @@
 # Agent Guide
 
-This document is written for **humans and for Claude Code agents**. A new agent (or a person on a different machine) should have enough context from **this document + `docs/PLAN.md` + `CLAUDE.md`** to work productively.
+This document is written for **humans and for Claude Code agents**. A new agent (or a person on a different machine) should have enough context from **this document + `CLAUDE.md`** to work productively.
 
 ## First steps for a new agent
 
 1. Read in this order:
    - `CLAUDE.md` (Raptus rules, communication language, forbidden DIY implementations)
    - `README.md` (project overview)
-   - `docs/PLAN.md` (original architecture plan)
    - `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, `docs/ADAPTERS.md`
    - `docs/ROADMAP.md` (what to do next)
 2. Check current project state: `git log --oneline`, `ls src/`.
@@ -128,9 +127,9 @@ node dist/src/main.js health
 So an agent on a different machine can pick up the thread, the following artefacts must be current in the repo:
 
 - `docs/ROADMAP.md` — open items with status
-- `docs/PLAN.md` — architectural plan (should match current state; for larger deviations: add a new section at the end)
+- `docs/ARCHITECTURE.md` — current architecture (update on larger changes)
 - `lessons.md` — mistakes made
-- `config/providers.yaml` — current set of monitored services
+- `config/providers.yaml` (in-repo default) and `providers.yaml.example` (host template)
 
 ## What this service is and isn't
 

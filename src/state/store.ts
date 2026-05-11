@@ -65,8 +65,8 @@ type IncidentRow = {
 /**
  * Loads all stored incidents for a specific provider, keyed by externalId.
  *
- * Wrapped in Promise to keep the interface symmetric with the old
- * Table-Storage implementation, even though SQLite access is synchronous.
+ * Returns a Promise although better-sqlite3 is synchronous — keeps the
+ * call-site idiomatic alongside async adapters and notifiers.
  */
 export async function getStoredIncidents(
   store: Store,
@@ -85,8 +85,8 @@ export async function getStoredIncidents(
   const results = new Map<string, StoredIncident>();
   for (const row of rows) {
     results.set(row.external_id, {
-      partitionKey: row.provider_key,
-      rowKey: row.external_id,
+      providerKey: row.provider_key,
+      externalId: row.external_id,
       title: row.title,
       status: row.status,
       startedAt: row.started_at,
@@ -101,8 +101,7 @@ export async function getStoredIncidents(
 
 /**
  * Compares current incidents against the stored state and determines
- * which actions are needed. Pure function — unchanged from the previous
- * Table-Storage implementation.
+ * which actions are needed. Pure function — safe to call from anywhere.
  */
 export function diffIncidents(
   current: NormalizedIncident[],
@@ -185,8 +184,8 @@ export function getAllStoredIncidents(store: Store): StoredIncident[] {
     .all();
 
   return rows.map((row) => ({
-    partitionKey: row.provider_key,
-    rowKey: row.external_id,
+    providerKey: row.provider_key,
+    externalId: row.external_id,
     title: row.title,
     status: row.status,
     startedAt: row.started_at,

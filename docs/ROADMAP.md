@@ -68,9 +68,9 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 ## Stage 7 — Containerisation
 
 - [x] `src/main.ts` container entrypoint with in-process scheduler (`croner`) and SIGTERM/SIGINT graceful shutdown
-- [x] `src/state/store.ts` SQLite state store (via `better-sqlite3`) replacing the earlier Table-Storage implementation
+- [x] `src/state/store.ts` SQLite state store (via `better-sqlite3`)
 - [x] `CONFIG_PATH`, `STATE_DB_PATH`, `POLL_CRON`, `LOG_LEVEL` env vars
-- [x] Multi-stage `Dockerfile` (`node:20-alpine`) with non-root user and `/data` volume
+- [x] Multi-stage `Dockerfile` (`node:22-alpine`) with non-root user and `/data` volume
 - [x] `docker-compose.yml` with named volume and log rotation
 
 **Done**: `pnpm test` passes (40 tests at that point; 82 today after API tests and post-merge hardening); container definition ready to build.
@@ -95,7 +95,7 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 - [x] Document-preserving YAML writes (comments survive every edit)
 - [x] Config reload before each poll cycle; broken file does not crash the poller
 - [x] CLI `validate` and `health` subcommands for dry-runs and `HEALTHCHECK`
-- [x] `docs/LANGDOCK.md` walking a non-technical maintainer through the assistant setup
+- [x] `docs/LLM-INTEGRATION.md` walking a non-technical maintainer through the assistant setup
 
 **Done**: backoffice users can manage the watched providers in natural language via Langdock; the project itself stays dumb.
 
@@ -106,7 +106,7 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 - Per-service routing (e.g. DevOps room vs. support room)
 - Scheduled maintenance as a separate message type
 - Admin UI for managing configuration
-- Self-monitoring via a second "canary" function (instead of Azure Monitor only)
+- Self-monitoring via a second "canary" container (beyond the built-in healthcheck)
 - Slack notifier
 - German translation of titles (LLM call)
 - HTML scraping adapter for status pages without an API — **concrete case: Sophos** (`status.sophos.com`): runs on Atlassian Statuspage, but all JSON/RSS/Atom endpoints respond with HTTP 200 and return a 404 HTML page instead of real data. A realistic browser user-agent makes no difference. Enable only when Sophos opens the API or this adapter exists. Entry in `config/providers.yaml` is prepared and commented out.
@@ -118,4 +118,4 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 - **Kaseya component filter "IT Glue"**: Verify availability of component names in the Statuspage API.
 - **GravityZone cloud instances**: The current filter substrings (`cloudgz.gravityzone.bitdefender.com`, `cloud.gravityzone.bitdefender.com`) reflect today's instance URLs. On Bitdefender rebranding or consolidation (e.g. migration to another region), the `componentFilter` in `config/providers.yaml` must be updated or notifications will go silent.
 - **Claude component names**: Anthropic occasionally renames products (e.g. the console is now officially "platform.claude.com (formerly console.anthropic.com)"). Before go-live, check the current component list at `https://status.claude.com/api/v2/components.json` and update the substrings in `componentFilter` if needed.
-- **GitHub rate limit**: Without a token: 60 requests/h per client IP. Sufficient for Azure. With token: 5,000/h.
+- **GitHub rate limit**: Without a token, 60 requests/h per client IP — sufficient for a single container polling every 5 min. With a `GITHUB_TOKEN` set on the container, 5,000/h.
