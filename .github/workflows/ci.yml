@@ -29,6 +29,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # better-sqlite3 ships prebuilt native modules per Node major. The
+      # pnpm store cache (cache: pnpm above) can carry a binding from a
+      # prior CI run that ran on a different Node version, leading to
+      # "Module did not self-register" / NODE_MODULE_VERSION mismatch.
+      # Forcing a rebuild compiles against the current node binary.
+      - name: Rebuild native modules for current Node
+        run: pnpm rebuild better-sqlite3
+
       - name: Lint
         run: pnpm lint
 
