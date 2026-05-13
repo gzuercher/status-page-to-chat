@@ -12,7 +12,14 @@ WORKDIR /app
 RUN corepack enable
 
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+# pnpm 10's strict-builds policy fires ERR_PNPM_IGNORED_BUILDS for any
+# unapproved postinstall script. The `pnpm.onlyBuiltDependencies` field
+# in package.json doesn't reliably suppress this in non-interactive
+# Docker builds, so we do it explicitly: skip ALL scripts at install,
+# then rebuild the one native module we actually need at runtime.
+# (esbuild is dev-only, gets pruned in the next step, no rebuild needed.)
+RUN pnpm install --frozen-lockfile --ignore-scripts \
+ && pnpm rebuild better-sqlite3
 
 COPY tsconfig.json ./
 COPY src ./src
