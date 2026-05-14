@@ -11,15 +11,25 @@ WORKDIR /app
 # Corepack activates pnpm without a network install
 RUN corepack enable
 
+# pnpm 10+ raises "ignored build scripts" to fatal ERR_PNPM_IGNORED_BUILDS
+# during install AND prune. Neither pnpm.onlyBuiltDependencies in
+# package.json nor npm_config_ignore_scripts ENV reliably suppress it in
+# non-interactive Docker builds. The only knob that works is the explicit
+# --ignore-scripts CLI flag, applied to every pnpm invocation. We then
+# rebuild the single native module the runtime actually needs.
+
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --ignore-scripts \
+ && pnpm rebuild better-sqlite3
 
 COPY tsconfig.json ./
 COPY src ./src
 RUN pnpm build
 
-# Drop dev deps so only runtime deps are copied to the final stage
-RUN pnpm prune --prod
+# Drop dev deps. --ignore-scripts is needed here too — prune re-runs the
+# strict-builds check on the remaining tree.
+RUN pnpm prune --prod --ignore-scripts \
+ && pnpm rebuild better-sqlite3
 
 # ---- Runtime stage: minimal image, non-root user ---------------------------
 FROM node:22-alpine AS runtime

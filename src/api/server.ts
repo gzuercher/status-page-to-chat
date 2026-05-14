@@ -8,6 +8,12 @@ import { logger } from "../lib/logger.js";
 import type { RunSummary, StoredIncident } from "../lib/types.js";
 import { getAllStoredIncidents, type Store } from "../state/store.js";
 import { z } from "zod";
+import {
+  createMcpSessions,
+  handleMcpRequest,
+  startMcpSessionSweeper,
+  type McpSessions,
+} from "./mcp.js";
 
 // CJS build (no "type": "module"). __dirname is available as a CJS global,
 // which after tsc compile points at dist/src/api at runtime.
@@ -235,7 +241,12 @@ async function handleValidateProvider(req: IncomingMessage, res: ServerResponse)
  * Tiny manual router. Keeping it explicit avoids pulling in a web
  * framework for ~9 endpoints.
  */
-async function route(req: IncomingMessage, res: ServerResponse, ctx: ApiContext): Promise<void> {
+async function route(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: ApiContext,
+  mcpSessions: McpSessions,
+): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname;
   const method = req.method ?? "GET";
@@ -256,6 +267,14 @@ async function route(req: IncomingMessage, res: ServerResponse, ctx: ApiContext)
   }
 
   if (!checkAuth(req, res)) return;
+
+  // MCP endpoint — same bearer-token gate as REST. POST init creates a
+  // new session; subsequent POST/GET/DELETE require the Mcp-Session-Id
+  // header. Per-session transports live in mcpSessions.
+  if (path === "/mcp") {
+    await handleMcpRequest(req, res, ctx, mcpSessions);
+    return;
+  }
 
   if (method === "GET" && path === "/api/providers") {
     sendJson(res, 200, listProviders());
@@ -320,8 +339,10 @@ async function route(req: IncomingMessage, res: ServerResponse, ctx: ApiContext)
  */
 export function startApiServer(ctx: ApiContext, port = 8080): Server {
   configureAuth();
+  const mcpSessions = createMcpSessions();
+  const stopSweeper = startMcpSessionSweeper(mcpSessions);
   const server = createServer((req, res) => {
-    route(req, res, ctx).catch((err: unknown) => {
+    route(req, res, ctx, mcpSessions).catch((err: unknown) => {
       logger.error({ err, url: req.url }, "Unhandled error in API route");
       if (!res.headersSent) {
         sendError(res, 500, "internal error");
@@ -330,8 +351,9 @@ export function startApiServer(ctx: ApiContext, port = 8080): Server {
       }
     });
   });
+  server.on("close", stopSweeper);
   server.listen(port, () => {
-    logger.info({ port }, "API server listening");
+    logger.info({ port }, "API server listening (REST under /api/, MCP under /mcp)");
   });
   return server;
 }

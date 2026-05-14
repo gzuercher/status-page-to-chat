@@ -26,7 +26,6 @@
             "enum": [
               "atlassian-statuspage",
               "google-workspace",
-              "metanet-rss",
               "wedos-status-online",
               "github-issues"
             ]

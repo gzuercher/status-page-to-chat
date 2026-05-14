@@ -117,11 +117,6 @@ providers:
     displayName: Google Workspace
     adapter: google-workspace
 
-  # --- Metanet (RSS) ---
-  - key: metanet
-    displayName: Metanet
-    adapter: metanet-rss
-
   # --- WEDOS ---
   - key: wedos
     displayName: WEDOS

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, renameSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as YAML from "yaml";
 import { parseConfigFromString, type ProviderConfig } from "./config.js";
@@ -31,13 +31,21 @@ function loadDocument(configPath: string): YAML.Document.Parsed {
 }
 
 /**
- * Atomic file write via temp + rename. Prevents readers from seeing a
- * half-written file if the process is killed mid-write.
+ * In-place write of the providers config. We deliberately do NOT use the
+ * common "write-temp + rename" atomicity trick: in Docker single-file
+ * bind-mount deployments rename(2) fails with EBUSY because Linux
+ * refuses to overwrite a mount-point inode. Direct write works for both
+ * named-volume and bind-mount setups.
+ *
+ * Crash-safety is provided by two layers above:
+ *   1) validateOrThrow() refuses to call this with invalid content
+ *   2) the poll loop's parseConfig() returns a Result; on any read/parse
+ *      failure the runner keeps using the last good in-memory config
+ *      instead of crashing.
+ * The risk window between truncate and full write is microseconds.
  */
-function atomicWrite(filePath: string, contents: string): void {
-  const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  writeFileSync(tmp, contents, "utf-8");
-  renameSync(tmp, filePath);
+function safeWrite(filePath: string, contents: string): void {
+  writeFileSync(filePath, contents, "utf-8");
 }
 
 /**
@@ -65,6 +73,11 @@ export function upsertProviderInYaml(
   }
 
   const newNode = doc.createNode(provider);
+  if (YAML.isMap(newNode)) {
+    // Force block style so the serialised YAML stays human-readable
+    // even when inserted into a previously-empty `providers: []` list.
+    newNode.flow = false;
+  }
   let created = true;
 
   for (let i = 0; i < providers.items.length; i++) {
@@ -81,10 +94,13 @@ export function upsertProviderInYaml(
 
   if (created) {
     providers.add(newNode);
+    // If the sequence was previously empty-flow (`providers: []`),
+    // switch it to block style now that it has content.
+    providers.flow = false;
   }
 
   validateOrThrow(doc, filePath);
-  atomicWrite(filePath, doc.toString());
+  safeWrite(filePath, doc.toString());
   return { created };
 }
 
@@ -114,7 +130,7 @@ export function removeProviderFromYaml(key: string, configPath?: string): boolea
   if (!removed) return false;
 
   validateOrThrow(doc, filePath);
-  atomicWrite(filePath, doc.toString());
+  safeWrite(filePath, doc.toString());
   return true;
 }
 

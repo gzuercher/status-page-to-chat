@@ -98,43 +98,7 @@ The JSON structure contains a list of active and historical incidents with:
 
 ---
 
-## 3. `metanet-rss`
-
-**Service**: Metanet Switzerland status announcements.
-
-### Endpoint
-
-- `https://support.metanet.ch/xml/statusmeldungen.xml` (RSS)
-
-### Mapping
-
-RSS items contain title, link, pubDate, description. Additional categorisation in the title/body ("Betriebsunterbruch", "Wartungsarbeiten", "Technische Infos").
-
-| RSS field | Normalized field |
-|---|---|
-| `guid` or `link` | `externalId` |
-| `title` | `title` |
-| `pubDate` | `startedAt` / `updatedAt` |
-| `link` | `url` |
-| Category / body keywords | Determines `status` |
-
-**Status heuristic**:
-
-- Title/body contains keywords like "behoben", "gelöst", "ended" → `resolved`
-- Type "Wartungsarbeiten" → skipped (no maintenance messages per spec)
-- Otherwise → `open`
-
-### Configuration
-
-```yaml
-- key: metanet
-  displayName: Metanet
-  adapter: metanet-rss
-```
-
----
-
-## 4. `wedos-status-online`
+## 3. `wedos-status-online`
 
 **Service**: WEDOS (wedos.status.online platform).
 
@@ -165,7 +129,7 @@ The JSON API returns incidents with its own schema (to be verified during implem
 
 ---
 
-## 5. `github-issues`
+## 4. `github-issues`
 
 **Service**: Projects that use GitHub Issues as a status tracker (e.g. Onetime Secret).
 
