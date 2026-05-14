@@ -18,7 +18,23 @@ import type { LastRunRef } from "./server.js";
  * disconnects.
  */
 export type McpContext = { store: Store; lastRun: LastRunRef };
-export type McpSessions = Map<string, StreamableHTTPServerTransport>;
+
+/**
+ * Per-session entry. `lastActivityAt` is bumped on every request and
+ * used by sweepIdleSessions() to evict sessions that the client never
+ * cleanly closed — e.g. Langdock does not send DELETE on disconnect, so
+ * without this the map grows unbounded.
+ */
+type SessionEntry = {
+  transport: StreamableHTTPServerTransport;
+  lastActivityAt: number;
+};
+export type McpSessions = Map<string, SessionEntry>;
+
+/** Idle timeout after which a session is force-closed. 30 minutes. */
+export const MCP_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+/** How often the sweeper runs in production. */
+export const MCP_SESSION_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
  * Registers all status-page-to-chat tools on a fresh McpServer instance.
@@ -64,13 +80,56 @@ function registerTools(server: McpServer, ctx: McpContext): void {
   server.registerTool(
     "add_provider",
     {
-      description:
-        "Add a new monitored status page, or update an existing one with the same key. " +
-        "Adapter must be one of 'atlassian-statuspage', 'google-workspace', 'metanet-rss', " +
-        "'wedos-status-online', or 'github-issues'. baseUrl is required for " +
-        "'atlassian-statuspage' and 'wedos-status-online'. owner + repo are required for " +
-        "'github-issues'. componentFilter is an optional substring or list of substrings " +
-        "to narrow Atlassian Statuspage notifications to specific components.",
+      description: [
+        "Add a new monitored status page, or update an existing one with the same key.",
+        "",
+        "HOW TO CHOOSE THE RIGHT ADAPTER — pick by what the source actually serves, not by",
+        "what the URL looks like. Each adapter is wired to a specific data shape; using the",
+        "wrong one silently fetches the wrong data.",
+        "",
+        "  atlassian-statuspage — Atlassian's hosted Statuspage product. Look for a page",
+        "    that serves JSON at `<baseUrl>/api/v2/incidents.json` (always present on this",
+        "    platform). The HTML page typically shows an 'All Systems Operational' banner",
+        "    over a component list, and exposes RSS at `/history.rss`, atom at",
+        "    `/history.atom`, JSON at `/api/v2/...`. Use the SITE ROOT as baseUrl — no path",
+        "    suffix, no `.rss`, no `/api/...`. Examples of this platform: status.claude.com,",
+        "    bitbucket.status.atlassian.com, status.figma.com, status.openai.com,",
+        "    www.githubstatus.com, status.linear.app, status.notion.so, status.slack.com,",
+        "    status.cloudflare.com. If unsure, this is the safest first guess for any",
+        "    public 'status.*' page — quickly verify by fetching",
+        "    `<baseUrl>/api/v2/summary.json` (200 + JSON → confirmed).",
+        "",
+        "  google-workspace — Hard-wired to the Google Workspace Status Dashboard",
+        "    (status.cloud.google.com / appsstatus). NOT a generic Google adapter — only",
+        "    use it for Google Workspace services (Gmail, Drive, Calendar, Meet, etc.).",
+        "    baseUrl is ignored.",
+        "",
+        "  wedos-status-online — Vendor-specific for the WEDOS Internet status.online",
+        "    platform (status.online.wedos.com and its sub-pages). The source serves",
+        "    `<baseUrl>/en/json/incidents.json`. Only correct for WEDOS-hosted status pages.",
+        "",
+        "  github-issues — Treats a GitHub repository's Issues list as the incident feed.",
+        "    Use when a project publishes incidents via GitHub Issues (sometimes a dedicated",
+        "    `<project>/status` repo). Requires `owner` + `repo`, no baseUrl. Example:",
+        "    owner='onetimesecret', repo='status'.",
+        "",
+        "DECISION FLOW — when the user just gives a URL:",
+        "  1. If the URL contains `github.com/<owner>/<repo>` and incidents live in Issues",
+        "     → github-issues with that owner/repo.",
+        "  2. If the host is status.cloud.google.com or the user says 'Google Workspace'",
+        "     → google-workspace.",
+        "  3. If the host is status.online.wedos.com or a sub-page of it",
+        "     → wedos-status-online.",
+        "  4. Otherwise (any other public 'status.*' page, including ones with `.rss` or",
+        "     `/history` suffixes) → atlassian-statuspage with the site root as baseUrl.",
+        "     If you are not certain, STATE THE GUESS and the assumption to the user before",
+        "     calling this tool, so they can correct it in one step rather than after a",
+        "     wrong write.",
+        "",
+        "componentFilter is an optional substring or list of substrings to narrow Atlassian",
+        "Statuspage notifications to specific components (case-sensitive substring match",
+        "against component names).",
+      ].join("\n"),
       inputSchema: {
         key: z
           .string()
@@ -80,7 +139,6 @@ function registerTools(server: McpServer, ctx: McpContext): void {
         adapter: z.enum([
           "atlassian-statuspage",
           "google-workspace",
-          "metanet-rss",
           "wedos-status-online",
           "github-issues",
         ]),
@@ -160,6 +218,54 @@ export function createMcpSessions(): McpSessions {
 }
 
 /**
+ * Closes every session whose lastActivityAt is older than `idleMs`.
+ * Returns the number of evicted sessions (useful for tests and logging).
+ *
+ * Exposed as a pure function so tests can drive eviction with a forced
+ * `now` instead of relying on real timers; production drives it from
+ * the interval started by startMcpSessionSweeper().
+ */
+export function sweepIdleSessions(
+  sessions: McpSessions,
+  now: number = Date.now(),
+  idleMs: number = MCP_SESSION_IDLE_TIMEOUT_MS,
+): number {
+  let evicted = 0;
+  for (const [sid, entry] of sessions) {
+    if (now - entry.lastActivityAt > idleMs) {
+      try {
+        void entry.transport.close();
+      } catch (err) {
+        logger.warn({ err, sessionId: sid }, "Error closing idle MCP transport");
+      }
+      sessions.delete(sid);
+      evicted++;
+    }
+  }
+  if (evicted > 0) {
+    logger.info({ evicted, remaining: sessions.size }, "Swept idle MCP sessions");
+  }
+  return evicted;
+}
+
+/**
+ * Starts the periodic idle-session sweeper. Returns a stop function the
+ * server's shutdown handler can call to clear the interval on SIGTERM.
+ */
+export function startMcpSessionSweeper(
+  sessions: McpSessions,
+  intervalMs: number = MCP_SESSION_SWEEP_INTERVAL_MS,
+): () => void {
+  const handle = setInterval(() => {
+    sweepIdleSessions(sessions);
+  }, intervalMs);
+  // Don't keep the event loop alive just for the sweeper — the API
+  // server's listening socket is the intended liveness anchor.
+  handle.unref();
+  return () => clearInterval(handle);
+}
+
+/**
  * Reads the JSON body from an incoming request. Used to detect whether
  * a POST is an MCP initialize request when no session id is present yet.
  */
@@ -203,9 +309,7 @@ async function readJsonBody(req: IncomingMessage, maxBytes = 1024 * 1024): Promi
 function sendJsonError(res: ServerResponse, status: number, message: string): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
-  res.end(
-    JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message }, id: null }),
-  );
+  res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message }, id: null }));
 }
 
 /**
@@ -234,12 +338,13 @@ export async function handleMcpRequest(
       sendJsonError(res, 400, "Bad Request: Mcp-Session-Id header is required");
       return;
     }
-    const transport = sessions.get(sessionIdStr);
-    if (!transport) {
+    const entry = sessions.get(sessionIdStr);
+    if (!entry) {
       sendJsonError(res, 404, "Session not found");
       return;
     }
-    await transport.handleRequest(req, res);
+    entry.lastActivityAt = Date.now();
+    await entry.transport.handleRequest(req, res);
     return;
   }
 
@@ -261,12 +366,13 @@ export async function handleMcpRequest(
 
   // Existing session → dispatch.
   if (sessionIdStr) {
-    const transport = sessions.get(sessionIdStr);
-    if (!transport) {
+    const entry = sessions.get(sessionIdStr);
+    if (!entry) {
       sendJsonError(res, 404, "Session not found");
       return;
     }
-    await transport.handleRequest(req, res, body);
+    entry.lastActivityAt = Date.now();
+    await entry.transport.handleRequest(req, res, body);
     return;
   }
 
@@ -284,7 +390,7 @@ export async function handleMcpRequest(
     sessionIdGenerator: () => randomUUID(),
     enableJsonResponse: true,
     onsessioninitialized: (sid) => {
-      sessions.set(sid, transport);
+      sessions.set(sid, { transport, lastActivityAt: Date.now() });
       logger.info({ sessionId: sid, sessionCount: sessions.size }, "MCP session created");
     },
     onsessionclosed: (sid) => {

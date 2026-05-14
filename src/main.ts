@@ -1,4 +1,4 @@
-import { existsSync, copyFileSync } from "node:fs";
+import { existsSync, copyFileSync, statSync } from "node:fs";
 import { Cron } from "croner";
 import { loadConfig, parseConfig, type AppConfig } from "./lib/config.js";
 import { logger } from "./lib/logger.js";
@@ -144,7 +144,16 @@ function seedProvidersFileIfMissing(): void {
   const configPath = process.env.CONFIG_PATH;
   const templatePath = process.env.PROVIDERS_TEMPLATE_PATH;
   if (!configPath || !templatePath) return;
-  if (existsSync(configPath)) return;
+  // Treat zero-byte files as "missing" too — a stale empty file left
+  // over from a previous deployment would otherwise block the seed and
+  // crash the parser with "expected object, received null".
+  if (existsSync(configPath)) {
+    try {
+      if (statSync(configPath).size > 0) return;
+    } catch {
+      return;
+    }
+  }
   if (!existsSync(templatePath)) {
     logger.warn(
       { configPath, templatePath },

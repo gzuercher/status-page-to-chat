@@ -22,7 +22,6 @@ export const providerSchema = z
     adapter: z.enum([
       "atlassian-statuspage",
       "google-workspace",
-      "metanet-rss",
       "wedos-status-online",
       "github-issues",
     ]),
@@ -126,6 +125,24 @@ export function parseConfigFromString(raw: string, filePath = "<in-memory>"): Co
         fieldErrors: { _root: flat.formErrors, ...flat.fieldErrors },
       },
     };
+  }
+
+  // Optional env-level override of chatTarget. Lets the seed-from-template
+  // mechanism ship a generic default (googleChat) while a deployment can
+  // pin a different target via env without rewriting the YAML.
+  const override = process.env.CHAT_TARGET;
+  if (override) {
+    if (override !== "googleChat" && override !== "teams") {
+      return {
+        ok: false,
+        error: {
+          kind: "validate",
+          filePath,
+          message: `CHAT_TARGET env override is invalid: "${override}" (must be googleChat or teams)`,
+        },
+      };
+    }
+    result.data.chatTarget = override;
   }
 
   return { ok: true, config: result.data };

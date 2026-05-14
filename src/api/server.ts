@@ -8,7 +8,12 @@ import { logger } from "../lib/logger.js";
 import type { RunSummary, StoredIncident } from "../lib/types.js";
 import { getAllStoredIncidents, type Store } from "../state/store.js";
 import { z } from "zod";
-import { createMcpSessions, handleMcpRequest, type McpSessions } from "./mcp.js";
+import {
+  createMcpSessions,
+  handleMcpRequest,
+  startMcpSessionSweeper,
+  type McpSessions,
+} from "./mcp.js";
 
 // CJS build (no "type": "module"). __dirname is available as a CJS global,
 // which after tsc compile points at dist/src/api at runtime.
@@ -335,6 +340,7 @@ async function route(
 export function startApiServer(ctx: ApiContext, port = 8080): Server {
   configureAuth();
   const mcpSessions = createMcpSessions();
+  const stopSweeper = startMcpSessionSweeper(mcpSessions);
   const server = createServer((req, res) => {
     route(req, res, ctx, mcpSessions).catch((err: unknown) => {
       logger.error({ err, url: req.url }, "Unhandled error in API route");
@@ -345,6 +351,7 @@ export function startApiServer(ctx: ApiContext, port = 8080): Server {
       }
     });
   });
+  server.on("close", stopSweeper);
   server.listen(port, () => {
     logger.info({ port }, "API server listening (REST under /api/, MCP under /mcp)");
   });
