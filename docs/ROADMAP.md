@@ -19,7 +19,7 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 ## Stage 2 — Config & State
 
 - [x] `src/lib/config.ts`: load YAML, zod schema, read environment variables
-- [x] `config/providers.yaml` with starter entries (pulled forward; currently contains 19 providers including Atlassian, Google Workspace, Metanet, WEDOS and GitHub Issues entries)
+- [x] `config/providers.yaml` with starter entries (pulled forward; currently contains 19 providers including Atlassian, Google Workspace, WEDOS and GitHub Issues entries)
 - [x] `src/state/store.ts`: CRUD on SQLite (via `better-sqlite3`), diff logic
 - [x] `src/lib/httpClient.ts`: central HTTP client with User-Agent and timeout
 - [x] Unit tests for state diff (10 tests)
@@ -59,7 +59,6 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 ## Stage 6 — Additional Adapters (parallelisable)
 
 - [x] `googleWorkspace` + test (3 tests)
-- [x] `metanetRss` + test incl. maintenance filter (4 tests)
 - [x] `wedosStatusOnline` + test incl. Content-Type check (3 tests)
 - [x] `githubIssues` + test incl. PR filter (4 tests)
 
@@ -109,12 +108,12 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 - Self-monitoring via a second "canary" container (beyond the built-in healthcheck)
 - Slack notifier
 - German translation of titles (LLM call)
+- Azure status adapter (`azure-status`) — parse the official RSS feed at `https://azure.status.microsoft/en-us/status/feed/` (Microsoft eigenbau, first-party, `<category>` carries service+region). Microsoft 365 (`status.cloud.microsoft`) has **no anonymous feed** — the page is bearer-gated, and Microsoft Graph's `serviceAnnouncement/issues` requires a per-tenant token (`ServiceHealth.Read.All`), which is out of scope for a passive multi-tenant poller. Caveat: public Azure/M365 posts typically lag tenant-targeted notices by 15–45 min; empty RSS channel does not guarantee "healthy".
 - HTML scraping adapter for status pages without an API — **concrete case: Sophos** (`status.sophos.com`): runs on Atlassian Statuspage, but all JSON/RSS/Atom endpoints respond with HTTP 200 and return a 404 HTML page instead of real data. A realistic browser user-agent makes no difference. Enable only when Sophos opens the API or this adapter exists. Entry in `config/providers.yaml` is prepared and commented out.
 
 ## Known risks / open research items
 
 - **WEDOS response format**: JSON structure must be empirically verified during implementation (no official schema found).
-- **Metanet status semantics**: The "resolved" mapping must be determined via RSS heuristics; multiple RSS entries per incident may be needed.
 - **Kaseya component filter "IT Glue"**: Verify availability of component names in the Statuspage API.
 - **GravityZone cloud instances**: The current filter substrings (`cloudgz.gravityzone.bitdefender.com`, `cloud.gravityzone.bitdefender.com`) reflect today's instance URLs. On Bitdefender rebranding or consolidation (e.g. migration to another region), the `componentFilter` in `config/providers.yaml` must be updated or notifications will go silent.
 - **Claude component names**: Anthropic occasionally renames products (e.g. the console is now officially "platform.claude.com (formerly console.anthropic.com)"). Before go-live, check the current component list at `https://status.claude.com/api/v2/components.json` and update the substrings in `componentFilter` if needed.

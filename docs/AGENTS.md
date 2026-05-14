@@ -49,7 +49,6 @@ To minimise merge conflicts, the project is divided into **independent zones**:
 | State | `state` | `src/state/store.ts` |
 | Adapter: Atlassian | `adapter-atlassian` | `src/adapters/atlassianStatuspage.ts` + test |
 | Adapter: Google | `adapter-google` | `src/adapters/googleWorkspace.ts` + test |
-| Adapter: Metanet | `adapter-metanet` | `src/adapters/metanetRss.ts` + test |
 | Adapter: WEDOS | `adapter-wedos` | `src/adapters/wedosStatusOnline.ts` + test |
 | Adapter: GitHub | `adapter-github` | `src/adapters/githubIssues.ts` + test |
 | Notifier: Google Chat | `notifier-gchat` | `src/notifiers/googleChat.ts` + test |
