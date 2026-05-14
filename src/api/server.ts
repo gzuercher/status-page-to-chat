@@ -8,8 +8,7 @@ import { logger } from "../lib/logger.js";
 import type { RunSummary, StoredIncident } from "../lib/types.js";
 import { getAllStoredIncidents, type Store } from "../state/store.js";
 import { z } from "zod";
-import { createMcpServer, handleMcpRequest } from "./mcp.js";
-import type { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createMcpSessions, handleMcpRequest, type McpSessions } from "./mcp.js";
 
 // CJS build (no "type": "module"). __dirname is available as a CJS global,
 // which after tsc compile points at dist/src/api at runtime.
@@ -241,7 +240,7 @@ async function route(
   req: IncomingMessage,
   res: ServerResponse,
   ctx: ApiContext,
-  mcpTransport: StreamableHTTPServerTransport,
+  mcpSessions: McpSessions,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname;
@@ -264,11 +263,11 @@ async function route(
 
   if (!checkAuth(req, res)) return;
 
-  // MCP endpoint — same bearer-token gate as REST, then hand off to the
-  // Streamable-HTTP transport. POST, GET (SSE) and DELETE are all valid
-  // MCP methods on this path.
+  // MCP endpoint — same bearer-token gate as REST. POST init creates a
+  // new session; subsequent POST/GET/DELETE require the Mcp-Session-Id
+  // header. Per-session transports live in mcpSessions.
   if (path === "/mcp") {
-    await handleMcpRequest(req, res, mcpTransport);
+    await handleMcpRequest(req, res, ctx, mcpSessions);
     return;
   }
 
@@ -335,9 +334,9 @@ async function route(
  */
 export function startApiServer(ctx: ApiContext, port = 8080): Server {
   configureAuth();
-  const { transport: mcpTransport } = createMcpServer(ctx);
+  const mcpSessions = createMcpSessions();
   const server = createServer((req, res) => {
-    route(req, res, ctx, mcpTransport).catch((err: unknown) => {
+    route(req, res, ctx, mcpSessions).catch((err: unknown) => {
       logger.error({ err, url: req.url }, "Unhandled error in API route");
       if (!res.headersSent) {
         sendError(res, 500, "internal error");

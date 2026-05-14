@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -10,20 +11,21 @@ import { logger } from "../lib/logger.js";
 import type { LastRunRef } from "./server.js";
 
 /**
- * Builds the MCP server and registers tools that mirror the REST API.
- * Returns the server plus a single Streamable-HTTP transport, both wired
- * together. Stateful mode — each client performs one `initialize` call
- * and reuses the returned Mcp-Session-Id for subsequent calls.
+ * Per-session McpServer registry. The MCP SDK requires one transport per
+ * session — a single shared transport rejects every init after the first
+ * one with "Server already initialized". We map session-id → transport
+ * here, create new entries on init, and remove them when a client
+ * disconnects.
  */
-export function createMcpServer(ctx: { store: Store; lastRun: LastRunRef }): {
-  server: McpServer;
-  transport: StreamableHTTPServerTransport;
-} {
-  const server = new McpServer({
-    name: "status-page-to-chat",
-    version: "1.0.0",
-  });
+export type McpContext = { store: Store; lastRun: LastRunRef };
+export type McpSessions = Map<string, StreamableHTTPServerTransport>;
 
+/**
+ * Registers all status-page-to-chat tools on a fresh McpServer instance.
+ * Called once per session — the server stays bound to that session's
+ * transport for the session's lifetime.
+ */
+function registerTools(server: McpServer, ctx: McpContext): void {
   /** Helper: serialise a JS value as the JSON-text content block expected by MCP. */
   const json = (value: unknown) => ({
     content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }],
@@ -36,9 +38,7 @@ export function createMcpServer(ctx: { store: Store; lastRun: LastRunRef }): {
 
   server.registerTool(
     "list_providers",
-    {
-      description: "List all status pages currently being monitored.",
-    },
+    { description: "List all status pages currently being monitored." },
     async () => {
       const r = parseConfig();
       if (!r.ok) return error(r.error.message);
@@ -122,9 +122,7 @@ export function createMcpServer(ctx: { store: Store; lastRun: LastRunRef }): {
 
   server.registerTool(
     "list_open_incidents",
-    {
-      description: "Show currently open incidents across all monitored providers.",
-    },
+    { description: "Show currently open incidents across all monitored providers." },
     async () => {
       const all = getAllStoredIncidents(ctx.store);
       const open = all
@@ -154,39 +152,18 @@ export function createMcpServer(ctx: { store: Store; lastRun: LastRunRef }): {
       return json(ctx.lastRun.current);
     },
   );
+}
 
-  // Stateful mode: each MCP client (e.g. a Langdock assistant) performs
-  // one `initialize` call, receives an Mcp-Session-Id header, and includes
-  // it on subsequent requests. The SDK explicitly forbids reusing a
-  // stateless transport, so this is the right pattern even for our single-
-  // tenant deployment.
-  //
-  // enableJsonResponse short-circuits the SSE streaming path. Responses
-  // come back as single JSON documents which is what Langdock expects.
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
-    enableJsonResponse: true,
-  });
-
-  transport.onerror = (err) => {
-    logger.error({ err }, "MCP transport.onerror");
-  };
-
-  void server.connect(transport).then(
-    () => logger.info({}, "MCP server connected to transport"),
-    (err) => logger.error({ err }, "MCP server.connect failed"),
-  );
-  logger.info({}, "MCP server initialised");
-
-  return { server, transport };
+/** Creates the shared session map. Stored in the API context. */
+export function createMcpSessions(): McpSessions {
+  return new Map();
 }
 
 /**
- * Reads the JSON body from an incoming request, used to feed the MCP
- * transport's handleRequest(). Mirrors the readBody in server.ts but is
- * duplicated here to keep mcp.ts self-contained.
+ * Reads the JSON body from an incoming request. Used to detect whether
+ * a POST is an MCP initialize request when no session id is present yet.
  */
-export async function readJsonBody(req: IncomingMessage, maxBytes = 1024 * 1024): Promise<unknown> {
+async function readJsonBody(req: IncomingMessage, maxBytes = 1024 * 1024): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let total = 0;
     let aborted = false;
@@ -223,32 +200,106 @@ export async function readJsonBody(req: IncomingMessage, maxBytes = 1024 * 1024)
   });
 }
 
+function sendJsonError(res: ServerResponse, status: number, message: string): void {
+  res.statusCode = status;
+  res.setHeader("Content-Type", "application/json");
+  res.end(
+    JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message }, id: null }),
+  );
+}
+
 /**
- * Wires an MCP transport into the existing node:http server. Caller passes
- * the path-stripped URL and the transport delegates from there.
+ * Routes a single /mcp request to the right transport. Standard MCP
+ * session pattern:
+ *   - POST with `initialize` body + no session header → create a new
+ *     transport + McpServer, register tools, generate session id, store
+ *     in the sessions map, hand the request to the new transport.
+ *   - POST/GET/DELETE with a session header → look up the transport in
+ *     the map and delegate.
+ *   - Anything else → 400.
  */
 export async function handleMcpRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  transport: StreamableHTTPServerTransport,
+  ctx: McpContext,
+  sessions: McpSessions,
 ): Promise<void> {
-  // Do NOT pre-drain the request body. The SDK wrapper uses
-  // @hono/node-server to translate the Node request into a Web-standard
-  // Request, which reads the body itself. Pre-reading and passing as
-  // parsedBody also works, but causes "500 with empty body" failures
-  // in some SDK + Node combinations because the converted body is no
-  // longer streamable.
-  logger.info({ method: req.method }, "MCP request");
-  try {
-    await transport.handleRequest(req, res);
-  } catch (err) {
-    logger.error({ err }, "MCP transport.handleRequest threw");
-    if (!res.headersSent) {
-      res.statusCode = 500;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: "mcp transport error", detail: (err as Error).message }));
-    } else {
-      res.end();
+  const sessionId = req.headers["mcp-session-id"];
+  const sessionIdStr = Array.isArray(sessionId) ? sessionId[0] : sessionId;
+
+  // GET (SSE listen) and DELETE (session terminate) — must have an
+  // existing session.
+  if (req.method === "GET" || req.method === "DELETE") {
+    if (!sessionIdStr) {
+      sendJsonError(res, 400, "Bad Request: Mcp-Session-Id header is required");
+      return;
     }
+    const transport = sessions.get(sessionIdStr);
+    if (!transport) {
+      sendJsonError(res, 404, "Session not found");
+      return;
+    }
+    await transport.handleRequest(req, res);
+    return;
   }
+
+  if (req.method !== "POST") {
+    sendJsonError(res, 405, "Method Not Allowed");
+    return;
+  }
+
+  // POST — read the body once so we can decide whether to create or
+  // dispatch. The transport.handleRequest signature accepts a pre-parsed
+  // body via the third argument.
+  let body: unknown;
+  try {
+    body = await readJsonBody(req);
+  } catch (err) {
+    sendJsonError(res, 400, `Invalid request body: ${(err as Error).message}`);
+    return;
+  }
+
+  // Existing session → dispatch.
+  if (sessionIdStr) {
+    const transport = sessions.get(sessionIdStr);
+    if (!transport) {
+      sendJsonError(res, 404, "Session not found");
+      return;
+    }
+    await transport.handleRequest(req, res, body);
+    return;
+  }
+
+  // No session yet — only an initialize call may proceed.
+  if (!isInitializeRequest(body)) {
+    sendJsonError(res, 400, "Bad Request: No valid session ID. Send an `initialize` first.");
+    return;
+  }
+
+  // Create a fresh server + transport for this session.
+  const server = new McpServer({ name: "status-page-to-chat", version: "1.0.0" });
+  registerTools(server, ctx);
+
+  const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => randomUUID(),
+    enableJsonResponse: true,
+    onsessioninitialized: (sid) => {
+      sessions.set(sid, transport);
+      logger.info({ sessionId: sid, sessionCount: sessions.size }, "MCP session created");
+    },
+    onsessionclosed: (sid) => {
+      sessions.delete(sid);
+      logger.info({ sessionId: sid, sessionCount: sessions.size }, "MCP session closed");
+    },
+  });
+
+  transport.onerror = (err) => {
+    logger.error({ err, sessionId: transport.sessionId }, "MCP transport.onerror");
+  };
+  transport.onclose = () => {
+    if (transport.sessionId) sessions.delete(transport.sessionId);
+  };
+
+  await server.connect(transport);
+  await transport.handleRequest(req, res, body);
 }
