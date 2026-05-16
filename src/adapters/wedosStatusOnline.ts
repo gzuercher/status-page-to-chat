@@ -1,5 +1,6 @@
 import { httpGet } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
+import { resolveProviderLogoUrl } from "../lib/logo.js";
 import type { NormalizedIncident, StatusProvider } from "../lib/types.js";
 import type { ProviderConfig } from "../lib/config.js";
 
@@ -32,6 +33,7 @@ export class WedosStatusOnlineAdapter implements StatusProvider {
   readonly displayName: string;
   private readonly baseUrl: string;
   private readonly userAgent?: string;
+  private readonly logoUrl?: string;
 
   constructor(config: ProviderConfig) {
     this.key = config.key;
@@ -39,6 +41,10 @@ export class WedosStatusOnlineAdapter implements StatusProvider {
     if (!config.baseUrl) throw new Error(`baseUrl missing for ${config.key}`);
     this.baseUrl = config.baseUrl;
     this.userAgent = config.userAgent;
+    this.logoUrl = resolveProviderLogoUrl({
+      explicitLogoUrl: config.logoUrl,
+      baseUrl: this.baseUrl,
+    });
   }
 
   async fetchIncidents(): Promise<NormalizedIncident[]> {
@@ -79,6 +85,7 @@ export class WedosStatusOnlineAdapter implements StatusProvider {
         url: inc.url ?? `${this.baseUrl}/en/`,
         startedAt: inc.started_at ?? inc.created_at ?? new Date().toISOString(),
         updatedAt: inc.updated_at ?? new Date().toISOString(),
+        logoUrl: this.logoUrl,
       };
     });
 

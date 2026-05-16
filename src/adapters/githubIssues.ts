@@ -1,5 +1,6 @@
 import { httpGet } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
+import { resolveProviderLogoUrl } from "../lib/logo.js";
 import type { NormalizedIncident, StatusProvider } from "../lib/types.js";
 import type { ProviderConfig } from "../lib/config.js";
 
@@ -23,6 +24,7 @@ export class GithubIssuesAdapter implements StatusProvider {
   private readonly owner: string;
   private readonly repo: string;
   private readonly userAgent?: string;
+  private readonly logoUrl?: string;
 
   constructor(config: ProviderConfig) {
     this.key = config.key;
@@ -31,6 +33,10 @@ export class GithubIssuesAdapter implements StatusProvider {
     this.owner = config.owner;
     this.repo = config.repo;
     this.userAgent = config.userAgent;
+    // github-issues has no baseUrl; logoUrl is only set when explicitly
+    // configured. Without it the card renders without a logo (deriving
+    // from html_url would always yield github.com, which masks the brand).
+    this.logoUrl = resolveProviderLogoUrl({ explicitLogoUrl: config.logoUrl });
   }
 
   async fetchIncidents(): Promise<NormalizedIncident[]> {
@@ -75,6 +81,7 @@ export class GithubIssuesAdapter implements StatusProvider {
         url: issue.html_url,
         startedAt: issue.created_at,
         updatedAt: issue.updated_at,
+        logoUrl: this.logoUrl,
       }));
 
     logger.info({ provider: this.key, incidentCount: normalized.length }, "GitHub issues fetched");

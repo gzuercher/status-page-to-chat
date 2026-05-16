@@ -1,9 +1,11 @@
 import { httpGet } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
+import { resolveProviderLogoUrl } from "../lib/logo.js";
 import type { NormalizedIncident, StatusProvider } from "../lib/types.js";
 import type { ProviderConfig } from "../lib/config.js";
 
 const DASHBOARD_URL = "https://www.google.com/appsstatus/dashboard/incidents.json";
+const DEFAULT_LOGO_BASE_URL = "https://workspace.google.com";
 
 type GoogleIncident = {
   id: string;
@@ -22,11 +24,16 @@ export class GoogleWorkspaceAdapter implements StatusProvider {
   readonly key: string;
   readonly displayName: string;
   private readonly userAgent?: string;
+  private readonly logoUrl?: string;
 
   constructor(config: ProviderConfig) {
     this.key = config.key;
     this.displayName = config.displayName;
     this.userAgent = config.userAgent;
+    this.logoUrl = resolveProviderLogoUrl({
+      explicitLogoUrl: config.logoUrl,
+      baseUrl: DEFAULT_LOGO_BASE_URL,
+    });
   }
 
   async fetchIncidents(): Promise<NormalizedIncident[]> {
@@ -55,6 +62,7 @@ export class GoogleWorkspaceAdapter implements StatusProvider {
       url: inc.uri ?? "https://www.google.com/appsstatus/dashboard/",
       startedAt: inc.begin,
       updatedAt: inc.modified,
+      logoUrl: this.logoUrl,
     }));
 
     logger.info(

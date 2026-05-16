@@ -14,6 +14,46 @@ function buildAdaptiveCard(
   const actionText = isOpened
     ? `has reported an incident: "${incident.title}"`
     : `has resolved the incident: "${incident.title}"`;
+  const logoUrl = incident.logoUrl;
+
+  // Fixed pixel width keeps logos visually roughly equal across providers,
+  // even when the underlying favicon dimensions differ.
+  const titleBlock = {
+    type: "TextBlock",
+    text: `${emoji} **${incident.displayName}**`,
+    size: "Medium",
+    weight: "Bolder",
+    wrap: true,
+    verticalContentAlignment: "Center",
+  };
+
+  const header = logoUrl
+    ? {
+        type: "ColumnSet",
+        columns: [
+          {
+            type: "Column",
+            width: "auto",
+            verticalContentAlignment: "Center",
+            items: [
+              {
+                type: "Image",
+                url: logoUrl,
+                altText: `${incident.displayName} logo`,
+                width: "24px",
+                height: "24px",
+              },
+            ],
+          },
+          {
+            type: "Column",
+            width: "stretch",
+            verticalContentAlignment: "Center",
+            items: [titleBlock],
+          },
+        ],
+      }
+    : titleBlock;
 
   return {
     type: "message",
@@ -25,12 +65,7 @@ function buildAdaptiveCard(
           type: "AdaptiveCard",
           version: "1.4",
           body: [
-            {
-              type: "TextBlock",
-              text: `${emoji} **${incident.displayName}**`,
-              size: "Medium",
-              weight: "Bolder",
-            },
+            header,
             {
               type: "TextBlock",
               text: actionText,

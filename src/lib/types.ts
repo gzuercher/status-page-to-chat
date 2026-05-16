@@ -19,6 +19,13 @@ export type NormalizedIncident = {
   startedAt: string;
   /** Last update (ISO-8601) */
   updatedAt: string;
+  /**
+   * Optional brand logo URL the notifier renders next to the title.
+   * Computed by the adapter from explicit `logoUrl` config or, as a default,
+   * the favicon of the provider's `baseUrl` host. Notifiers must tolerate
+   * undefined and render the card without a logo in that case.
+   */
+  logoUrl?: string;
 };
 
 /**

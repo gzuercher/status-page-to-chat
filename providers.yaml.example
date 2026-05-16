@@ -57,3 +57,21 @@ providers: []
 #     componentFilter:
 #       - claude.ai
 #       - api.anthropic.com
+#
+# logoUrl overrides the auto-derived brand logo (Google favicon of the
+# baseUrl host). Use it when the status page host has no favicon entry
+# at Google (e.g. status.zendesk.com falls back to a globe — point it at
+# zendesk.com), or for adapters without a baseUrl (github-issues).
+#
+#   - key: zendesk-helpcenter
+#     displayName: Zendesk Help Center
+#     adapter: atlassian-statuspage
+#     baseUrl: https://status.zendesk.com
+#     logoUrl: https://www.google.com/s2/favicons?domain=zendesk.com&sz=64
+#
+#   - key: onetimesecret
+#     displayName: Onetime Secret
+#     adapter: github-issues
+#     owner: onetimesecret
+#     repo: status
+#     logoUrl: https://www.google.com/s2/favicons?domain=onetimesecret.com&sz=64
