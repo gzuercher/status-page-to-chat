@@ -30,6 +30,14 @@ export const providerSchema = z
     repo: z.string().optional(),
     componentFilter: z.union([z.string(), z.array(z.string())]).optional(),
     userAgent: z.string().optional(),
+    /**
+     * Optional explicit brand logo URL for the chat card. When unset, the
+     * adapter derives a favicon from the provider's host. Set this for
+     * providers whose status page host has no favicon registered (e.g.
+     * status.zendesk.com → set zendesk.com) or providers without a baseUrl
+     * (github-issues).
+     */
+    logoUrl: z.string().url().optional(),
   })
   .refine(
     (p) => {

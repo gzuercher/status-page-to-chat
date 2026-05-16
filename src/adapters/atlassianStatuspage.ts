@@ -1,5 +1,6 @@
 import { httpGet } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
+import { resolveProviderLogoUrl } from "../lib/logo.js";
 import type { NormalizedIncident, StatusProvider } from "../lib/types.js";
 import type { ProviderConfig } from "../lib/config.js";
 
@@ -65,6 +66,7 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
   private readonly baseUrl: string;
   private readonly componentFilter?: string | string[];
   private readonly userAgent?: string;
+  private readonly logoUrl?: string;
 
   constructor(config: ProviderConfig) {
     this.key = config.key;
@@ -73,6 +75,10 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
     this.baseUrl = config.baseUrl;
     this.componentFilter = config.componentFilter;
     this.userAgent = config.userAgent;
+    this.logoUrl = resolveProviderLogoUrl({
+      explicitLogoUrl: config.logoUrl,
+      baseUrl: this.baseUrl,
+    });
   }
 
   async fetchIncidents(): Promise<NormalizedIncident[]> {
@@ -119,6 +125,7 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
         url: incident.shortlink ?? `${this.baseUrl}/incidents/${incident.id}`,
         startedAt: incident.created_at,
         updatedAt: incident.updated_at,
+        logoUrl: this.logoUrl,
       });
     }
 

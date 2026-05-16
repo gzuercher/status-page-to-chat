@@ -15,6 +15,8 @@ function buildCard(
     ? `has reported an incident: "${incident.title}"`
     : `has resolved the incident: "${incident.title}"`;
 
+  const logoUrl = incident.logoUrl;
+
   return {
     cardsV2: [
       {
@@ -23,6 +25,7 @@ function buildCard(
           header: {
             title: `${emoji} ${incident.displayName}`,
             subtitle: actionText,
+            ...(logoUrl ? { imageUrl: logoUrl, imageType: "SQUARE" } : {}),
           },
           sections: [
             {
