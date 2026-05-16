@@ -23,7 +23,7 @@ The task of each adapter: fetch raw data, extract open + recently closed inciden
 
 ## 1. `atlassian-statuspage`
 
-**Covered services**: Bitbucket, Bitwarden, Bexio, Webflow, DigiCert, NinjaOne, Sucuri, SmartRecruiters, Retool, Zendesk, Langdock, Kaseya, Bitdefender GravityZone, Figma, Claude — everything running on Atlassian Statuspage with a **public JSON API**. Sophos runs technically on Atlassian Statuspage but has the JSON API disabled (see [ROADMAP.md](ROADMAP.md) → Later extensions).
+**Covered services**: Bitbucket, Bexio, Webflow, DigiCert, NinjaOne, Sucuri, SmartRecruiters, Retool, Kaseya, Bitdefender GravityZone, Figma, Claude — everything running on Atlassian Statuspage with a **public JSON API**. Bitwarden, Zendesk and Langdock look like Atlassian pages but actually run on Hund.io, Zendesk's own SSP backend and BetterStack respectively — they need the `hund-atom`, `zendesk-ssp` and `betterstack-feed` adapters. Sophos runs technically on Atlassian Statuspage but has the JSON API disabled (see [ROADMAP.md](ROADMAP.md) → Later extensions).
 
 ### Endpoints
 
@@ -162,6 +162,108 @@ Pull requests are filtered out (GitHub API returns both issues and PRs).
   adapter: github-issues
   owner: onetimesecret
   repo: status
+```
+
+---
+
+## 5. `betterstack-feed`
+
+**Service**: status pages hosted on BetterStack (e.g. Langdock).
+
+BetterStack has no public JSON API. The RSS 2.0 feed at `/feed.atom` carries one `<item>` per incident *update*; multiple updates of the same incident share a `…/incident/<id>` link, which is used as `externalId` to deduplicate.
+
+### Endpoint
+
+- `{baseUrl}/feed.atom`
+
+### Mapping
+
+| Feed field | Normalized field |
+|---|---|
+| `<link>` trailing segment | `externalId` (deduplication key) |
+| latest update's `<title>` | `title` |
+| any update containing "resolved" / "fixed" / "restored" / "behoben" / "gelöst" → `resolved`, else `open` | `status` |
+| oldest update's `<pubDate>` | `startedAt` |
+| newest update's `<pubDate>` | `updatedAt` |
+| `<link>` | `url` |
+
+Incidents whose newest update is older than 7 days are dropped — the feed only keeps recent updates, so resolution posts of old incidents have rolled out and they'd otherwise appear permanently "open".
+
+### Configuration
+
+```yaml
+- key: langdock
+  displayName: Langdock
+  adapter: betterstack-feed
+  baseUrl: https://status.langdock.com
+```
+
+---
+
+## 6. `hund-atom`
+
+**Service**: status pages hosted on Hund.io (e.g. Bitwarden, Metanet).
+
+Hund's REST API (`/api/v1/*`) requires an API key. The public Atom feed at `/state_feed/feed` works without auth.
+
+### Endpoint
+
+- `{baseUrl}/state_feed/feed`
+
+### Mapping
+
+| Atom field | Normalized field |
+|---|---|
+| `<id>` trailing segment (after the `Entry/` marker) | `externalId` |
+| `<title>` | `title` |
+| Title prefix in brackets — `[Ended]`, `[Resolved]`, `[Fixed]`, `[Gelöst]`, `[Beendet]`, `[Behoben]` → `resolved`; anything else (`[Investigating]`, `[Identified]`, `[Monitoring]`, no prefix) → `open` | `status` |
+| `<published>` | `startedAt` |
+| `<updated>` | `updatedAt` |
+| `<link href="…">` | `url` |
+
+### Configuration
+
+```yaml
+- key: bitwarden
+  displayName: Bitwarden
+  adapter: hund-atom
+  baseUrl: https://status.bitwarden.com
+```
+
+---
+
+## 7. `zendesk-ssp`
+
+**Service**: status.zendesk.com (Zendesk's own React/Rails status backend, not Atlassian).
+
+### Endpoints
+
+- Incidents: `{baseUrl}/api/ssp/incidents.json`
+- Services (only fetched if `componentFilter` is set): `{baseUrl}/api/ssp/services.json`
+
+### Mapping
+
+| SSP field | Normalized field |
+|---|---|
+| `data[].id` | `externalId` |
+| `data[].attributes.name` | `title` |
+| `data[].attributes.status` (`"resolved"` or `resolvedAt` set → `resolved`, else `open`) | `status` |
+| `data[].attributes.startedAt` | `startedAt` |
+| `data[].attributes.resolvedAt` ?? `startedAt` | `updatedAt` |
+| `baseUrl` (no per-incident URL exists on the SSP frontend) | `url` |
+
+### Component filter
+
+The SSP API exposes incident-service refs that are an extra hop away from service names. The current implementation matches the filter substrings against the **incident title** (which usually mentions the affected pod or product, e.g. "Pod 13 …", "Help Center …"). Set `componentFilter: ["Help Center"]` to narrow.
+
+### Configuration
+
+```yaml
+- key: zendesk-helpcenter
+  displayName: Zendesk Help Center
+  adapter: zendesk-ssp
+  baseUrl: https://status.zendesk.com
+  componentFilter: "Help Center"
 ```
 
 ---

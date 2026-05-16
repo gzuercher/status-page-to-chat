@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Incidents | Example</title>
+    <link>https://status.example.com/</link>
+    <description>Incidents reported on status page for Example</description>
+    <atom:link rel="self" type="application/rss+xml" href="https://status.example.com/feed"/>
+    <item>
+      <title>File uploads resolved</title>
+      <link>https://status.example.com/incident/100</link>
+      <pubDate>Sat, 16 May 2026 12:00:00 -0000</pubDate>
+      <guid>https://status.example.com/incident/100#update2</guid>
+      <description>File uploads have been resolved and are working again.</description>
+    </item>
+    <item>
+      <title>File uploads investigating</title>
+      <link>https://status.example.com/incident/100</link>
+      <pubDate>Sat, 16 May 2026 11:00:00 -0000</pubDate>
+      <guid>https://status.example.com/incident/100#update1</guid>
+      <description>We are investigating issues with file uploads.</description>
+    </item>
+    <item>
+      <title>API errors</title>
+      <link>https://status.example.com/incident/200</link>
+      <pubDate>Sat, 16 May 2026 09:30:00 -0000</pubDate>
+      <guid>https://status.example.com/incident/200#update1</guid>
+      <description>We are seeing elevated API error rates.</description>
+    </item>
+    <item>
+      <title>Ancient resolved incident</title>
+      <link>https://status.example.com/incident/1</link>
+      <pubDate>Mon, 01 Jan 2024 09:00:00 -0000</pubDate>
+      <guid>https://status.example.com/incident/1#update1</guid>
+      <description>Long ago resolved incident.</description>
+    </item>
+  </channel>
+</rss>

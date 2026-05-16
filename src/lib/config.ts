@@ -24,6 +24,9 @@ export const providerSchema = z
       "google-workspace",
       "wedos-status-online",
       "github-issues",
+      "betterstack-feed",
+      "hund-atom",
+      "zendesk-ssp",
     ]),
     baseUrl: z.string().url().optional(),
     owner: z.string().optional(),
@@ -41,12 +44,22 @@ export const providerSchema = z
   })
   .refine(
     (p) => {
-      if (p.adapter === "atlassian-statuspage" || p.adapter === "wedos-status-online") {
+      const requiresBaseUrl = [
+        "atlassian-statuspage",
+        "wedos-status-online",
+        "betterstack-feed",
+        "hund-atom",
+        "zendesk-ssp",
+      ];
+      if (requiresBaseUrl.includes(p.adapter)) {
         return !!p.baseUrl;
       }
       return true;
     },
-    { message: "baseUrl is required for atlassian-statuspage and wedos-status-online" },
+    {
+      message:
+        "baseUrl is required for atlassian-statuspage, wedos-status-online, betterstack-feed, hund-atom and zendesk-ssp",
+    },
   )
   .refine(
     (p) => {
