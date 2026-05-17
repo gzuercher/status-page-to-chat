@@ -19,10 +19,18 @@ providers:
     displayName: <string>      # How the name appears in chat ("Bexio", "Webflow")
     adapter: <adapter-name>    # see ADAPTERS.md
     # adapter-specific fields:
-    baseUrl: <url>             # for "atlassian-statuspage", "wedos-status-online"
-    owner: <string>            # for "github-issues"
-    repo: <string>             # for "github-issues"
-    componentFilter: <string | list<string>>  # optional, only for atlassian-statuspage
+    baseUrl: <url>             # required for atlassian-statuspage, wedos-status-online,
+                               # betterstack-feed, hund-atom, zendesk-ssp, html-scrape
+    owner: <string>            # required for github-issues
+    repo: <string>             # required for github-issues
+    selector: <css-selector>   # required for html-scrape
+    healthyMatch: <string>     # required for html-scrape — text or attribute value
+                               # that means "no incident"
+    titleTemplate: <string>    # optional, only for html-scrape
+    componentFilter: <string | list<string>>  # optional, atlassian-statuspage + zendesk-ssp
+    logoUrl: <url>             # optional, override the auto-derived brand favicon
+                               # (set this for hosts without a favicon registered at
+                               # Google, e.g. point status.zendesk.com → zendesk.com)
     userAgent: <string>        # optional, overrides the default User-Agent for this provider
 ```
 
