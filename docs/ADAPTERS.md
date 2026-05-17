@@ -268,6 +268,53 @@ The SSP API exposes incident-service refs that are an extra hop away from servic
 
 ---
 
+## 8. `html-scrape`
+
+**Use case**: status pages with no JSON API and no RSS/Atom feed, where the overall status is a single element in the rendered HTML. Two motivating cases:
+
+- **CheckCentral** (`https://status.checkcentral.cc`): tiny Bootstrap page; status is encoded purely as a CSS class on an otherwise empty `<div>` inside `<div class="StatusDot">…</div>`.
+- **Sophos** (`https://status.sophos.com`): runs technically on Atlassian Statuspage but the JSON API is disabled and the front door is protected by a WAF that returns HTTP 403 ("Invalid request blocked (v1)") to our default User-Agent. Since [CLAUDE.md](../CLAUDE.md) forbids browser-UA impersonation, this adapter is currently **not usable for Sophos in production**. The Sophos selector (`.page-status .status`) and healthyMatch (`All Systems Operational`) are validated against a saved Atlassian-shaped fixture; the moment Sophos lifts the WAF rule (or the operator obtains permission to identify the poller specifically), the same config works.
+
+### Endpoint
+
+- `{baseUrl}` — fetches the page itself, no special path.
+
+### Mapping
+
+| Source | Normalized field |
+|---|---|
+| `sha256(matchedText).slice(0, 16)` | `externalId` (stable across polls as long as the page text is stable) |
+| `titleTemplate` with `{matchedText}` substituted (default `"Status page reports: {matchedText}"`) | `title` |
+| `healthyMatch` against the element text — match = no incident, mismatch = single open incident | `status` |
+| `baseUrl` | `url` |
+| current time | `startedAt` / `updatedAt` (HTML has no timestamps) |
+
+### Selector and healthyMatch
+
+- `selector` (required): CSS selector pointing at the status element. The adapter reads the element's text content; if empty, it falls back to the `class` attribute (covers CheckCentral's empty marker `<div>`).
+- `healthyMatch` (required): either a case-insensitive substring or, in `/pattern/flags` form, a regular expression. Matching means "healthy"; mismatching means "open incident".
+- `titleTemplate` (optional): overrides the default title. `{matchedText}` is substituted with the scraped text/class.
+
+### Limitations
+
+- One overall incident per provider; no per-component decomposition.
+- No timestamps from HTML.
+- HTML structure changes silently break the adapter — review the page after upgrades or layout changes from upstream.
+- Pages behind a WAF or anti-bot layer that block neutral User-Agents are not supported; we do not impersonate browsers.
+
+### Configuration
+
+```yaml
+- key: checkcentral
+  displayName: CheckCentral
+  adapter: html-scrape
+  baseUrl: https://status.checkcentral.cc
+  selector: ".StatusDot > div"
+  healthyMatch: success
+```
+
+---
+
 ## Adding a new adapter
 
 1. Create a new file at `src/adapters/<name>.ts`. Implementation must satisfy `StatusProvider`.

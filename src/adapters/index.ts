@@ -7,6 +7,7 @@ import { GithubIssuesAdapter } from "./githubIssues.js";
 import { BetterStackFeedAdapter } from "./betterstackFeed.js";
 import { HundAtomAdapter } from "./hundAtom.js";
 import { ZendeskSspAdapter } from "./zendeskSsp.js";
+import { HtmlScrapeAdapter } from "./htmlScrape.js";
 
 /**
  * Erstellt den passenden Adapter anhand des adapter-Felds in der Konfiguration.
@@ -27,5 +28,7 @@ export function createAdapter(config: ProviderConfig): StatusProvider {
       return new HundAtomAdapter(config);
     case "zendesk-ssp":
       return new ZendeskSspAdapter(config);
+    case "html-scrape":
+      return new HtmlScrapeAdapter(config);
   }
 }
