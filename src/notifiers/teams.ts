@@ -1,6 +1,6 @@
 import { httpPost } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
-import type { Notifier, NormalizedIncident } from "../lib/types.js";
+import type { AdapterHealthAlert, Notifier, NormalizedIncident } from "../lib/types.js";
 
 /**
  * Builds a Microsoft Teams Adaptive Card payload.
@@ -10,7 +10,7 @@ function buildAdaptiveCard(
   type: "opened" | "resolved",
 ): Record<string, unknown> {
   const isOpened = type === "opened";
-  const emoji = isOpened ? "\u26a0\ufe0f" : "\u2705";
+  const emoji = isOpened ? "⚠️" : "✅";
   const actionText = isOpened
     ? `has reported an incident: "${incident.title}"`
     : `has resolved the incident: "${incident.title}"`;
@@ -86,6 +86,101 @@ function buildAdaptiveCard(
 }
 
 /**
+ * Builds a system-level "adapter health" card. Visually distinct from
+ * incident cards: branded with status-page-to-chat (the watcher) in the
+ * header, the affected provider relegated to the body. Uses the
+ * wrench/tooling emoji to signal "tooling problem, not service outage".
+ */
+function buildAdapterHealthCard(alert: AdapterHealthAlert): Record<string, unknown> {
+  const headerEmoji = alert.kind === "recovered" ? "\u{1f6e0}️✅" : "\u{1f6e0}️";
+
+  const bodyText = renderAdapterHealthBody(alert);
+
+  const providerLine = alert.logoUrl
+    ? {
+        type: "ColumnSet",
+        columns: [
+          {
+            type: "Column",
+            width: "auto",
+            verticalContentAlignment: "Center",
+            items: [
+              {
+                type: "Image",
+                url: alert.logoUrl,
+                altText: `${alert.providerName} logo`,
+                width: "16px",
+                height: "16px",
+              },
+            ],
+          },
+          {
+            type: "Column",
+            width: "stretch",
+            verticalContentAlignment: "Center",
+            items: [
+              {
+                type: "TextBlock",
+                text: alert.providerName,
+                wrap: true,
+                weight: "Bolder",
+                isSubtle: true,
+              },
+            ],
+          },
+        ],
+      }
+    : {
+        type: "TextBlock",
+        text: alert.providerName,
+        wrap: true,
+        weight: "Bolder",
+        isSubtle: true,
+      };
+
+  return {
+    type: "message",
+    attachments: [
+      {
+        contentType: "application/vnd.microsoft.card.adaptive",
+        content: {
+          $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+          type: "AdaptiveCard",
+          version: "1.4",
+          body: [
+            {
+              type: "TextBlock",
+              text: `${headerEmoji} **status-page-to-chat**`,
+              size: "Medium",
+              weight: "Bolder",
+              wrap: true,
+            },
+            providerLine,
+            {
+              type: "TextBlock",
+              text: bodyText,
+              wrap: true,
+              isSubtle: true,
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+function renderAdapterHealthBody(alert: AdapterHealthAlert): string {
+  switch (alert.kind) {
+    case "down":
+      return `Unable to poll for the last ${alert.durationLabel}. ${alert.errorCategory}.`;
+    case "recovered":
+      return `Polling resumed (was down for ${alert.durationLabel}).`;
+    case "halfDead":
+      return `Polled cleanly for ${alert.durationLabel} but never returned any incident — check the URL.`;
+  }
+}
+
+/**
  * Notifier for Microsoft Teams Incoming Webhooks.
  */
 export class TeamsNotifier implements Notifier {
@@ -96,16 +191,35 @@ export class TeamsNotifier implements Notifier {
   }
 
   async notifyOpened(incident: NormalizedIncident): Promise<void> {
-    await this.send(incident, "opened");
+    const payload = buildAdaptiveCard(incident, "opened");
+    await this.sendWithRetry(payload, {
+      provider: incident.providerKey,
+      type: "opened",
+      incidentId: incident.externalId,
+    });
   }
 
   async notifyResolved(incident: NormalizedIncident): Promise<void> {
-    await this.send(incident, "resolved");
+    const payload = buildAdaptiveCard(incident, "resolved");
+    await this.sendWithRetry(payload, {
+      provider: incident.providerKey,
+      type: "resolved",
+      incidentId: incident.externalId,
+    });
   }
 
-  private async send(incident: NormalizedIncident, type: "opened" | "resolved"): Promise<void> {
-    const payload = buildAdaptiveCard(incident, type);
+  async notifyAdapterHealth(alert: AdapterHealthAlert): Promise<void> {
+    const payload = buildAdapterHealthCard(alert);
+    await this.sendWithRetry(payload, {
+      provider: alert.providerKey,
+      type: `adapter-${alert.kind}`,
+    });
+  }
 
+  private async sendWithRetry(
+    payload: Record<string, unknown>,
+    context: Record<string, unknown>,
+  ): Promise<void> {
     try {
       const response = await httpPost(this.webhookUrl, payload);
 
@@ -113,15 +227,9 @@ export class TeamsNotifier implements Notifier {
         throw new Error(`HTTP ${response.status}: ${response.body}`);
       }
 
-      logger.info(
-        { provider: incident.providerKey, type, incidentId: incident.externalId },
-        "Teams message sent",
-      );
+      logger.info(context, "Teams message sent");
     } catch (firstError) {
-      logger.warn(
-        { provider: incident.providerKey, type, err: firstError },
-        "Teams message failed, retrying in 2s",
-      );
+      logger.warn({ ...context, err: firstError }, "Teams message failed, retrying in 2s");
 
       // Single retry with backoff
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -131,20 +239,9 @@ export class TeamsNotifier implements Notifier {
         if (response.status < 200 || response.status >= 300) {
           throw new Error(`Retry failed: HTTP ${response.status}: ${response.body}`);
         }
-        logger.info(
-          { provider: incident.providerKey, type, incidentId: incident.externalId },
-          "Teams message sent (after retry)",
-        );
+        logger.info(context, "Teams message sent (after retry)");
       } catch (retryError) {
-        logger.error(
-          {
-            provider: incident.providerKey,
-            type,
-            incidentId: incident.externalId,
-            err: retryError,
-          },
-          "Teams message failed on retry",
-        );
+        logger.error({ ...context, err: retryError }, "Teams message failed on retry");
         throw retryError;
       }
     }

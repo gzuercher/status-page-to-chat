@@ -39,12 +39,43 @@ export interface StatusProvider {
 }
 
 /**
+ * System-level alert about an adapter's own health, distinct from an
+ * incident on the watched service. Surfaces in the same chat target but
+ * is visually branded as coming from `status-page-to-chat` itself, not
+ * from any provider.
+ */
+export type AdapterHealthAlert =
+  | {
+      kind: "down";
+      providerKey: string;
+      providerName: string;
+      logoUrl?: string;
+      errorCategory: string;
+      durationLabel: string;
+    }
+  | {
+      kind: "recovered";
+      providerKey: string;
+      providerName: string;
+      logoUrl?: string;
+      durationLabel: string;
+    }
+  | {
+      kind: "halfDead";
+      providerKey: string;
+      providerName: string;
+      logoUrl?: string;
+      durationLabel: string;
+    };
+
+/**
  * Interface for chat notifiers.
  * Sends formatted messages to a chat channel.
  */
 export interface Notifier {
   notifyOpened(incident: NormalizedIncident): Promise<void>;
   notifyResolved(incident: NormalizedIncident): Promise<void>;
+  notifyAdapterHealth(alert: AdapterHealthAlert): Promise<void>;
 }
 
 /**

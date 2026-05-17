@@ -75,4 +75,45 @@ describe("TeamsNotifier", () => {
 
     expect(mockedHttpPost).toHaveBeenCalledTimes(2);
   });
+
+  it("renders an adapter-health card with the system header and the wrench emoji", async () => {
+    mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
+
+    const notifier = new TeamsNotifier("https://teams.webhook.office.com/test");
+    await notifier.notifyAdapterHealth({
+      kind: "down",
+      providerKey: "bitwarden",
+      providerName: "Bitwarden",
+      logoUrl: "https://logo.example/bitwarden.png",
+      errorCategory: "HTTP 404",
+      durationLabel: "2h",
+    });
+
+    const [, payload] = mockedHttpPost.mock.calls[0];
+    const card = (payload as { attachments: Array<{ content: { body: unknown[] } }> })
+      .attachments[0].content.body;
+    const json = JSON.stringify(card);
+    expect(json).toContain("status-page-to-chat");
+    expect(json).toContain("🛠️");
+    expect(json).toContain("Bitwarden");
+    expect(json).toContain("HTTP 404");
+    expect(json).toContain("2h");
+  });
+
+  it("uses a distinct recovered-emoji combination", async () => {
+    mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
+
+    const notifier = new TeamsNotifier("https://teams.webhook.office.com/test");
+    await notifier.notifyAdapterHealth({
+      kind: "recovered",
+      providerKey: "bitwarden",
+      providerName: "Bitwarden",
+      durationLabel: "3h 10min",
+    });
+    const [, payload] = mockedHttpPost.mock.calls[0];
+    const json = JSON.stringify(payload);
+    expect(json).toContain("🛠️✅");
+    expect(json).toContain("3h 10min");
+    expect(json).toContain("resumed");
+  });
 });
