@@ -1,10 +1,18 @@
 import { existsSync, copyFileSync, statSync } from "node:fs";
 import { Cron } from "croner";
-import { loadConfig, parseConfig, type AppConfig } from "./lib/config.js";
+import { loadConfig, parseConfig, type AppConfig, type ProviderConfig } from "./lib/config.js";
 import { logger } from "./lib/logger.js";
-import type { Notifier, RunSummary } from "./lib/types.js";
+import type { AdapterHealthAlert, Notifier, RunSummary } from "./lib/types.js";
 import { createAdapter } from "./adapters/index.js";
 import { createNotifier } from "./notifiers/index.js";
+import { categorizeError } from "./lib/errorCategory.js";
+import {
+  formatDuration,
+  HealthTracker,
+  type HealthEvent,
+  type PollResult as HealthPollResult,
+} from "./lib/healthTracker.js";
+import { resolveProviderLogoUrl } from "./lib/logo.js";
 import {
   LAST_RUN_METADATA_KEY,
   closeStore,
@@ -34,6 +42,7 @@ async function runPoll(
   config: AppConfig,
   notifier: Notifier,
   store: Store,
+  healthTracker: HealthTracker,
   lastRun?: LastRunRef,
 ): Promise<void> {
   const startTime = Date.now();
@@ -49,6 +58,10 @@ async function runPoll(
     durationMs: 0,
   };
 
+  // Collected for the health tracker after all providers have been
+  // polled. One entry per configured provider, success or failure.
+  const healthInput: HealthPollResult[] = [];
+
   try {
     const adapterResults = await Promise.allSettled(
       config.providers.map(async (providerConfig) => {
@@ -58,15 +71,30 @@ async function runPoll(
       }),
     );
 
-    for (const result of adapterResults) {
+    for (let i = 0; i < adapterResults.length; i++) {
+      const result = adapterResults[i];
+      const providerConfig = config.providers[i];
+
       if (result.status === "rejected") {
         summary.providersFailed++;
-        logger.error({ err: result.reason }, "Adapter failed");
+        logger.error({ provider: providerConfig.key, err: result.reason }, "Adapter failed");
+        healthInput.push(
+          buildHealthInput(providerConfig, {
+            kind: "failure",
+            errorCategory: categorizeError(result.reason),
+          }),
+        );
         continue;
       }
 
       summary.providersSucceeded++;
       const { providerKey, incidents } = result.value;
+      healthInput.push(
+        buildHealthInput(providerConfig, {
+          kind: "success",
+          hasIncidents: incidents.length > 0,
+        }),
+      );
 
       const stored = await getStoredIncidents(store, providerKey);
       const diffs = diffIncidents(incidents, stored);
@@ -113,18 +141,90 @@ async function runPoll(
     }
   } catch (err) {
     logger.fatal({ err }, "Critical error in poll run");
-  } finally {
-    summary.durationMs = Date.now() - startTime;
-    const completedAt = new Date().toISOString();
-    try {
-      setMetadata(store, LAST_RUN_METADATA_KEY, completedAt);
-    } catch (err) {
-      logger.error({ err }, "Failed to persist last_run_at metadata");
+  }
+
+  // Health tracking runs *after* the per-provider loop so suppression
+  // can take the full failure ratio into account. Notification errors
+  // are isolated per event — a single bad webhook does not block the
+  // rest, and never affects the run summary's incident counters.
+  try {
+    const events = healthTracker.ingest(healthInput);
+    for (const event of events) {
+      try {
+        await notifier.notifyAdapterHealth(buildHealthAlert(event));
+        summary.notificationsSent++;
+        logger.info(
+          { provider: event.providerKey, kind: event.kind },
+          "Adapter-health notification sent",
+        );
+      } catch (err) {
+        summary.notificationsFailed++;
+        logger.error(
+          { provider: event.providerKey, kind: event.kind, err },
+          "Adapter-health notification failed",
+        );
+      }
     }
-    if (lastRun) {
-      lastRun.current = { ...summary, completedAt };
-    }
-    logger.info({ run_summary: summary }, "run_summary");
+  } catch (err) {
+    logger.error({ err }, "Health tracker raised");
+  }
+
+  summary.durationMs = Date.now() - startTime;
+  const completedAt = new Date().toISOString();
+  try {
+    setMetadata(store, LAST_RUN_METADATA_KEY, completedAt);
+  } catch (err) {
+    logger.error({ err }, "Failed to persist last_run_at metadata");
+  }
+  if (lastRun) {
+    lastRun.current = { ...summary, completedAt };
+  }
+  logger.info({ run_summary: summary }, "run_summary");
+}
+
+function buildHealthInput(
+  providerConfig: ProviderConfig,
+  outcome: HealthPollResult["outcome"],
+): HealthPollResult {
+  return {
+    providerKey: providerConfig.key,
+    providerName: providerConfig.displayName,
+    fingerprint: `${providerConfig.adapter}:${providerConfig.baseUrl ?? ""}:${providerConfig.owner ?? ""}/${providerConfig.repo ?? ""}`,
+    logoUrl: resolveProviderLogoUrl({
+      explicitLogoUrl: providerConfig.logoUrl,
+      baseUrl: providerConfig.baseUrl,
+    }),
+    outcome,
+  };
+}
+
+function buildHealthAlert(event: HealthEvent): AdapterHealthAlert {
+  switch (event.kind) {
+    case "down":
+      return {
+        kind: "down",
+        providerKey: event.providerKey,
+        providerName: event.providerName,
+        logoUrl: event.logoUrl,
+        errorCategory: event.errorCategory,
+        durationLabel: formatDuration(event.downForMs),
+      };
+    case "recovered":
+      return {
+        kind: "recovered",
+        providerKey: event.providerKey,
+        providerName: event.providerName,
+        logoUrl: event.logoUrl,
+        durationLabel: formatDuration(event.downForMs),
+      };
+    case "halfDead":
+      return {
+        kind: "halfDead",
+        providerKey: event.providerKey,
+        providerName: event.providerName,
+        logoUrl: event.logoUrl,
+        durationLabel: formatDuration(event.sinceMs),
+      };
   }
 }
 
@@ -180,6 +280,7 @@ async function main(): Promise<void> {
   let currentConfig = loadConfig();
   const notifier = createNotifier(currentConfig);
   const store = createStore();
+  const healthTracker = new HealthTracker();
   const lastRun: LastRunRef = { current: null };
 
   const apiPort = Number(process.env.API_PORT ?? 8080);
@@ -204,7 +305,7 @@ async function main(): Promise<void> {
           "Config reload failed, continuing with previous config",
         );
       }
-      await runPoll(currentConfig, notifier, store, lastRun);
+      await runPoll(currentConfig, notifier, store, healthTracker, lastRun);
     } finally {
       isRunning = false;
     }

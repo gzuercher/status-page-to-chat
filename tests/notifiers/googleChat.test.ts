@@ -74,4 +74,25 @@ describe("GoogleChatNotifier", () => {
 
     await expect(notifier.notifyOpened(testIncident)).rejects.toThrow("Retry failed");
   });
+
+  it("renders an adapter-health card with system header and provider in the body", async () => {
+    mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
+
+    const notifier = new GoogleChatNotifier("https://chat.googleapis.com/test");
+    await notifier.notifyAdapterHealth({
+      kind: "halfDead",
+      providerKey: "wedos",
+      providerName: "WEDOS",
+      logoUrl: "https://logo.example/wedos.png",
+      durationLabel: "7 days",
+    });
+
+    const [, payload] = mockedHttpPost.mock.calls[0];
+    const json = JSON.stringify(payload);
+    expect(json).toContain("status-page-to-chat");
+    expect(json).toContain("🛠️");
+    expect(json).toContain("WEDOS");
+    expect(json).toContain("check the URL");
+    expect(json).toContain("7 days");
+  });
 });
