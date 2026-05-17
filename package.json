@@ -23,7 +23,7 @@
   "packageManager": "pnpm@10.33.2",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "better-sqlite3": "^12.9.0",
+    "better-sqlite3": "^12.10.0",
     "cheerio": "^1.2.0",
     "croner": "^10.0.1",
     "fast-xml-parser": "^5.8.0",
