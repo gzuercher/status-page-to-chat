@@ -106,6 +106,7 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done
 - Scheduled maintenance as a separate message type
 - Admin UI for managing configuration
 - Self-monitoring via a second "canary" container (beyond the built-in healthcheck)
+- **Adapter-health alerting in Teams** — when a configured status page stops returning usable data (consecutive poll failures), surface this *in the chat target itself*, not just in container logs. Must be very low volume to avoid alert fatigue: post once when an adapter crosses N consecutive failures (e.g. 6 = 30 min), once when it recovers, never repeat in between. Suppress during global outages (don't fire when >50 % of adapters fail at once — likely a network or DNS problem on our side).
 - Slack notifier
 - German translation of titles (LLM call)
 - Azure status adapter (`azure-status`) — parse the official RSS feed at `https://azure.status.microsoft/en-us/status/feed/` (Microsoft eigenbau, first-party, `<category>` carries service+region). Microsoft 365 (`status.cloud.microsoft`) has **no anonymous feed** — the page is bearer-gated, and Microsoft Graph's `serviceAnnouncement/issues` requires a per-tenant token (`ServiceHealth.Read.All`), which is out of scope for a passive multi-tenant poller. Caveat: public Azure/M365 posts typically lag tenant-targeted notices by 15–45 min; empty RSS channel does not guarantee "healthy".
