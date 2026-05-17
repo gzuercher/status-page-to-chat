@@ -28,18 +28,23 @@ opens up.
   planned maintenance from unexpected outages in the card layout.
 - **Slack notifier** — symmetric to the existing Teams / Google Chat
   notifiers.
-- **HTML-scraping adapter** for status pages without any feed or JSON
-  endpoint. Two concrete cases waiting on this:
-  - **Sophos** (`status.sophos.com`): runs on Atlassian Statuspage but
-    all JSON/RSS/Atom endpoints return HTML 404s. Browser user-agent
-    impersonation makes no difference (and is forbidden by our HTTP
-    policy). Entry in `providers.yaml.example` is prepared and
-    commented out.
-  - **CheckCentral** (`status.checkcentral.cc`): own tiny Bootstrap
-    page, one component (CheckCentral itself). Currently removed from
-    `providers.yaml`; the minimal scraper would just check whether the
-    page's `<div class="StatusDot">` carries `class="success"` and
-    surface anything else as an incident.
+- **HTML-scraping adapter** — generic adapter implemented in PR #24;
+  works for CheckCentral. Sophos blocked, see next bullet.
+- **Sophos WAF workaround** — `status.sophos.com` sits behind a WAF
+  that returns `HTTP 403 "Invalid request blocked (v1)"` for our
+  standard User-Agent. Browser-UA impersonation is forbidden by our
+  HTTP policy, so plain scraping cannot reach the page. Options to
+  explore:
+  - Ask Sophos to allowlist our UA (or a dedicated one) — cleanest,
+    but slow and uncertain.
+  - Run an upstream egress proxy with a residential-style header set
+    that the operator owns and signs off on — moves the policy
+    decision out of this codebase.
+  - Use Sophos' partner/admin portal RSS if such a feed exists for
+    authenticated partners (needs Raptus-specific credentials).
+  The selector + `healthyMatch` config in `html-scrape` is already
+  validated against an Atlassian-shape fixture, so the moment the WAF
+  obstacle is lifted, the existing adapter works without code change.
 - **Azure status adapter** (`azure-status`) — parse the official RSS
   feed at `https://azure.status.microsoft/en-us/status/feed/`
   (Microsoft eigenbau, first-party, `<category>` carries
