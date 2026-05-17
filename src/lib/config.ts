@@ -27,12 +27,32 @@ export const providerSchema = z
       "betterstack-feed",
       "hund-atom",
       "zendesk-ssp",
+      "html-scrape",
     ]),
     baseUrl: z.string().url().optional(),
     owner: z.string().optional(),
     repo: z.string().optional(),
     componentFilter: z.union([z.string(), z.array(z.string())]).optional(),
     userAgent: z.string().optional(),
+    /**
+     * CSS selector for the html-scrape adapter. Points at the element
+     * whose text (or `class` attribute, if the text is empty) reflects
+     * the overall status.
+     */
+    selector: z.string().min(1).optional(),
+    /**
+     * Pattern that means "healthy / no incident" for the html-scrape
+     * adapter. A string in `/pattern/flags` form is treated as a regex;
+     * everything else is a case-insensitive substring match against the
+     * matched element's text or class attribute.
+     */
+    healthyMatch: z.string().min(1).optional(),
+    /**
+     * Optional title override for the html-scrape adapter. `{matchedText}`
+     * is replaced with the scraped status text. Defaults to
+     * `"Status page reports: {matchedText}"`.
+     */
+    titleTemplate: z.string().min(1).optional(),
     /**
      * Optional explicit brand logo URL for the chat card. When unset, the
      * adapter derives a favicon from the provider's host. Set this for
@@ -50,6 +70,7 @@ export const providerSchema = z
         "betterstack-feed",
         "hund-atom",
         "zendesk-ssp",
+        "html-scrape",
       ];
       if (requiresBaseUrl.includes(p.adapter)) {
         return !!p.baseUrl;
@@ -58,7 +79,7 @@ export const providerSchema = z
     },
     {
       message:
-        "baseUrl is required for atlassian-statuspage, wedos-status-online, betterstack-feed, hund-atom and zendesk-ssp",
+        "baseUrl is required for atlassian-statuspage, wedos-status-online, betterstack-feed, hund-atom, zendesk-ssp and html-scrape",
     },
   )
   .refine(
@@ -69,6 +90,15 @@ export const providerSchema = z
       return true;
     },
     { message: "owner and repo are required for github-issues" },
+  )
+  .refine(
+    (p) => {
+      if (p.adapter === "html-scrape") {
+        return !!p.selector && !!p.healthyMatch;
+      }
+      return true;
+    },
+    { message: "selector and healthyMatch are required for html-scrape" },
   );
 
 /**

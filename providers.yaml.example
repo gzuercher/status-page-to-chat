@@ -75,3 +75,16 @@ providers: []
 #     owner: onetimesecret
 #     repo: status
 #     logoUrl: https://www.google.com/s2/favicons?domain=onetimesecret.com&sz=64
+#
+# html-scrape is a generic adapter for status pages without any JSON or
+# feed endpoint. It fetches the HTML, runs a CSS selector and treats the
+# element's text (or class attribute, if empty) as the overall status.
+# Anything that does not match healthyMatch becomes a synthetic open
+# incident. See docs/ADAPTERS.md → html-scrape for details and caveats.
+#
+#   - key: checkcentral
+#     displayName: CheckCentral
+#     adapter: html-scrape
+#     baseUrl: https://status.checkcentral.cc
+#     selector: ".StatusDot > div"
+#     healthyMatch: success
