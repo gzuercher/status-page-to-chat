@@ -1,121 +1,70 @@
 # Roadmap
 
-The service is implemented in sequential stages. Each stage is scoped so that it is **individually reviewable and runnable**.
+The service is live on `teth.rserver.ch`, currently polling 24 providers
+through 7 adapter implementations every 5 minutes. This file tracks ideas
+that are deliberately not yet built — pick from the top when capacity
+opens up.
 
-Legend: `[ ]` open · `[~]` in progress · `[x]` done
+## Candidate features
 
-## Stage 1 — Foundation
+- **Adapter-health alerting in Teams** — when a configured status page
+  stops returning usable data (consecutive poll failures), surface this
+  *in the chat target itself*, not just in container logs. Must be very
+  low volume to avoid alert fatigue: post once when an adapter crosses
+  N consecutive failures (proposed: 6 = 30 min), once when it recovers,
+  never repeat in between. Suppress when more than 50 % of adapters fail
+  at once (likely a network or DNS problem on our side, not the
+  providers). The state store needs a per-provider failure counter; the
+  threshold check belongs in `runPoll` in `src/main.ts`, and the message
+  reuses the existing `Notifier` interface.
+- **Update messages between `open` and `resolved`** — pass through
+  intermediate states ("monitoring", "identified") as a second message
+  per incident.
+- **Multiple chat targets in parallel** — fan out one incident to
+  several webhooks (e.g. Teams + Slack).
+- **Per-service routing** — route incidents to different chat rooms by
+  provider (e.g. DevOps room vs. support room).
+- **Scheduled maintenance as a separate message type** — distinguish
+  planned maintenance from unexpected outages in the card layout.
+- **Slack notifier** — symmetric to the existing Teams / Google Chat
+  notifiers.
+- **HTML-scraping adapter** for status pages without any feed or JSON
+  endpoint. Two concrete cases waiting on this:
+  - **Sophos** (`status.sophos.com`): runs on Atlassian Statuspage but
+    all JSON/RSS/Atom endpoints return HTML 404s. Browser user-agent
+    impersonation makes no difference (and is forbidden by our HTTP
+    policy). Entry in `providers.yaml.example` is prepared and
+    commented out.
+  - **CheckCentral** (`status.checkcentral.cc`): own tiny Bootstrap
+    page, one component (CheckCentral itself). Currently removed from
+    `providers.yaml`; the minimal scraper would just check whether the
+    page's `<div class="StatusDot">` carries `class="success"` and
+    surface anything else as an incident.
+- **Azure status adapter** (`azure-status`) — parse the official RSS
+  feed at `https://azure.status.microsoft/en-us/status/feed/`
+  (Microsoft eigenbau, first-party, `<category>` carries
+  service+region). Microsoft 365 (`status.cloud.microsoft`) has **no
+  anonymous feed** — the page is bearer-gated, and Microsoft Graph's
+  `serviceAnnouncement/issues` requires a per-tenant token
+  (`ServiceHealth.Read.All`), which is out of scope for a passive
+  multi-tenant poller. Caveat: public Azure/M365 posts typically lag
+  tenant-targeted notices by 15–45 min; an empty RSS channel does not
+  guarantee "healthy".
 
-- [x] `package.json` with dependencies: `better-sqlite3`, `croner`, `zod`, `yaml`, `pino`, `undici`
-- [x] Dev deps: `typescript`, `vitest`, `eslint`, `prettier`, `@types/node`, `@types/better-sqlite3`
-- [x] `tsconfig.json` (strict, target ES2022)
-- [x] `eslint.config.mjs`, `.prettierrc`
-- [x] Scripts: `build`, `test`, `lint`, `format`
-- [x] `src/lib/types.ts` with `NormalizedIncident`, `StatusProvider`, `Notifier`
-- [x] `src/lib/logger.ts` (pino)
+## Known maintenance risks
 
-**Done**: `pnpm install && pnpm build` passes.
-
-## Stage 2 — Config & State
-
-- [x] `src/lib/config.ts`: load YAML, zod schema, read environment variables
-- [x] `config/providers.yaml` with starter entries (pulled forward; currently contains 19 providers including Atlassian, Google Workspace, WEDOS and GitHub Issues entries)
-- [x] `src/state/store.ts`: CRUD on SQLite (via `better-sqlite3`), diff logic
-- [x] `src/lib/httpClient.ts`: central HTTP client with User-Agent and timeout
-- [x] Unit tests for state diff (10 tests)
-
-**Done**: Tests green, state diff correctly identifies New/Resolved/Unchanged.
-
-## Stage 3 — First Adapter (Atlassian)
-
-- [x] `src/adapters/atlassianStatuspage.ts`
-- [x] `tests/adapters/atlassianStatuspage.test.ts` with fixture for open + closed incidents
-- [x] Component filter logic: supports both `string` and `string[]` (OR logic). Tests for both forms + for "no filter" case.
-- [x] zod schema: `componentFilter: z.union([z.string(), z.array(z.string())]).optional()`
-- [x] Status mapping test
-- [x] Response validation: check Content-Type and parse JSON in try/catch (9 tests)
-
-**Done**: Adapter returns correctly normalised incidents from fixture responses.
-
-## Stage 4 — Notifier
-
-- [x] `src/notifiers/googleChat.ts` (Card v2)
-- [x] `src/notifiers/teams.ts` (Adaptive Card)
-- [x] Shared interface in `src/notifiers/index.ts`
-- [x] Tests with mock fetch, verify payload structure (7 tests)
-- [x] Retry logic (1x backoff, 2s) with test
-
-**Done**: Message format and retry logic verified by tests.
-
-## Stage 5 — Orchestration
-
-- [x] `src/main.ts` container entrypoint with `croner` schedule
-- [x] Error isolation per provider (Promise.allSettled)
-- [x] Structured `run_summary` log per run
-- [x] State diff with notification tracking (notifiedOpened/notifiedResolved)
-
-**Done**: Orchestration compiles, error isolation implemented.
-
-## Stage 6 — Additional Adapters (parallelisable)
-
-- [x] `googleWorkspace` + test (3 tests)
-- [x] `wedosStatusOnline` + test incl. Content-Type check (3 tests)
-- [x] `githubIssues` + test incl. PR filter (4 tests)
-
-**Done**: All 5 adapters implemented and tested. 36 tests total, all green.
-
-## Stage 7 — Containerisation
-
-- [x] `src/main.ts` container entrypoint with in-process scheduler (`croner`) and SIGTERM/SIGINT graceful shutdown
-- [x] `src/state/store.ts` SQLite state store (via `better-sqlite3`)
-- [x] `CONFIG_PATH`, `STATE_DB_PATH`, `POLL_CRON`, `LOG_LEVEL` env vars
-- [x] Multi-stage `Dockerfile` (`node:22-alpine`) with non-root user and `/data` volume
-- [x] `docker-compose.yml` with named volume and log rotation
-
-**Done**: `pnpm test` passes (40 tests at that point; 82 today after API tests and post-merge hardening); container definition ready to build.
-
-## Stage 8 — CI/CD
-
-- [x] GitHub Actions: Build, Test, Lint on every PR (`.github/workflows/ci.yml`)
-- [x] GitHub Actions: Build and publish image to GHCR on push to `main` and on version tags (`.github/workflows/image.yml`)
-
-## Stage 9 — First Deployment and Acceptance
-
-- [ ] Create Portainer stack from `docker-compose.yml`, image pulled from GHCR
-- [ ] Configure real webhook against a test chat room
-- [ ] Wait and observe → first real incident triggered
-- [ ] Manually stop container → restart policy kicks in, Portainer event visible
-- [ ] Team acceptance
-
-## Stage 10 — Self-Service Maintenance (V3)
-
-- [x] Management REST API on port 8080, gated by bearer token
-- [x] OpenAPI 3.1 spec exposed at `/api/openapi.json` for Langdock and similar LLM platforms
-- [x] Document-preserving YAML writes (comments survive every edit)
-- [x] Config reload before each poll cycle; broken file does not crash the poller
-- [x] CLI `validate` and `health` subcommands for dry-runs and `HEALTHCHECK`
-- [x] `docs/LLM-INTEGRATION.md` walking a non-technical maintainer through the assistant setup
-
-**Done**: backoffice users can manage the watched providers in natural language via Langdock; the project itself stays dumb.
-
-## Later extensions (deliberately not in V1)
-
-- Update messages between `open` and `resolved` (e.g. "monitoring", "identified")
-- Multiple chat targets in parallel (fan-out to multiple webhooks)
-- Per-service routing (e.g. DevOps room vs. support room)
-- Scheduled maintenance as a separate message type
-- Admin UI for managing configuration
-- Self-monitoring via a second "canary" container (beyond the built-in healthcheck)
-- **Adapter-health alerting in Teams** — when a configured status page stops returning usable data (consecutive poll failures), surface this *in the chat target itself*, not just in container logs. Must be very low volume to avoid alert fatigue: post once when an adapter crosses N consecutive failures (e.g. 6 = 30 min), once when it recovers, never repeat in between. Suppress during global outages (don't fire when >50 % of adapters fail at once — likely a network or DNS problem on our side).
-- Slack notifier
-- German translation of titles (LLM call)
-- Azure status adapter (`azure-status`) — parse the official RSS feed at `https://azure.status.microsoft/en-us/status/feed/` (Microsoft eigenbau, first-party, `<category>` carries service+region). Microsoft 365 (`status.cloud.microsoft`) has **no anonymous feed** — the page is bearer-gated, and Microsoft Graph's `serviceAnnouncement/issues` requires a per-tenant token (`ServiceHealth.Read.All`), which is out of scope for a passive multi-tenant poller. Caveat: public Azure/M365 posts typically lag tenant-targeted notices by 15–45 min; empty RSS channel does not guarantee "healthy".
-- HTML scraping adapter for status pages without an API — **concrete case: Sophos** (`status.sophos.com`): runs on Atlassian Statuspage, but all JSON/RSS/Atom endpoints respond with HTTP 200 and return a 404 HTML page instead of real data. A realistic browser user-agent makes no difference. Enable only when Sophos opens the API or this adapter exists. Entry in `config/providers.yaml` is prepared and commented out.
-
-## Known risks / open research items
-
-- **WEDOS response format**: JSON structure must be empirically verified during implementation (no official schema found).
-- **Kaseya component filter "IT Glue"**: Verify availability of component names in the Statuspage API.
-- **GravityZone cloud instances**: The current filter substrings (`cloudgz.gravityzone.bitdefender.com`, `cloud.gravityzone.bitdefender.com`) reflect today's instance URLs. On Bitdefender rebranding or consolidation (e.g. migration to another region), the `componentFilter` in `config/providers.yaml` must be updated or notifications will go silent.
-- **Claude component names**: Anthropic occasionally renames products (e.g. the console is now officially "platform.claude.com (formerly console.anthropic.com)"). Before go-live, check the current component list at `https://status.claude.com/api/v2/components.json` and update the substrings in `componentFilter` if needed.
-- **GitHub rate limit**: Without a token, 60 requests/h per client IP — sufficient for a single container polling every 5 min. With a `GITHUB_TOKEN` set on the container, 5,000/h.
+- **GravityZone cloud instances**: the current filter substrings
+  (`cloudgz.gravityzone.bitdefender.com`,
+  `cloud.gravityzone.bitdefender.com`) reflect today's instance URLs.
+  On Bitdefender rebranding or consolidation (e.g. migration to another
+  region), the `componentFilter` in `providers.yaml` must be updated or
+  notifications go silent.
+- **Claude component names**: Anthropic occasionally renames products
+  (the console is now officially "platform.claude.com (formerly
+  console.anthropic.com)"). When in doubt, check the current component
+  list at `https://status.claude.com/api/v2/components.json` and update
+  the substrings in `componentFilter`.
+- **GitHub rate limit**: without a token, 60 requests/h per client IP —
+  sufficient for a single container polling every 5 min. Set
+  `GITHUB_TOKEN` on the container to raise it to 5,000/h if more
+  github-issues providers are added.

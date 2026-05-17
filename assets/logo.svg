@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="status-page-to-chat">
+  <title>status-page-to-chat</title>
+  <!-- Chat bubble: rounded rect with a tail pointing down-left -->
+  <path d="M48 40h160c13.255 0 24 10.745 24 24v96c0 13.255-10.745 24-24 24h-72l-44 40v-40H48c-13.255 0-24-10.745-24-24V64c0-13.255 10.745-24 24-24z"
+        fill="#0f172a"/>
+  <!-- Three status dots inside the bubble: green (ok), amber (warning), red (incident) -->
+  <circle cx="80" cy="112" r="20" fill="#22c55e"/>
+  <circle cx="128" cy="112" r="20" fill="#eab308"/>
+  <circle cx="176" cy="112" r="20" fill="#ef4444"/>
+</svg>

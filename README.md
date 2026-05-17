@@ -1,8 +1,12 @@
+<p align="center">
+  <img src="assets/logo.svg" alt="status-page-to-chat logo" width="128" height="128">
+</p>
+
 # status-page-to-chat
 
 A small self-hosted service that monitors the status pages of external providers and posts new incidents and their resolutions to **Google Chat** or **Microsoft Teams**.
 
-Designed to be cheap and forgettable: a single Docker container, SQLite for state, a webhook URL as the only required secret. Five adapter types (Atlassian Statuspage, Google Workspace, Metanet RSS, WEDOS, GitHub Issues) cover dozens of services — you wire up the ones you care about after the container is running.
+Designed to be cheap and forgettable: a single Docker container, SQLite for state, a webhook URL as the only required secret. Adapter types for Atlassian Statuspage, Google Workspace, WEDOS, GitHub Issues, BetterStack RSS, Hund.io Atom and Zendesk SSP cover dozens of services — you wire up the ones you care about after the container is running.
 
 ---
 
