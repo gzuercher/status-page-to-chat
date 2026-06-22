@@ -15,6 +15,11 @@
 
 chatTarget: googleChat        # or "teams"
 
+# UI language for the chat cards and target language for machine-translated
+# incident titles (Teams). "de" (default) | "en". Title translation also
+# requires the ANTHROPIC_API_KEY env var; see docs/CONFIGURATION.md.
+language: de
+
 providers: []
 
 # --- Example entries (uncomment and adapt) ----------------------------
@@ -24,6 +29,7 @@ providers: []
 # providers:
 #   - key: bitbucket
 #     displayName: Bitbucket
+#     description: Git-Hosting und CI/CD von Atlassian.   # optional, shown on the card
 #     adapter: atlassian-statuspage
 #     baseUrl: https://bitbucket.status.atlassian.com
 #

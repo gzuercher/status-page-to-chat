@@ -11,6 +11,13 @@ export type NormalizedIncident = {
   displayName: string;
   /** Short description of the incident */
   title: string;
+  /**
+   * Optional one-line service description, copied verbatim from the
+   * provider's `description` config field. Operator-authored (already in
+   * the deployment's language), rendered as a subtle line on the card.
+   * Notifiers must tolerate undefined.
+   */
+  description?: string;
   /** Simplified status: open or resolved */
   status: "open" | "resolved";
   /** Link to the incident or status page */

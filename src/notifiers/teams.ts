@@ -1,85 +1,142 @@
 import { httpPost } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
+import { getMessages, type Locale, type Messages } from "../lib/i18n.js";
+import type { Translator } from "../lib/translator.js";
 import type { AdapterHealthAlert, Notifier, NormalizedIncident } from "../lib/types.js";
 
 /**
- * Builds a Microsoft Teams Adaptive Card payload.
+ * Formats an ISO-8601 timestamp as `DD.MM.YYYY HH:mm UTC`. Uses UTC
+ * components so the output is deterministic regardless of the host
+ * timezone. Falls back to the raw string if the input is unparseable.
  */
-function buildAdaptiveCard(
+function formatTimestamp(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const p = (n: number): string => String(n).padStart(2, "0");
+  return `${p(d.getUTCDate())}.${p(d.getUTCMonth() + 1)}.${d.getUTCFullYear()} ${p(
+    d.getUTCHours(),
+  )}:${p(d.getUTCMinutes())} UTC`;
+}
+
+/**
+ * Builds a Microsoft Teams Adaptive Card payload for an incident.
+ *
+ * The card uses the full message width (`msteams.width: "Full"`) and wraps
+ * its content in a colour-styled Container — `attention` (red) for an open
+ * incident, `good` (green) for a resolved one — so the open/resolved state
+ * is unmistakable at a glance. The provider-supplied title is machine-
+ * translated; all other text comes from the localised message bundle.
+ */
+async function buildAdaptiveCard(
   incident: NormalizedIncident,
   type: "opened" | "resolved",
-): Record<string, unknown> {
+  translator: Translator,
+  messages: Messages,
+): Promise<Record<string, unknown>> {
   const isOpened = type === "opened";
   const emoji = isOpened ? "⚠️" : "✅";
-  const actionText = isOpened
-    ? `has reported an incident: "${incident.title}"`
-    : `has resolved the incident: "${incident.title}"`;
+  const statusText = isOpened ? messages.statusOpened : messages.statusResolved;
+  const accentColor = isOpened ? "attention" : "good";
+  const containerStyle = isOpened ? "attention" : "good";
+
+  const localizedTitle = await translator.translate(incident.title);
   const logoUrl = incident.logoUrl;
 
-  // Fixed pixel width keeps logos visually roughly equal across providers,
-  // even when the underlying favicon dimensions differ.
-  const titleBlock = {
-    type: "TextBlock",
-    text: `${emoji} **${incident.displayName}**`,
-    size: "Medium",
-    weight: "Bolder",
-    wrap: true,
-    verticalContentAlignment: "Center",
-  };
-
-  const header = logoUrl
-    ? {
-        type: "ColumnSet",
-        columns: [
-          {
-            type: "Column",
-            width: "auto",
-            verticalContentAlignment: "Center",
-            items: [
-              {
-                type: "Image",
-                url: logoUrl,
-                altText: `${incident.displayName} logo`,
-                width: "24px",
-                height: "24px",
-              },
-            ],
-          },
-          {
-            type: "Column",
-            width: "stretch",
-            verticalContentAlignment: "Center",
-            items: [titleBlock],
-          },
-        ],
-      }
-    : titleBlock;
-
-  return {
-    type: "message",
-    attachments: [
-      {
-        contentType: "application/vnd.microsoft.card.adaptive",
-        content: {
-          $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
-          type: "AdaptiveCard",
-          version: "1.4",
-          body: [
-            header,
-            {
-              type: "TextBlock",
-              text: actionText,
-              wrap: true,
-            },
-          ],
-          actions: [
-            {
-              type: "Action.OpenUrl",
-              title: "View details",
-              url: incident.url,
-            },
-          ],
+  // Header row: logo (optional) · provider name (stretch) · status badge.
+  const headerColumns: Record<string, unknown>[] = [];
+  if (logoUrl) {
+    headerColumns.push({
+      type: "Column",
+      width: "auto",
+      verticalContentAlignment: "Center",
+      items: [
+        {
+          type: "Image",
+          url: logoUrl,
+          altText: `${incident.displayName} logo`,
+          width: "28px",
+          height: "28px",
         },
+      ],
+    });
+  }
+  headerColumns.push({
+    type: "Column",
+    width: "stretch",
+    verticalContentAlignment: "Center",
+    items: [
+      {
+        type: "TextBlock",
+        text: `**${incident.displayName}**`,
+        size: "Medium",
+        weight: "Bolder",
+        wrap: true,
+      },
+    ],
+  });
+  headerColumns.push({
+    type: "Column",
+    width: "auto",
+    verticalContentAlignment: "Center",
+    items: [
+      {
+        type: "TextBlock",
+        text: `${emoji} ${statusText}`,
+        weight: "Bolder",
+        color: accentColor,
+        wrap: true,
+        horizontalAlignment: "Right",
+      },
+    ],
+  });
+
+  const containerItems: Record<string, unknown>[] = [{ type: "ColumnSet", columns: headerColumns }];
+
+  if (incident.description) {
+    containerItems.push({
+      type: "TextBlock",
+      text: incident.description,
+      wrap: true,
+      isSubtle: true,
+      spacing: "Small",
+    });
+  }
+
+  containerItems.push({
+    type: "TextBlock",
+    text: localizedTitle,
+    wrap: true,
+    weight: "Bolder",
+    spacing: "Medium",
+  });
+
+  containerItems.push({
+    type: "FactSet",
+    spacing: "Small",
+    facts: [{ title: messages.since, value: formatTimestamp(incident.startedAt) }],
+  });
+
+  // The Teams Workflows webhook ("Post card in a chat or channel") expects
+  // the BARE Adaptive Card as the request body — NOT the legacy connector's
+  // `{ type: "message", attachments: [{ content }] }` wrapper. Sending the
+  // wrapper makes the flow post an empty card. See docs/CONFIGURATION.md.
+  return {
+    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    type: "AdaptiveCard",
+    version: "1.4",
+    msteams: { width: "Full" },
+    body: [
+      {
+        type: "Container",
+        style: containerStyle,
+        items: containerItems,
+      },
+    ],
+    actions: [
+      {
+        type: "Action.OpenUrl",
+        title: messages.viewDetails,
+        url: incident.url,
       },
     ],
   };
@@ -89,12 +146,18 @@ function buildAdaptiveCard(
  * Builds a system-level "adapter health" card. Visually distinct from
  * incident cards: branded with status-page-to-chat (the watcher) in the
  * header, the affected provider relegated to the body. Uses the
- * wrench/tooling emoji to signal "tooling problem, not service outage".
+ * wrench/tooling emoji to signal "tooling problem, not service outage",
+ * plus a colour-styled Container (red while down, green on recovery).
  */
-function buildAdapterHealthCard(alert: AdapterHealthAlert): Record<string, unknown> {
-  const headerEmoji = alert.kind === "recovered" ? "\u{1f6e0}️✅" : "\u{1f6e0}️";
+function buildAdapterHealthCard(
+  alert: AdapterHealthAlert,
+  messages: Messages,
+): Record<string, unknown> {
+  const recovered = alert.kind === "recovered";
+  const headerEmoji = recovered ? "\u{1f6e0}️✅" : "\u{1f6e0}️";
+  const containerStyle = recovered ? "good" : "attention";
 
-  const bodyText = renderAdapterHealthBody(alert);
+  const bodyText = renderAdapterHealthBody(alert, messages);
 
   const providerLine = alert.logoUrl
     ? {
@@ -138,45 +201,46 @@ function buildAdapterHealthCard(alert: AdapterHealthAlert): Record<string, unkno
         isSubtle: true,
       };
 
+  // Bare Adaptive Card — see the note in buildAdaptiveCard().
   return {
-    type: "message",
-    attachments: [
+    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    type: "AdaptiveCard",
+    version: "1.4",
+    msteams: { width: "Full" },
+    body: [
       {
-        contentType: "application/vnd.microsoft.card.adaptive",
-        content: {
-          $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
-          type: "AdaptiveCard",
-          version: "1.4",
-          body: [
-            {
-              type: "TextBlock",
-              text: `${headerEmoji} **status-page-to-chat**`,
-              size: "Medium",
-              weight: "Bolder",
-              wrap: true,
-            },
-            providerLine,
-            {
-              type: "TextBlock",
-              text: bodyText,
-              wrap: true,
-              isSubtle: true,
-            },
-          ],
-        },
+        type: "Container",
+        style: containerStyle,
+        items: [
+          {
+            type: "TextBlock",
+            text: `${headerEmoji} **status-page-to-chat**`,
+            size: "Medium",
+            weight: "Bolder",
+            wrap: true,
+          },
+          providerLine,
+          {
+            type: "TextBlock",
+            text: bodyText,
+            wrap: true,
+            isSubtle: true,
+            spacing: "Small",
+          },
+        ],
       },
     ],
   };
 }
 
-function renderAdapterHealthBody(alert: AdapterHealthAlert): string {
+function renderAdapterHealthBody(alert: AdapterHealthAlert, messages: Messages): string {
   switch (alert.kind) {
     case "down":
-      return `Unable to poll for the last ${alert.durationLabel}. ${alert.errorCategory}.`;
+      return messages.healthDown(alert.durationLabel, messages.errorCategory(alert.errorCategory));
     case "recovered":
-      return `Polling resumed (was down for ${alert.durationLabel}).`;
+      return messages.healthRecovered(alert.durationLabel);
     case "halfDead":
-      return `Polled cleanly for ${alert.durationLabel} but never returned any incident — check the URL.`;
+      return messages.healthHalfDead(alert.durationLabel);
   }
 }
 
@@ -185,13 +249,17 @@ function renderAdapterHealthBody(alert: AdapterHealthAlert): string {
  */
 export class TeamsNotifier implements Notifier {
   private readonly webhookUrl: string;
+  private readonly translator: Translator;
+  private readonly messages: Messages;
 
-  constructor(webhookUrl: string) {
+  constructor(webhookUrl: string, translator: Translator, locale: Locale) {
     this.webhookUrl = webhookUrl;
+    this.translator = translator;
+    this.messages = getMessages(locale);
   }
 
   async notifyOpened(incident: NormalizedIncident): Promise<void> {
-    const payload = buildAdaptiveCard(incident, "opened");
+    const payload = await buildAdaptiveCard(incident, "opened", this.translator, this.messages);
     await this.sendWithRetry(payload, {
       provider: incident.providerKey,
       type: "opened",
@@ -200,7 +268,7 @@ export class TeamsNotifier implements Notifier {
   }
 
   async notifyResolved(incident: NormalizedIncident): Promise<void> {
-    const payload = buildAdaptiveCard(incident, "resolved");
+    const payload = await buildAdaptiveCard(incident, "resolved", this.translator, this.messages);
     await this.sendWithRetry(payload, {
       provider: incident.providerKey,
       type: "resolved",
@@ -209,7 +277,7 @@ export class TeamsNotifier implements Notifier {
   }
 
   async notifyAdapterHealth(alert: AdapterHealthAlert): Promise<void> {
-    const payload = buildAdapterHealthCard(alert);
+    const payload = buildAdapterHealthCard(alert, this.messages);
     await this.sendWithRetry(payload, {
       provider: alert.providerKey,
       type: `adapter-${alert.kind}`,

@@ -19,6 +19,12 @@ export const providerSchema = z
   .object({
     key: z.string().regex(/^[a-z0-9-]+$/, "key may only contain a-z, 0-9 and -"),
     displayName: z.string().min(1),
+    /**
+     * Optional one-line service description rendered as a subtle line on the
+     * chat card (e.g. "Sichere Übertragung von Einmal-Geheimnissen."). Author
+     * it in the deployment's language — it is shown verbatim, not translated.
+     */
+    description: z.string().min(1).max(280).optional(),
     adapter: z.enum([
       "atlassian-statuspage",
       "google-workspace",
@@ -107,6 +113,12 @@ export const providerSchema = z
 export const configSchema = z
   .object({
     chatTarget: z.enum(["googleChat", "teams"]),
+    /**
+     * UI language for the chat cards (static labels, badges, health texts)
+     * and the target language for machine-translated incident titles.
+     * Defaults to German. Override per deployment with the `LANGUAGE` env var.
+     */
+    language: z.enum(["de", "en"]).default("de"),
     // Empty list is valid — the service starts in "no providers configured"
     // state and the operator adds entries via the REST API or by editing the
     // mounted providers.yaml. Poll cycles log a zero-count run_summary.
@@ -194,6 +206,23 @@ export function parseConfigFromString(raw: string, filePath = "<in-memory>"): Co
       };
     }
     result.data.chatTarget = override;
+  }
+
+  // Optional env-level override of the UI/translation language, mirroring
+  // the CHAT_TARGET mechanism above.
+  const langOverride = process.env.LANGUAGE;
+  if (langOverride) {
+    if (langOverride !== "de" && langOverride !== "en") {
+      return {
+        ok: false,
+        error: {
+          kind: "validate",
+          filePath,
+          message: `LANGUAGE env override is invalid: "${langOverride}" (must be de or en)`,
+        },
+      };
+    }
+    result.data.language = langOverride;
   }
 
   return { ok: true, config: result.data };
