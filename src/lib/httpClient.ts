@@ -95,6 +95,8 @@ export async function httpPost(
   options?: {
     userAgent?: string;
     contentType?: string;
+    /** Extra request headers, e.g. an API key. Merged after the defaults. */
+    headers?: Record<string, string>;
   },
 ): Promise<HttpResponse> {
   const controller = new AbortController();
@@ -106,6 +108,7 @@ export async function httpPost(
     headers: {
       "User-Agent": options?.userAgent ?? getUserAgent(),
       "Content-Type": options?.contentType ?? "application/json; charset=utf-8",
+      ...options?.headers,
     },
     body: JSON.stringify(payload),
   };

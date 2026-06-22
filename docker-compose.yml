@@ -10,7 +10,13 @@ services:
       # API_AUTH_DISABLED=true (only do that behind a private network).
       API_TOKEN: ${API_TOKEN:-}
       # API_AUTH_DISABLED: "true"
+      # Claude API key. When set, Teams incident titles are machine-translated
+      # into the configured language (default German). Unset → titles are shown
+      # untranslated; everything else stays localised.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Optional overrides:
+      # LANGUAGE: de
+      # TRANSLATE_MODEL: claude-haiku-4-5-20251001
       # API_PORT: "8080"
       # POLL_CRON: "*/5 * * * *"
       # LOG_LEVEL: info

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TeamsNotifier } from "../../src/notifiers/teams.js";
+import { NoopTranslator, type Translator } from "../../src/lib/translator.js";
 import type { NormalizedIncident } from "../../src/lib/types.js";
 
 vi.mock("../../src/lib/httpClient.js", () => ({
@@ -25,34 +26,89 @@ const testIncident: NormalizedIncident = {
   updatedAt: "2026-04-15T10:30:00Z",
 };
 
+/** Translator that records its input and returns a recognisable marker. */
+class FakeTranslator implements Translator {
+  public calls: string[] = [];
+  async translate(text: string): Promise<string> {
+    this.calls.push(text);
+    return `[de]${text}`;
+  }
+}
+
+/** The Adaptive Card sent in the first httpPost call as JSON text. */
+function lastCardJson(): string {
+  const [, payload] = mockedHttpPost.mock.calls[0];
+  return JSON.stringify(payload);
+}
+
+function newNotifier(translator: Translator = new NoopTranslator()): TeamsNotifier {
+  return new TeamsNotifier("https://teams.webhook.office.com/test", translator, "de");
+}
+
 describe("TeamsNotifier", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("sends Adaptive Card for opened incident", async () => {
+  it("posts the bare Adaptive Card (no message/attachments wrapper) for an opened incident", async () => {
     mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
 
-    const notifier = new TeamsNotifier("https://teams.webhook.office.com/test");
-    await notifier.notifyOpened(testIncident);
+    await newNotifier().notifyOpened(testIncident);
 
     expect(mockedHttpPost).toHaveBeenCalledOnce();
     const [url, payload] = mockedHttpPost.mock.calls[0];
     expect(url).toBe("https://teams.webhook.office.com/test");
 
-    const msg = payload as { type: string; attachments: Array<{ contentType: string }> };
-    expect(msg.type).toBe("message");
-    expect(msg.attachments[0].contentType).toBe("application/vnd.microsoft.card.adaptive");
+    // The Workflows webhook expects the bare card — the legacy
+    // `{ type: "message", attachments: [...] }` wrapper renders blank.
+    const card = payload as { type: string; attachments?: unknown; body?: unknown[] };
+    expect(card.type).toBe("AdaptiveCard");
+    expect(card.attachments).toBeUndefined();
+    expect(Array.isArray(card.body)).toBe(true);
   });
 
-  it("sends Adaptive Card for resolved incident", async () => {
+  it("renders full width, a red attention container and the German opened badge", async () => {
+    mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
+
+    await newNotifier().notifyOpened(testIncident);
+
+    const json = lastCardJson();
+    expect(json).toContain('"width":"Full"');
+    expect(json).toContain('"style":"attention"');
+    expect(json).toContain("Störung gemeldet");
+    expect(json).toContain("Details ansehen");
+  });
+
+  it("renders a green good container and the German resolved badge", async () => {
     mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
 
     const resolved = { ...testIncident, status: "resolved" as const };
-    const notifier = new TeamsNotifier("https://teams.webhook.office.com/test");
-    await notifier.notifyResolved(resolved);
+    await newNotifier().notifyResolved(resolved);
 
-    expect(mockedHttpPost).toHaveBeenCalledOnce();
+    const json = lastCardJson();
+    expect(json).toContain('"style":"good"');
+    expect(json).toContain("Behoben");
+  });
+
+  it("machine-translates the incident title and renders the translation", async () => {
+    mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
+    const translator = new FakeTranslator();
+
+    await newNotifier(translator).notifyOpened(testIncident);
+
+    expect(translator.calls).toEqual(["CDN Degradation"]);
+    expect(lastCardJson()).toContain("[de]CDN Degradation");
+  });
+
+  it("renders the per-provider description when present", async () => {
+    mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
+
+    await newNotifier().notifyOpened({
+      ...testIncident,
+      description: "Visueller Website-Baukasten.",
+    });
+
+    expect(lastCardJson()).toContain("Visueller Website-Baukasten.");
   });
 
   it("throws when both attempts fail and logs structured context", async () => {
@@ -60,8 +116,7 @@ describe("TeamsNotifier", () => {
       .mockRejectedValueOnce(new Error("Network error"))
       .mockResolvedValueOnce({ status: 500, contentType: "", body: "Internal Error" });
 
-    const notifier = new TeamsNotifier("https://teams.webhook.office.com/test");
-    await expect(notifier.notifyOpened(testIncident)).rejects.toThrow("Retry failed");
+    await expect(newNotifier().notifyOpened(testIncident)).rejects.toThrow("Retry failed");
     expect(mockedHttpPost).toHaveBeenCalledTimes(2);
   });
 
@@ -70,17 +125,15 @@ describe("TeamsNotifier", () => {
       .mockRejectedValueOnce(new Error("Timeout"))
       .mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
 
-    const notifier = new TeamsNotifier("https://teams.webhook.office.com/test");
-    await notifier.notifyOpened(testIncident);
+    await newNotifier().notifyOpened(testIncident);
 
     expect(mockedHttpPost).toHaveBeenCalledTimes(2);
   });
 
-  it("renders an adapter-health card with the system header and the wrench emoji", async () => {
+  it("renders an adapter-health card with the system header, wrench emoji and German body", async () => {
     mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
 
-    const notifier = new TeamsNotifier("https://teams.webhook.office.com/test");
-    await notifier.notifyAdapterHealth({
+    await newNotifier().notifyAdapterHealth({
       kind: "down",
       providerKey: "bitwarden",
       providerName: "Bitwarden",
@@ -89,31 +142,44 @@ describe("TeamsNotifier", () => {
       durationLabel: "2h",
     });
 
-    const [, payload] = mockedHttpPost.mock.calls[0];
-    const card = (payload as { attachments: Array<{ content: { body: unknown[] } }> })
-      .attachments[0].content.body;
-    const json = JSON.stringify(card);
+    const json = lastCardJson();
     expect(json).toContain("status-page-to-chat");
     expect(json).toContain("🛠️");
+    expect(json).toContain('"style":"attention"');
     expect(json).toContain("Bitwarden");
     expect(json).toContain("HTTP 404");
     expect(json).toContain("2h");
+    expect(json).toContain("fehlgeschlagen");
   });
 
-  it("uses a distinct recovered-emoji combination", async () => {
+  it("localises a known error category into German", async () => {
     mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
 
-    const notifier = new TeamsNotifier("https://teams.webhook.office.com/test");
-    await notifier.notifyAdapterHealth({
+    await newNotifier().notifyAdapterHealth({
+      kind: "down",
+      providerKey: "bitwarden",
+      providerName: "Bitwarden",
+      errorCategory: "Timeout",
+      durationLabel: "2h",
+    });
+
+    expect(lastCardJson()).toContain("Zeitüberschreitung");
+  });
+
+  it("uses a distinct recovered-emoji combination and green container", async () => {
+    mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
+
+    await newNotifier().notifyAdapterHealth({
       kind: "recovered",
       providerKey: "bitwarden",
       providerName: "Bitwarden",
       durationLabel: "3h 10min",
     });
-    const [, payload] = mockedHttpPost.mock.calls[0];
-    const json = JSON.stringify(payload);
+
+    const json = lastCardJson();
     expect(json).toContain("🛠️✅");
+    expect(json).toContain('"style":"good"');
     expect(json).toContain("3h 10min");
-    expect(json).toContain("resumed");
+    expect(json).toContain("wieder aktiv");
   });
 });

@@ -25,6 +25,7 @@ import {
 } from "./state/store.js";
 import { runValidate } from "./cli/validate.js";
 import { runHealthcheck } from "./cli/health.js";
+import { runDemo } from "./cli/demo.js";
 import { startApiServer, type LastRunRef } from "./api/server.js";
 
 /**
@@ -88,7 +89,15 @@ async function runPoll(
       }
 
       summary.providersSucceeded++;
-      const { providerKey, incidents } = result.value;
+      const { providerKey } = result.value;
+      // Attach the operator-authored service description (config-level, same
+      // for every incident of this provider) so the notifier can render it.
+      const incidents = providerConfig.description
+        ? result.value.incidents.map((inc) => ({
+            ...inc,
+            description: providerConfig.description,
+          }))
+        : result.value.incidents;
       healthInput.push(
         buildHealthInput(providerConfig, {
           kind: "success",
@@ -278,8 +287,8 @@ function seedProvidersFileIfMissing(): void {
 async function main(): Promise<void> {
   seedProvidersFileIfMissing();
   let currentConfig = loadConfig();
-  const notifier = createNotifier(currentConfig);
   const store = createStore();
+  const notifier = createNotifier(currentConfig, store);
   const healthTracker = new HealthTracker();
   const lastRun: LastRunRef = { current: null };
 
@@ -349,6 +358,11 @@ if (subcommand === "validate") {
   runValidate();
 } else if (subcommand === "health") {
   runHealthcheck();
+} else if (subcommand === "demo") {
+  runDemo(process.argv[3]).catch((err: unknown) => {
+    logger.fatal({ err }, "Demo run failed");
+    process.exit(1);
+  });
 } else if (subcommand === undefined || subcommand === "poll") {
   main().catch((err: unknown) => {
     logger.fatal({ err }, "Poller failed to start");
@@ -356,7 +370,8 @@ if (subcommand === "validate") {
   });
 } else {
   process.stderr.write(
-    `Unknown subcommand: ${subcommand}\n` + `Usage: node dist/src/main.js [poll|validate|health]\n`,
+    `Unknown subcommand: ${subcommand}\n` +
+      `Usage: node dist/src/main.js [poll|validate|health|demo [type]]\n`,
   );
   process.exit(2);
 }

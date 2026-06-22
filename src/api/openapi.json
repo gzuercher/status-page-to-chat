@@ -21,6 +21,12 @@
             "description": "Unique identifier, lowercase ASCII letters, digits and hyphens only."
           },
           "displayName": { "type": "string", "minLength": 1 },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 280,
+            "description": "Optional one-line service blurb shown on the chat card. Author it in the configured language; it is shown verbatim."
+          },
           "adapter": {
             "type": "string",
             "enum": [

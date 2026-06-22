@@ -35,6 +35,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.6.2",
+    "adaptivecards": "^3.0.6",
     "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.0.0",
     "prettier": "^3.4.2",

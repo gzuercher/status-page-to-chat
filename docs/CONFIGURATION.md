@@ -13,10 +13,17 @@ The repository also ships `config/providers.yaml` baked into the image, but that
 # Required fields
 chatTarget: googleChat         # "googleChat" | "teams"
 
+# Optional: UI language for the chat cards and the target language for
+# machine-translated incident titles. "de" (default) | "en".
+# Override per deployment with the LANGUAGE env var.
+language: de
+
 # List of monitored services
 providers:
   - key: <string>              # Unique key, only [a-z0-9-]
     displayName: <string>      # How the name appears in chat ("Bexio", "Webflow")
+    description: <string>      # optional, one-line service blurb shown on the card
+                               # (max 280 chars, author it in your `language`)
     adapter: <adapter-name>    # see ADAPTERS.md
     # adapter-specific fields:
     baseUrl: <url>             # required for atlassian-statuspage, wedos-status-online,
@@ -33,6 +40,20 @@ providers:
                                # Google, e.g. point status.zendesk.com → zendesk.com)
     userAgent: <string>        # optional, overrides the default User-Agent for this provider
 ```
+
+## Localisation & translation (Teams)
+
+The Teams Adaptive Card is fully localised and defaults to **German**.
+
+- **Static text** (status badges, button, field labels, adapter-health messages, error categories) comes from a built-in `de`/`en` dictionary — no external service involved. Pick the language with the top-level `language` field or the `LANGUAGE` env var.
+- **Incident titles** are provider-supplied and usually English. They are machine-translated into `language` via the **Claude API (Haiku)** when `ANTHROPIC_API_KEY` is set. Translations are cached in SQLite keyed by source text, so repeated titles (a given incident's *opened* and *resolved* cards share one title) cost a single API call. If no key is set, or a call fails, the **original title is shown** — translation never blocks a notification.
+- **Service descriptions** (`description` per provider) are shown verbatim — author them in your target language.
+
+> Google Chat cards are not localised yet — they remain English regardless of `language`.
+
+### Teams webhook format
+
+For Teams, `WEBHOOK_URL` must be a **Power Automate Workflows** webhook (the "Post to a channel when a webhook request is received" flow). The notifier posts the **bare Adaptive Card** JSON as the request body — the flow's "Post card in a chat or channel" action renders it directly (e.g. via `string(variables('Body'))`). Do **not** point this at a legacy Office 365 connector webhook: those expect the `{ "type": "message", "attachments": [{ "content": … }] }` envelope, and mixing the two formats makes the card render as an empty box (the flow still reports "Succeeded").
 
 ## HTTP User-Agent
 
@@ -58,6 +79,7 @@ This follows the common practice for well-behaved pollers, respects the logs of 
 The file is validated with **`zod`** on container startup. Errors are logged and prevent startup. Minimum requirements:
 
 - `chatTarget` ∈ `{googleChat, teams}`
+- `language` ∈ `{de, en}` (optional, defaults to `de`)
 - at least one entry in `providers`
 - `key` is unique
 - adapter-specific required fields are present
@@ -141,11 +163,14 @@ providers:
 
 ## Environment variables (secrets and runtime overrides)
 
-Everything that is not in `providers.yaml` lives as an environment variable on the container. Only `WEBHOOK_URL` is secret.
+Everything that is not in `providers.yaml` lives as an environment variable on the container. `WEBHOOK_URL`, `ANTHROPIC_API_KEY` and `API_TOKEN` are secrets — keep them out of the YAML and out of version control.
 
 | Variable | Required | Description |
 |---|---|---|
 | `WEBHOOK_URL` | yes | Google Chat Incoming Webhook **or** Teams (Workflows) webhook URL — matches `chatTarget` |
+| `ANTHROPIC_API_KEY` | no | Claude API key. When set, Teams incident titles are machine-translated into `language`. Unset → titles shown untranslated. |
+| `LANGUAGE` | no | Overrides the `language` field from `providers.yaml` (`de` \| `en`). Default: `de`. |
+| `TRANSLATE_MODEL` | no | Claude model id used for translation. Default: `claude-haiku-4-5-20251001`. |
 | `CONFIG_PATH` | no | Absolute path to the providers config. Compose sets this to `/data/providers.yaml`. If unset, the image falls back to its baked-in `config/providers.yaml`. |
 | `STATE_DB_PATH` | no | Path to the SQLite file. Default in the container: `/data/state.sqlite`. |
 | `POLL_CRON` | no | Cron expression for the scheduler. Default: `*/5 * * * *`. |
@@ -157,6 +182,16 @@ Everything that is not in `providers.yaml` lives as an environment variable on t
 | `HEALTH_MAX_AGE_SECONDS` | no | Healthcheck threshold for "no recent poll" → unhealthy. Default: `900` (15 min). |
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for how these are set with plain Docker Compose or Portainer.
+
+## Previewing the chat cards
+
+To send one example of every card type (incident opened/resolved and the three adapter-health variants) to the configured chat target — handy after a design change:
+
+```bash
+docker exec raptus-status-notifs node dist/src/main.js demo
+```
+
+Pass a type to send just one: `demo opened` | `resolved` | `down` | `recovered` | `halfdead`. The cards use clearly-labelled sample data ("Demo Service", "Beispielkarte – kein echter Vorfall") and exercise the real notifier and translator, so they look exactly like production cards.
 
 ## Adding or removing a status page
 
