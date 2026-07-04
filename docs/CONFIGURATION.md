@@ -52,18 +52,35 @@ Both targets POST to the same kind of webhook (`WEBHOOK_URL`), but differ in the
   centrally across several feeds. No translation happens here — the raw source-language `title` is sent,
   and any translation/presentation belongs to the central renderer.
 
-The JSON envelope (`teamsJson`):
+The JSON envelope (`teamsJson`, `schemaVersion: 2`). The key set is **stable across all variants**: every optional field is always present as `null` when unset (never omitted), so a template engine like Logic Apps can reference every field unconditionally. `severity` and `language` are included so the renderer needs no knowledge of our internal derivation rules; `title` is verbatim (source language) — translation belongs to the renderer.
 
 ```json
-{ "schemaVersion": 1, "source": "status-page-to-chat",
+{ "schemaVersion": 2, "source": "status-page-to-chat",
   "event": "incident.opened",           // incident.opened | incident.resolved
-  "incident": { /* NormalizedIncident: externalId, providerKey, displayName, title, status, url, startedAt, updatedAt, description?, logoUrl? */ } }
+  "severity": "problem",                // problem (opened) | ok (resolved)
+  "language": "de",                     // configured target UI language
+  "incident": {
+    "externalId": "…", "providerKey": "…", "displayName": "…",
+    "title": "…",                       // source language, not translated
+    "description": null,                // string | null
+    "status": "open",                   // open | resolved
+    "url": "…", "startedAt": "…", "updatedAt": "…",
+    "logoUrl": null                     // string | null
+  } }
 ```
 
 ```json
-{ "schemaVersion": 1, "source": "status-page-to-chat",
+{ "schemaVersion": 2, "source": "status-page-to-chat",
   "event": "adapter.down",              // adapter.down | adapter.recovered | adapter.halfDead
-  "alert": { /* AdapterHealthAlert */ } }
+  "severity": "problem",                // problem (down, halfDead) | ok (recovered)
+  "language": "de",
+  "alert": {
+    "kind": "down",                     // down | recovered | halfDead
+    "providerKey": "…", "providerName": "…",
+    "logoUrl": null,                    // string | null
+    "errorCategory": "HTTP 503",        // string (down) | null (recovered, halfDead)
+    "durationLabel": "2h"               // pre-formatted duration
+  } }
 ```
 
 ## Localisation & translation (Teams)

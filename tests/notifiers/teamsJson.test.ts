@@ -25,14 +25,15 @@ const testIncident: NormalizedIncident = {
   updatedAt: "2026-04-15T10:30:00Z",
 };
 
-/** The payload sent in the first httpPost call. */
+/** The payload sent in the most recent httpPost call. */
 function lastPayload(): Record<string, unknown> {
-  const [, payload] = mockedHttpPost.mock.calls[0];
+  const calls = mockedHttpPost.mock.calls;
+  const [, payload] = calls[calls.length - 1];
   return payload as Record<string, unknown>;
 }
 
 function newNotifier(): TeamsJsonNotifier {
-  return new TeamsJsonNotifier("https://logic-app.example/trigger");
+  return new TeamsJsonNotifier("https://logic-app.example/trigger", "de");
 }
 
 describe("TeamsJsonNotifier", () => {
@@ -54,11 +55,51 @@ describe("TeamsJsonNotifier", () => {
     expect(p.type).toBeUndefined();
     expect(p.body).toBeUndefined();
     expect(p).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       source: "status-page-to-chat",
       event: "incident.opened",
+      severity: "problem",
+      language: "de",
     });
-    expect(p.incident).toEqual(testIncident);
+    // Every incident field is present verbatim (title untranslated).
+    expect(p.incident).toMatchObject({ ...testIncident });
+  });
+
+  it("always includes optional fields as null so the key set is stable across variants", async () => {
+    mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
+
+    // testIncident has neither description nor logoUrl.
+    await newNotifier().notifyOpened(testIncident);
+
+    const incident = lastPayload().incident as Record<string, unknown>;
+    expect(incident).toHaveProperty("description", null);
+    expect(incident).toHaveProperty("logoUrl", null);
+  });
+
+  it("emits null errorCategory for non-down adapter alerts, string for down", async () => {
+    mockedHttpPost.mockResolvedValue({ status: 200, contentType: "", body: "" });
+
+    await newNotifier().notifyAdapterHealth({
+      kind: "recovered",
+      providerKey: "wedos",
+      providerName: "WEDOS",
+      durationLabel: "2h",
+    });
+    const recovered = lastPayload();
+    expect(recovered).toMatchObject({ event: "adapter.recovered", severity: "ok" });
+    expect(recovered.alert as Record<string, unknown>).toMatchObject({
+      logoUrl: null,
+      errorCategory: null,
+    });
+
+    await newNotifier().notifyAdapterHealth({
+      kind: "down",
+      providerKey: "wedos",
+      providerName: "WEDOS",
+      errorCategory: "HTTP 503",
+      durationLabel: "2h",
+    });
+    expect((lastPayload().alert as Record<string, unknown>).errorCategory).toBe("HTTP 503");
   });
 
   it("emits the incident title verbatim (no translation in JSON mode)", async () => {
@@ -92,9 +133,10 @@ describe("TeamsJsonNotifier", () => {
 
     const p = lastPayload();
     expect(p).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       source: "status-page-to-chat",
       event: "adapter.down",
+      severity: "problem",
     });
     expect(p.alert).toMatchObject({ kind: "down", providerKey: "bitwarden" });
   });

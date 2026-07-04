@@ -33,6 +33,6 @@ export function createNotifier(config: AppConfig, store: Store): Notifier {
         config.language,
       );
     case "teamsJson":
-      return new TeamsJsonNotifier(webhookUrl);
+      return new TeamsJsonNotifier(webhookUrl, config.language);
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "status-page-to-chat",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Self-hosted poller that watches external status pages and posts incidents to Google Chat or Microsoft Teams",
   "main": "dist/src/main.js",
   "scripts": {

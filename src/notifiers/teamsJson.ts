@@ -1,29 +1,104 @@
 import { httpPost } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
+import type { Locale } from "../lib/i18n.js";
 import type { AdapterHealthAlert, Notifier, NormalizedIncident } from "../lib/types.js";
 
 /**
  * Current version of the JSON envelope. Bump on breaking changes so the
  * downstream renderer (e.g. an Azure Logic App that builds the Adaptive
  * Card centrally) can branch on it.
+ *
+ * v2: stable schema — every optional field is ALWAYS present (`null` when
+ *     unset) so the consumer sees the same keys across all variants; added
+ *     `severity` and `language`.
  */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
-/** Envelope for an incident state change. */
+/** Coarse severity so the renderer can pick colour/emoji without re-deriving from `event`. */
+type Severity = "problem" | "ok";
+
+/**
+ * Incident as emitted on the wire. Mirrors {@link NormalizedIncident} but
+ * pins every optional field to a concrete `null` when unset — a stable key
+ * set matters for template engines (Logic Apps) that choke on missing keys.
+ */
+type JsonIncident = {
+  externalId: string;
+  providerKey: string;
+  displayName: string;
+  /** Provider-supplied title, verbatim (source language). Translation is the renderer's job. */
+  title: string;
+  /** One-line service description, or null when the provider has none configured. */
+  description: string | null;
+  status: "open" | "resolved";
+  url: string;
+  startedAt: string;
+  updatedAt: string;
+  /** Brand logo URL, or null when none could be resolved. */
+  logoUrl: string | null;
+};
+
+/** Adapter-health alert on the wire, with a stable key set across all kinds. */
+type JsonAlert = {
+  kind: AdapterHealthAlert["kind"];
+  providerKey: string;
+  providerName: string;
+  logoUrl: string | null;
+  /** Short error category (e.g. "HTTP 503"); null for kinds other than "down". */
+  errorCategory: string | null;
+  /** Pre-formatted human duration (e.g. "2h", "3h 10min", "7d"). */
+  durationLabel: string;
+};
+
 type IncidentEvent = {
   schemaVersion: typeof SCHEMA_VERSION;
   source: "status-page-to-chat";
   event: "incident.opened" | "incident.resolved";
-  incident: NormalizedIncident;
+  severity: Severity;
+  /** Target UI language the operator configured, so the renderer can localise. */
+  language: Locale;
+  incident: JsonIncident;
 };
 
-/** Envelope for an adapter-health alert. */
 type AdapterEvent = {
   schemaVersion: typeof SCHEMA_VERSION;
   source: "status-page-to-chat";
   event: `adapter.${AdapterHealthAlert["kind"]}`;
-  alert: AdapterHealthAlert;
+  severity: Severity;
+  language: Locale;
+  alert: JsonAlert;
 };
+
+function toJsonIncident(incident: NormalizedIncident): JsonIncident {
+  return {
+    externalId: incident.externalId,
+    providerKey: incident.providerKey,
+    displayName: incident.displayName,
+    title: incident.title,
+    description: incident.description ?? null,
+    status: incident.status,
+    url: incident.url,
+    startedAt: incident.startedAt,
+    updatedAt: incident.updatedAt,
+    logoUrl: incident.logoUrl ?? null,
+  };
+}
+
+function toJsonAlert(alert: AdapterHealthAlert): JsonAlert {
+  return {
+    kind: alert.kind,
+    providerKey: alert.providerKey,
+    providerName: alert.providerName,
+    logoUrl: alert.logoUrl ?? null,
+    errorCategory: alert.kind === "down" ? alert.errorCategory : null,
+    durationLabel: alert.durationLabel,
+  };
+}
+
+/** Recovery is the only "all clear" state; everything else is an active problem. */
+function alertSeverity(kind: AdapterHealthAlert["kind"]): Severity {
+  return kind === "recovered" ? "ok" : "problem";
+}
 
 /**
  * Notifier that POSTs the raw, normalized event as JSON instead of a
@@ -32,15 +107,20 @@ type AdapterEvent = {
  * an Azure Logic App — owns the layout and renders the Adaptive Card from a
  * central template.
  *
- * The incident `title` is emitted verbatim (the source language). Unlike
- * {@link TeamsNotifier}, this notifier does NOT machine-translate it — in
- * JSON mode presentation and any translation belong to the central renderer.
+ * The envelope is deliberately COMPLETE and STABLE: every field a card can
+ * show is present, optional fields are `null` (never omitted) so the key set
+ * is identical across all variants, and `severity`/`language` are included so
+ * the renderer needs no knowledge of our internal derivation rules. The
+ * incident `title` is emitted verbatim (source language) — translation, like
+ * all presentation, belongs to the central renderer.
  */
 export class TeamsJsonNotifier implements Notifier {
   private readonly webhookUrl: string;
+  private readonly language: Locale;
 
-  constructor(webhookUrl: string) {
+  constructor(webhookUrl: string, language: Locale) {
     this.webhookUrl = webhookUrl;
+    this.language = language;
   }
 
   async notifyOpened(incident: NormalizedIncident): Promise<void> {
@@ -48,7 +128,9 @@ export class TeamsJsonNotifier implements Notifier {
       schemaVersion: SCHEMA_VERSION,
       source: "status-page-to-chat",
       event: "incident.opened",
-      incident,
+      severity: "problem",
+      language: this.language,
+      incident: toJsonIncident(incident),
     };
     await this.sendWithRetry(payload, {
       provider: incident.providerKey,
@@ -62,7 +144,9 @@ export class TeamsJsonNotifier implements Notifier {
       schemaVersion: SCHEMA_VERSION,
       source: "status-page-to-chat",
       event: "incident.resolved",
-      incident,
+      severity: "ok",
+      language: this.language,
+      incident: toJsonIncident(incident),
     };
     await this.sendWithRetry(payload, {
       provider: incident.providerKey,
@@ -76,7 +160,9 @@ export class TeamsJsonNotifier implements Notifier {
       schemaVersion: SCHEMA_VERSION,
       source: "status-page-to-chat",
       event: `adapter.${alert.kind}`,
-      alert,
+      severity: alertSeverity(alert.kind),
+      language: this.language,
+      alert: toJsonAlert(alert),
     };
     await this.sendWithRetry(payload, {
       provider: alert.providerKey,
