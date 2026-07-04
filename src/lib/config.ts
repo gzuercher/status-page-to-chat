@@ -110,9 +110,16 @@ export const providerSchema = z
 /**
  * zod schema for the entire providers.yaml.
  */
+/**
+ * Supported chat targets. `teams` renders a finished Adaptive Card;
+ * `teamsJson` POSTs the raw normalized event as JSON so a downstream
+ * renderer (e.g. an Azure Logic App) builds the card centrally.
+ */
+export const chatTargetSchema = z.enum(["googleChat", "teams", "teamsJson"]);
+
 export const configSchema = z
   .object({
-    chatTarget: z.enum(["googleChat", "teams"]),
+    chatTarget: chatTargetSchema,
     /**
      * UI language for the chat cards (static labels, badges, health texts)
      * and the target language for machine-translated incident titles.
@@ -195,17 +202,18 @@ export function parseConfigFromString(raw: string, filePath = "<in-memory>"): Co
   // pin a different target via env without rewriting the YAML.
   const override = process.env.CHAT_TARGET;
   if (override) {
-    if (override !== "googleChat" && override !== "teams") {
+    const validTargets = chatTargetSchema.options;
+    if (!(validTargets as readonly string[]).includes(override)) {
       return {
         ok: false,
         error: {
           kind: "validate",
           filePath,
-          message: `CHAT_TARGET env override is invalid: "${override}" (must be googleChat or teams)`,
+          message: `CHAT_TARGET env override is invalid: "${override}" (must be one of ${validTargets.join(", ")})`,
         },
       };
     }
-    result.data.chatTarget = override;
+    result.data.chatTarget = override as AppConfig["chatTarget"];
   }
 
   // Optional env-level override of the UI/translation language, mirroring

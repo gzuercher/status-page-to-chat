@@ -11,7 +11,7 @@ The repository also ships `config/providers.yaml` baked into the image, but that
 
 ```yaml
 # Required fields
-chatTarget: googleChat         # "googleChat" | "teams"
+chatTarget: googleChat         # "googleChat" | "teams" | "teamsJson"
 
 # Optional: UI language for the chat cards and the target language for
 # machine-translated incident titles. "de" (default) | "en".
@@ -39,6 +39,48 @@ providers:
                                # (set this for hosts without a favicon registered at
                                # Google, e.g. point status.zendesk.com → zendesk.com)
     userAgent: <string>        # optional, overrides the default User-Agent for this provider
+```
+
+## Output formats: `teams` vs `teamsJson`
+
+Both targets POST to the same kind of webhook (`WEBHOOK_URL`), but differ in the payload:
+
+- **`teams`** — this service builds the finished **Adaptive Card** and posts it. Self-contained; what
+  you see is what Teams renders. Titles are machine-translated (see below).
+- **`teamsJson`** — this service posts the **raw normalized event as JSON**; a downstream renderer
+  (e.g. an Azure Logic App) builds the card from a central template. Use this when card layout is owned
+  centrally across several feeds. No translation happens here — the raw source-language `title` is sent,
+  and any translation/presentation belongs to the central renderer.
+
+The JSON envelope (`teamsJson`, `schemaVersion: 2`). The key set is **stable across all variants**: every optional field is always present as `null` when unset (never omitted), so a template engine like Logic Apps can reference every field unconditionally. `severity` and `language` are included so the renderer needs no knowledge of our internal derivation rules; `title` is verbatim (source language) — translation belongs to the renderer.
+
+```json
+{ "schemaVersion": 2, "source": "status-page-to-chat",
+  "event": "incident.opened",           // incident.opened | incident.resolved
+  "severity": "problem",                // problem (opened) | ok (resolved)
+  "language": "de",                     // configured target UI language
+  "incident": {
+    "externalId": "…", "providerKey": "…", "displayName": "…",
+    "title": "…",                       // source language, not translated
+    "description": null,                // string | null
+    "status": "open",                   // open | resolved
+    "url": "…", "startedAt": "…", "updatedAt": "…",
+    "logoUrl": null                     // string | null
+  } }
+```
+
+```json
+{ "schemaVersion": 2, "source": "status-page-to-chat",
+  "event": "adapter.down",              // adapter.down | adapter.recovered | adapter.halfDead
+  "severity": "problem",                // problem (down, halfDead) | ok (recovered)
+  "language": "de",
+  "alert": {
+    "kind": "down",                     // down | recovered | halfDead
+    "providerKey": "…", "providerName": "…",
+    "logoUrl": null,                    // string | null
+    "errorCategory": "HTTP 503",        // string (down) | null (recovered, halfDead)
+    "durationLabel": "2h"               // pre-formatted duration
+  } }
 ```
 
 ## Localisation & translation (Teams)
@@ -78,7 +120,7 @@ This follows the common practice for well-behaved pollers, respects the logs of 
 
 The file is validated with **`zod`** on container startup. Errors are logged and prevent startup. Minimum requirements:
 
-- `chatTarget` ∈ `{googleChat, teams}`
+- `chatTarget` ∈ `{googleChat, teams, teamsJson}`
 - `language` ∈ `{de, en}` (optional, defaults to `de`)
 - at least one entry in `providers`
 - `key` is unique
@@ -167,7 +209,7 @@ Everything that is not in `providers.yaml` lives as an environment variable on t
 
 | Variable | Required | Description |
 |---|---|---|
-| `WEBHOOK_URL` | yes | Google Chat Incoming Webhook **or** Teams (Workflows) webhook URL — matches `chatTarget` |
+| `WEBHOOK_URL` | yes | Google Chat Incoming Webhook, Teams (Workflows) webhook, or (for `teamsJson`) the JSON-consuming endpoint (e.g. a Logic App HTTP trigger) — matches `chatTarget` |
 | `ANTHROPIC_API_KEY` | no | Claude API key. When set, Teams incident titles are machine-translated into `language`. Unset → titles shown untranslated. |
 | `LANGUAGE` | no | Overrides the `language` field from `providers.yaml` (`de` \| `en`). Default: `de`. |
 | `TRANSLATE_MODEL` | no | Claude model id used for translation. Default: `claude-haiku-4-5-20251001`. |
