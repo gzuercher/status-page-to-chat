@@ -234,10 +234,9 @@ export function getCachedTranslation(
   targetLang: string,
 ): string | undefined {
   const row = store
-    .prepare<
-      [string, string],
-      { translated: string }
-    >(`SELECT translated FROM translations WHERE source_hash = ? AND target_lang = ?`)
+    .prepare<[string, string], { translated: string }>(
+      `SELECT translated FROM translations WHERE source_hash = ? AND target_lang = ?`,
+    )
     .get(sourceHash, targetLang);
   return row?.translated;
 }
