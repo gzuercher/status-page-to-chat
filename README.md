@@ -44,14 +44,12 @@ That's it. No cloud account, no fork, no infrastructure setup. Adding providers 
 ## How it works
 
 1. A long-running Node.js process polls every 5 minutes.
-2. For each configured service, the status page is queried via the appropriate **adapter** (Atlassian Statuspage, Google Workspace, Metanet RSS, WEDOS, GitHub Issues).
+2. For each configured service, the status page is queried via the appropriate **adapter** (see [docs/ADAPTERS.md](docs/ADAPTERS.md) for the full list).
 3. New or newly resolved incidents are compared against the last known state (SQLite).
-4. On state change, a formatted message is posted via webhook.
-
-**Message format**:
-
-- **New**: `⚠️ <Provider> has reported an incident: "<Title>"` + link to incident
-- **Resolved**: `✅ <Provider> has resolved the incident: "<Title>"` + link
+4. On state change, a message is posted via webhook. Three output formats (`chatTarget`):
+   - **`teams`** — a finished, localised Adaptive Card (colour-coded red/green, status badge, optional service description; incident titles machine-translated via the Claude API when `ANTHROPIC_API_KEY` is set).
+   - **`googleChat`** — a Google Chat Card v2 (English).
+   - **`teamsJson`** — the raw normalized event as JSON (stable schema, `schemaVersion: 2`); a downstream renderer such as an Azure Logic App builds the card centrally. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## Configuration
 
@@ -76,7 +74,11 @@ Environment variables you can set:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `WEBHOOK_URL` | required | Google Chat or Teams webhook URL |
+| `WEBHOOK_URL` | required | Google Chat webhook, Teams (Workflows) webhook, or — for `teamsJson` — the JSON-consuming endpoint (e.g. a Logic App HTTP trigger) |
+| `CHAT_TARGET` | from `providers.yaml` | Overrides the configured chat target (`googleChat` \| `teams` \| `teamsJson`) |
+| `LANGUAGE` | `de` | UI language of the Teams cards (`de` \| `en`) |
+| `ANTHROPIC_API_KEY` | — | Claude API key; when set, Teams incident titles are machine-translated |
+| `TRANSLATE_MODEL` | `claude-haiku-4-5-20251001` | Claude model used for translation |
 | `API_TOKEN` | — | Bearer token for the management API. Required unless `API_AUTH_DISABLED=true`. |
 | `API_AUTH_DISABLED` | — | Set to literal `true` to disable API auth (only on trusted networks) |
 | `API_PORT` | `8080` | Port the management API listens on |
