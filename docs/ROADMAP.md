@@ -7,16 +7,6 @@ opens up.
 
 ## Candidate features
 
-- **Adapter-health alerting in Teams** — when a configured status page
-  stops returning usable data (consecutive poll failures), surface this
-  *in the chat target itself*, not just in container logs. Must be very
-  low volume to avoid alert fatigue: post once when an adapter crosses
-  N consecutive failures (proposed: 6 = 30 min), once when it recovers,
-  never repeat in between. Suppress when more than 50 % of adapters fail
-  at once (likely a network or DNS problem on our side, not the
-  providers). The state store needs a per-provider failure counter; the
-  threshold check belongs in `runPoll` in `src/main.ts`, and the message
-  reuses the existing `Notifier` interface.
 - **Update messages between `open` and `resolved`** — pass through
   intermediate states ("monitoring", "identified") as a second message
   per incident.
