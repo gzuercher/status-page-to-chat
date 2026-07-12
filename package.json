@@ -26,7 +26,7 @@
     "better-sqlite3": "^12.11.1",
     "cheerio": "^1.2.0",
     "croner": "^10.0.1",
-    "fast-xml-parser": "^5.9.3",
+    "fast-xml-parser": "^5.10.0",
     "pino": "^10.3.1",
     "undici": "^8.7.0",
     "yaml": "^2.9.0",
