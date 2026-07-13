@@ -111,23 +111,11 @@ describe("TeamsNotifier", () => {
     expect(lastCardJson()).toContain("Visueller Website-Baukasten.");
   });
 
-  it("throws when both attempts fail and logs structured context", async () => {
-    mockedHttpPost
-      .mockRejectedValueOnce(new Error("Network error"))
-      .mockResolvedValueOnce({ status: 500, contentType: "", body: "Internal Error" });
+  it("throws on a non-2xx response and calls httpPost once (retry lives in the client)", async () => {
+    mockedHttpPost.mockResolvedValueOnce({ status: 500, contentType: "", body: "Internal Error" });
 
-    await expect(newNotifier().notifyOpened(testIncident)).rejects.toThrow("Retry failed");
-    expect(mockedHttpPost).toHaveBeenCalledTimes(2);
-  });
-
-  it("retries once on first failure", async () => {
-    mockedHttpPost
-      .mockRejectedValueOnce(new Error("Timeout"))
-      .mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
-
-    await newNotifier().notifyOpened(testIncident);
-
-    expect(mockedHttpPost).toHaveBeenCalledTimes(2);
+    await expect(newNotifier().notifyOpened(testIncident)).rejects.toThrow("HTTP 500");
+    expect(mockedHttpPost).toHaveBeenCalledOnce();
   });
 
   it("renders an adapter-health card with the system header, wrench emoji and German body", async () => {

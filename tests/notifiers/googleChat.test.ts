@@ -54,25 +54,12 @@ describe("GoogleChatNotifier", () => {
     expect(mockedHttpPost).toHaveBeenCalledOnce();
   });
 
-  it("retries once on first failure", async () => {
-    mockedHttpPost
-      .mockRejectedValueOnce(new Error("Network error"))
-      .mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
+  it("throws on a non-2xx response and calls httpPost once (retry lives in the client)", async () => {
+    mockedHttpPost.mockResolvedValueOnce({ status: 500, contentType: "", body: "Internal Error" });
 
     const notifier = new GoogleChatNotifier("https://chat.googleapis.com/test");
-    await notifier.notifyOpened(testIncident);
-
-    expect(mockedHttpPost).toHaveBeenCalledTimes(2);
-  });
-
-  it("throws when the retry also fails", async () => {
-    mockedHttpPost
-      .mockRejectedValueOnce(new Error("Network error"))
-      .mockResolvedValueOnce({ status: 500, contentType: "", body: "Internal Error" });
-
-    const notifier = new GoogleChatNotifier("https://chat.googleapis.com/test");
-
-    await expect(notifier.notifyOpened(testIncident)).rejects.toThrow("Retry failed");
+    await expect(notifier.notifyOpened(testIncident)).rejects.toThrow("HTTP 500");
+    expect(mockedHttpPost).toHaveBeenCalledOnce();
   });
 
   it("renders an adapter-health card with system header and provider in the body", async () => {

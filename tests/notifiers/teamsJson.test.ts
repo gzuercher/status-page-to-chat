@@ -141,22 +141,10 @@ describe("TeamsJsonNotifier", () => {
     expect(p.alert).toMatchObject({ kind: "down", providerKey: "bitwarden" });
   });
 
-  it("retries once on first failure", async () => {
-    mockedHttpPost
-      .mockRejectedValueOnce(new Error("Timeout"))
-      .mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
+  it("throws on a non-2xx response and calls httpPost once (retry lives in the client)", async () => {
+    mockedHttpPost.mockResolvedValueOnce({ status: 500, contentType: "", body: "Internal Error" });
 
-    await newNotifier().notifyOpened(testIncident);
-
-    expect(mockedHttpPost).toHaveBeenCalledTimes(2);
-  });
-
-  it("throws when both attempts fail", async () => {
-    mockedHttpPost
-      .mockRejectedValueOnce(new Error("Network error"))
-      .mockResolvedValueOnce({ status: 500, contentType: "", body: "Internal Error" });
-
-    await expect(newNotifier().notifyOpened(testIncident)).rejects.toThrow("Retry failed");
-    expect(mockedHttpPost).toHaveBeenCalledTimes(2);
+    await expect(newNotifier().notifyOpened(testIncident)).rejects.toThrow("HTTP 500");
+    expect(mockedHttpPost).toHaveBeenCalledOnce();
   });
 });
