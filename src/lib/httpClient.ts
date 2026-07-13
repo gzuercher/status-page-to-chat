@@ -3,38 +3,55 @@ import { resolve } from "node:path";
 import { fetch, type RequestInit } from "undici";
 import { logger } from "./logger.js";
 
-/** Timeout for all outgoing HTTP requests (10 seconds). */
+/**
+ * GESPIEGELTES MODUL (Familienstandard mit social-to-chat).
+ * Änderungen hier bitte im Schwester-Repo nachziehen — nur die
+ * REPO_URL-Konstante ist repo-spezifisch.
+ *
+ * Zentraler HTTP-Client für alle Adapter und Notifier:
+ *   • einheitlicher Timeout pro Versuch (10 s, AbortController)
+ *   • einheitlicher User-Agent (aus package.json, überschreibbar via USER_AGENT)
+ *   • Retry mit exponentiellem Backoff für 429/5xx/Netzwerkfehler,
+ *     `Retry-After` wird respektiert (gedeckelt)
+ *
+ * Semantik ist at-least-once: auch POSTs werden wiederholt. Doppelte
+ * Zustellungen fängt die Dedup-Schicht des Aufrufers ab (der State-Store
+ * dedupliziert Incidents pro Provider, bevor ein Notifier aufgerufen wird).
+ */
+
+/** Timeout je Versuch (nicht gesamt). */
 const REQUEST_TIMEOUT_MS = 10_000;
 
-/**
- * Determines the default User-Agent from package.json.
- * Format: status-page-to-chat/<version> (+https://github.com/gzuercher/status-page-to-chat)
- *
- * Override with the `USER_AGENT` env var, e.g. to add a contact address
- * for the operator running this instance:
- *   USER_AGENT='status-page-to-chat/1.2.3 (+https://example.com; ops@example.com)'
- */
+/** Wiederholungen nach dem Erstversuch. */
+const DEFAULT_RETRIES = 2;
+
+/** Backoff: BASE × FACTOR^attempt → 1 s, 4 s. */
+const BACKOFF_BASE_MS = 1_000;
+const BACKOFF_FACTOR = 4;
+
+/** Obergrenze für Backoff bzw. serverseitiges Retry-After. */
+const BACKOFF_CAP_MS = 30_000;
+
+/** Repo-spezifisch (einziger erlaubter Unterschied zum Schwester-Repo). */
+const REPO_URL = "https://github.com/gzuercher/status-page-to-chat";
+
 function getDefaultUserAgent(): string {
-  if (process.env.USER_AGENT) {
-    return process.env.USER_AGENT;
-  }
-  const projectUrl = "https://github.com/gzuercher/status-page-to-chat";
+  if (process.env.USER_AGENT) return process.env.USER_AGENT;
   try {
     const pkg = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf-8")) as {
+      name: string;
       version: string;
     };
-    return `status-page-to-chat/${pkg.version} (+${projectUrl})`;
+    return `${pkg.name}/${pkg.version} (+${REPO_URL})`;
   } catch {
-    return `status-page-to-chat/0.0.0 (+${projectUrl})`;
+    return `status-page-to-chat/0.0.0 (+${REPO_URL})`;
   }
 }
 
 let cachedUserAgent: string | undefined;
 
 function getUserAgent(): string {
-  if (!cachedUserAgent) {
-    cachedUserAgent = getDefaultUserAgent();
-  }
+  cachedUserAgent ??= getDefaultUserAgent();
   return cachedUserAgent;
 }
 
@@ -44,42 +61,47 @@ export type HttpResponse = {
   body: string;
 };
 
-/**
- * Central HTTP client for all adapters.
- * Sets User-Agent and timeout uniformly.
- */
-export async function httpGet(
+export type HttpOptions = {
+  accept?: string;
+  userAgent?: string;
+  /** Zusätzliche Header, z. B. Authorization / API-Key. Werden nach den Defaults gemerged. */
+  headers?: Record<string, string>;
+  /** Wiederholungen nach dem Erstversuch (Default 2). 0 = keine Retries. */
+  retries?: number;
+};
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+/** Liest Retry-After (Sekunden oder HTTP-Datum) und deckelt auf BACKOFF_CAP_MS. */
+function parseRetryAfterMs(headerValue: string | null): number | undefined {
+  if (!headerValue) return undefined;
+  const seconds = Number(headerValue);
+  if (Number.isFinite(seconds)) return Math.min(Math.max(seconds, 0) * 1000, BACKOFF_CAP_MS);
+  const dateMs = Date.parse(headerValue) - Date.now();
+  if (Number.isFinite(dateMs)) return Math.min(Math.max(dateMs, 0), BACKOFF_CAP_MS);
+  return undefined;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function attemptOnce(
   url: string,
-  options?: {
-    accept?: string;
-    userAgent?: string;
-    headers?: Record<string, string>;
-  },
-): Promise<HttpResponse> {
+  init: RequestInit,
+): Promise<HttpResponse & { retryAfterMs?: number }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  const init: RequestInit = {
-    method: "GET",
-    signal: controller.signal,
-    headers: {
-      "User-Agent": options?.userAgent ?? getUserAgent(),
-      ...(options?.accept ? { Accept: options.accept } : {}),
-      ...options?.headers,
-    },
-  };
-
   try {
-    const response = await fetch(url, init);
+    const response = await fetch(url, { ...init, signal: controller.signal });
     const body = await response.text();
-    const contentType = response.headers.get("content-type") ?? "";
-
-    logger.debug({ url, status: response.status, contentType }, "HTTP GET completed");
-
     return {
       status: response.status,
-      contentType,
+      contentType: response.headers.get("content-type") ?? "",
       body,
+      retryAfterMs: parseRetryAfterMs(response.headers.get("retry-after")),
     };
   } finally {
     clearTimeout(timeout);
@@ -87,43 +109,80 @@ export async function httpGet(
 }
 
 /**
- * HTTP POST for notifiers (webhooks).
+ * Führt den Request aus und wiederholt bei 429/5xx/Netzwerkfehlern mit
+ * exponentiellem Backoff. Nicht-retrybare Antworten (2xx–4xx außer 429)
+ * werden unverändert zurückgegeben — Statuscode-Behandlung ist Sache des
+ * Aufrufers.
+ */
+async function requestWithRetry(
+  url: string,
+  init: RequestInit,
+  retries: number,
+): Promise<HttpResponse> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    let retryAfterMs: number | undefined;
+    try {
+      const { retryAfterMs: serverDelay, ...response } = await attemptOnce(url, init);
+      if (!isRetryableStatus(response.status) || attempt === retries) {
+        return response;
+      }
+      retryAfterMs = serverDelay;
+      logger.debug(
+        { url, status: response.status, attempt },
+        "HTTP request returned retryable status, backing off",
+      );
+    } catch (err) {
+      lastError = err;
+      if (attempt === retries) throw err;
+      logger.debug({ url, err, attempt }, "HTTP request failed, backing off");
+    }
+    const backoff = Math.min(BACKOFF_BASE_MS * BACKOFF_FACTOR ** attempt, BACKOFF_CAP_MS);
+    await sleep(retryAfterMs ?? backoff);
+  }
+  // Unerreichbar (Schleife returned oder wirft), hält aber TS zufrieden.
+  throw lastError instanceof Error ? lastError : new Error("HTTP request failed");
+}
+
+/**
+ * HTTP GET für Adapter (Status-Page-APIs).
+ */
+export async function httpGet(url: string, options?: HttpOptions): Promise<HttpResponse> {
+  const response = await requestWithRetry(
+    url,
+    {
+      method: "GET",
+      headers: {
+        "User-Agent": options?.userAgent ?? getUserAgent(),
+        ...(options?.accept ? { Accept: options.accept } : {}),
+        ...options?.headers,
+      },
+    },
+    options?.retries ?? DEFAULT_RETRIES,
+  );
+  logger.debug({ url, status: response.status }, "HTTP GET completed");
+  return response;
+}
+
+/**
+ * HTTP POST für Notifier (Webhooks).
  */
 export async function httpPost(
   url: string,
   payload: unknown,
-  options?: {
-    userAgent?: string;
-    contentType?: string;
-    /** Extra request headers, e.g. an API key. Merged after the defaults. */
-    headers?: Record<string, string>;
-  },
+  options?: HttpOptions & { contentType?: string },
 ): Promise<HttpResponse> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  const init: RequestInit = {
-    method: "POST",
-    signal: controller.signal,
-    headers: {
-      "User-Agent": options?.userAgent ?? getUserAgent(),
-      "Content-Type": options?.contentType ?? "application/json; charset=utf-8",
-      ...options?.headers,
+  return requestWithRetry(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "User-Agent": options?.userAgent ?? getUserAgent(),
+        "Content-Type": options?.contentType ?? "application/json; charset=utf-8",
+        ...options?.headers,
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  };
-
-  try {
-    const response = await fetch(url, init);
-    const body = await response.text();
-    const contentType = response.headers.get("content-type") ?? "";
-
-    return {
-      status: response.status,
-      contentType,
-      body,
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
+    options?.retries ?? DEFAULT_RETRIES,
+  );
 }

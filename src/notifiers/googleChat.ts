@@ -113,7 +113,7 @@ export class GoogleChatNotifier implements Notifier {
 
   async notifyOpened(incident: NormalizedIncident): Promise<void> {
     const payload = buildCard(incident, "opened");
-    await this.sendWithRetry(payload, {
+    await this.send(payload, {
       provider: incident.providerKey,
       type: "opened",
       incidentId: incident.externalId,
@@ -122,7 +122,7 @@ export class GoogleChatNotifier implements Notifier {
 
   async notifyResolved(incident: NormalizedIncident): Promise<void> {
     const payload = buildCard(incident, "resolved");
-    await this.sendWithRetry(payload, {
+    await this.send(payload, {
       provider: incident.providerKey,
       type: "resolved",
       incidentId: incident.externalId,
@@ -131,39 +131,25 @@ export class GoogleChatNotifier implements Notifier {
 
   async notifyAdapterHealth(alert: AdapterHealthAlert): Promise<void> {
     const payload = buildAdapterHealthCard(alert);
-    await this.sendWithRetry(payload, {
+    await this.send(payload, {
       provider: alert.providerKey,
       type: `adapter-${alert.kind}`,
     });
   }
 
-  private async sendWithRetry(
+  /**
+   * Posts the payload once. Retry/backoff (429/5xx/network) lives in the
+   * shared httpClient; on a final non-2xx or network failure this throws, and
+   * the poll loop leaves the incident un-notified so the next cycle retries.
+   */
+  private async send(
     payload: Record<string, unknown>,
     context: Record<string, unknown>,
   ): Promise<void> {
-    try {
-      const response = await httpPost(this.webhookUrl, payload);
-
-      if (response.status < 200 || response.status >= 300) {
-        throw new Error(`HTTP ${response.status}: ${response.body}`);
-      }
-
-      logger.info(context, "Google Chat message sent");
-    } catch (firstError) {
-      logger.warn({ ...context, err: firstError }, "Google Chat message failed, retrying in 2s");
-
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      try {
-        const response = await httpPost(this.webhookUrl, payload);
-        if (response.status < 200 || response.status >= 300) {
-          throw new Error(`Retry failed: HTTP ${response.status}: ${response.body}`);
-        }
-        logger.info(context, "Google Chat message sent (after retry)");
-      } catch (retryError) {
-        logger.error({ ...context, err: retryError }, "Google Chat message failed on retry");
-        throw retryError;
-      }
+    const response = await httpPost(this.webhookUrl, payload);
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`HTTP ${response.status}: ${response.body}`);
     }
+    logger.info(context, "Google Chat message sent");
   }
 }

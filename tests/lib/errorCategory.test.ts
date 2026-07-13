@@ -9,6 +9,15 @@ describe("categorizeError", () => {
     expect(categorizeError(new Error("HTTP 503: service unavailable"))).toBe("HTTP 503");
   });
 
+  it("maps 401/403 to Authentication failed (not a raw HTTP code)", () => {
+    expect(categorizeError(new Error("HTTP 401 from https://api.github.com"))).toBe(
+      "Authentication failed",
+    );
+    expect(categorizeError(new Error("HTTP 403: Forbidden"))).toBe("Authentication failed");
+    // Other 4xx stay as raw codes.
+    expect(categorizeError(new Error("HTTP 404: not found"))).toBe("HTTP 404");
+  });
+
   it("classifies fetch timeouts as Timeout", () => {
     expect(categorizeError(new Error("The operation was aborted due to timeout"))).toBe("Timeout");
     expect(categorizeError({ name: "AbortError", message: "request aborted" })).toBe("Timeout");

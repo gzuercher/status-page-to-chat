@@ -38,6 +38,7 @@ export interface Messages {
 }
 
 const ERROR_CATEGORIES_DE: Record<string, string> = {
+  "Authentication failed": "Authentifizierung fehlgeschlagen",
   Timeout: "Zeitüberschreitung",
   "DNS lookup failed": "DNS-Auflösung fehlgeschlagen",
   "Connection refused": "Verbindung abgelehnt",

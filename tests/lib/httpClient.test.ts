@@ -1,71 +1,99 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { MockAgent, setGlobalDispatcher, getGlobalDispatcher, type Dispatcher } from "undici";
 import { httpGet, httpPost } from "../../src/lib/httpClient.js";
 
-vi.mock("../../src/lib/logger.js", () => ({
-  logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), fatal: vi.fn() },
-}));
-
-// `undici.fetch` is what httpClient imports. We mock the module so we can
-// inject behaviour without doing real network calls.
-vi.mock("undici", () => ({
-  fetch: vi.fn(),
-}));
-
-import { fetch as undiciFetch } from "undici";
-
-const mockedFetch = vi.mocked(undiciFetch);
-
-function jsonResponse(body: string, status = 200, contentType = "application/json"): unknown {
-  return {
-    status,
-    headers: new Map([["content-type", contentType]]),
-    text: () => Promise.resolve(body),
-  };
-}
-
+// Mirrored test (Familienstandard mit social-to-chat). `retry-after: "0"`
+// keeps the backoff instantaneous so the retry paths stay fast.
 describe("httpClient", () => {
+  let mockAgent: MockAgent;
+  let originalDispatcher: Dispatcher;
+
   beforeEach(() => {
-    vi.clearAllMocks();
+    originalDispatcher = getGlobalDispatcher();
+    mockAgent = new MockAgent();
+    mockAgent.disableNetConnect();
+    setGlobalDispatcher(mockAgent);
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
+  afterEach(async () => {
+    await mockAgent.close();
+    setGlobalDispatcher(originalDispatcher);
   });
 
-  it("passes a User-Agent header on GET", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mockedFetch.mockResolvedValueOnce(jsonResponse("{}") as any);
-    await httpGet("https://example.com", { userAgent: "test-ua/1.0" });
+  it("returns status, content-type and body", async () => {
+    mockAgent
+      .get("https://api.example.com")
+      .intercept({ path: "/ok", method: "GET" })
+      .reply(200, '{"a":1}', { headers: { "content-type": "application/json" } });
 
-    const [, init] = mockedFetch.mock.calls[0];
-    const headers = (init as { headers: Record<string, string> }).headers;
-    expect(headers["User-Agent"]).toBe("test-ua/1.0");
+    const res = await httpGet("https://api.example.com/ok");
+    expect(res.status).toBe(200);
+    expect(res.contentType).toBe("application/json");
+    expect(res.body).toBe('{"a":1}');
   });
 
-  it("propagates Content-Type from the response", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mockedFetch.mockResolvedValueOnce(jsonResponse("hi", 200, "text/plain") as any);
-    const r = await httpGet("https://example.com");
-    expect(r.contentType).toBe("text/plain");
-    expect(r.body).toBe("hi");
+  it("retries on 429 and honours Retry-After", async () => {
+    const pool = mockAgent.get("https://api.example.com");
+    pool
+      .intercept({ path: "/flaky", method: "GET" })
+      .reply(429, "slow down", { headers: { "retry-after": "0" } })
+      .times(1);
+    pool.intercept({ path: "/flaky", method: "GET" }).reply(200, "ok").times(1);
+
+    const res = await httpGet("https://api.example.com/flaky");
+    expect(res.status).toBe(200);
+    expect(res.body).toBe("ok");
   });
 
-  it("attaches an AbortSignal to outgoing requests (so the 10s timeout can fire)", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mockedFetch.mockResolvedValueOnce(jsonResponse("{}") as any);
-    await httpGet("https://example.com");
-    const [, init] = mockedFetch.mock.calls[0];
-    const signal = (init as { signal?: AbortSignal }).signal;
-    expect(signal).toBeInstanceOf(AbortSignal);
-    expect(signal?.aborted).toBe(false);
+  it("returns the last response after retries are exhausted", async () => {
+    mockAgent
+      .get("https://api.example.com")
+      .intercept({ path: "/broken", method: "GET" })
+      .reply(429, "nope", { headers: { "retry-after": "0" } })
+      .times(3); // first attempt + 2 retries
+
+    const res = await httpGet("https://api.example.com/broken");
+    expect(res.status).toBe(429);
   });
 
-  it("serialises JSON payloads on POST", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    mockedFetch.mockResolvedValueOnce(jsonResponse("ok") as any);
-    await httpPost("https://example.com", { hello: "world" });
+  it("does not retry when retries: 0", async () => {
+    mockAgent
+      .get("https://api.example.com")
+      .intercept({ path: "/once", method: "GET" })
+      .reply(500, "boom")
+      .times(1);
 
-    const [, init] = mockedFetch.mock.calls[0];
-    expect((init as { body: string }).body).toBe('{"hello":"world"}');
+    const res = await httpGet("https://api.example.com/once", { retries: 0 });
+    expect(res.status).toBe(500);
+  });
+
+  it("does not retry 4xx other than 429", async () => {
+    mockAgent
+      .get("https://api.example.com")
+      .intercept({ path: "/notfound", method: "GET" })
+      .reply(404, "missing")
+      .times(1);
+
+    const res = await httpGet("https://api.example.com/notfound");
+    expect(res.status).toBe(404);
+  });
+
+  it("serialises the payload as JSON on POST", async () => {
+    let receivedBody = "";
+    mockAgent
+      .get("https://hook.example.com")
+      .intercept({
+        path: "/webhook",
+        method: "POST",
+        body: (body) => {
+          receivedBody = body;
+          return true;
+        },
+      })
+      .reply(202, "accepted");
+
+    const res = await httpPost("https://hook.example.com/webhook", { hello: "world" });
+    expect(res.status).toBe(202);
+    expect(JSON.parse(receivedBody)).toEqual({ hello: "world" });
   });
 });
