@@ -8,6 +8,12 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: "development"
+    ignore:
+      # TypeScript 7.x crashes typescript-eslint 8.x at lint time
+      # (TypeError: reading 'Cjs'). Hold at 6.x until typescript-eslint
+      # officially supports TS 7, then bump both together. See lessons.md.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
