@@ -97,7 +97,7 @@ function renderAdapterHealthSubtitle(alert: AdapterHealthAlert): string {
     case "recovered":
       return `Polling resumed (was down for ${alert.durationLabel}).`;
     case "halfDead":
-      return `Polled cleanly for ${alert.durationLabel} but never returned any incident — check the URL.`;
+      return `Polled cleanly for ${alert.durationLabel}, but no reported incident matched the filter — check componentFilter and URL.`;
   }
 }
 

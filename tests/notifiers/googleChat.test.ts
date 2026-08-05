@@ -68,18 +68,18 @@ describe("GoogleChatNotifier", () => {
     const notifier = new GoogleChatNotifier("https://chat.googleapis.com/test");
     await notifier.notifyAdapterHealth({
       kind: "halfDead",
-      providerKey: "wedos",
-      providerName: "WEDOS",
-      logoUrl: "https://logo.example/wedos.png",
-      durationLabel: "7 days",
+      providerKey: "cloudflare",
+      providerName: "Cloudflare",
+      logoUrl: "https://logo.example/cloudflare.png",
+      durationLabel: "7d",
     });
 
     const [, payload] = mockedHttpPost.mock.calls[0];
     const json = JSON.stringify(payload);
     expect(json).toContain("status-page-to-chat");
     expect(json).toContain("🛠️");
-    expect(json).toContain("WEDOS");
-    expect(json).toContain("check the URL");
-    expect(json).toContain("7 days");
+    expect(json).toContain("Cloudflare");
+    expect(json).toContain("componentFilter");
+    expect(json).toContain("7d");
   });
 });

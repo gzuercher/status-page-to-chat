@@ -43,6 +43,31 @@ export interface StatusProvider {
   readonly key: string;
   readonly displayName: string;
   fetchIncidents(): Promise<NormalizedIncident[]>;
+  /**
+   * How many incidents the upstream page returned during the most recent
+   * `fetchIncidents()`, *before* componentFilter or age caps were applied.
+   * Diagnostic only — surfaced in the poll log.
+   */
+  readonly lastUpstreamCount?: number;
+  /**
+   * Whether the adapter established, during the most recent fetch, that its
+   * `componentFilter` no longer names anything the provider publishes.
+   *
+   * This is what makes a "silent provider" actionable. Three states:
+   *
+   *   - `true`  — the filter matches none of the provider's *current*
+   *               component names. The config is stale (component renamed
+   *               or removed) and the provider will never report again.
+   *   - `false` — the filter is fine, or there is no filter. A provider
+   *               with zero incidents is simply quiet, which is normal.
+   *   - `undefined` — the adapter cannot tell. Treated like `false`, so an
+   *               adapter that does not implement the check never triggers
+   *               a false alarm.
+   *
+   * Only evaluated when filtering actually discarded everything, so the
+   * extra request costs nothing in the healthy case.
+   */
+  readonly lastConfigDrift?: boolean;
 }
 
 /**

@@ -48,12 +48,24 @@ opens up.
 
 ## Known maintenance risks
 
+- **Stale `componentFilter` values silence a provider.** This has bitten
+  us: on 2026-07-30, `claude`, `cloudflare`, `linkedin`, `zendesk-helpcenter`
+  and `gravityzone-bitdefender` had all been reporting zero incidents for
+  weeks. Mitigations now in place — the adapters validate a
+  non-matching filter against the provider's component catalogue and log a
+  warning every cycle, and a `halfDead` card follows after 7 days (see
+  `docs/ADAPTERS.md` → "Drift detection"). It still pays to re-check filter
+  substrings against `<baseUrl>/api/v2/components.json` when a provider
+  looks suspiciously quiet.
 - **GravityZone cloud instances**: the current filter substrings
   (`cloudgz.gravityzone.bitdefender.com`,
   `cloud.gravityzone.bitdefender.com`) reflect today's instance URLs.
   On Bitdefender rebranding or consolidation (e.g. migration to another
   region), the `componentFilter` in `providers.yaml` must be updated or
-  notifications go silent.
+  notifications go silent. Note that Bitdefender tags most incidents
+  against product components ("Management Console", "Email Security")
+  rather than the instance components, so this filter is narrow by
+  design and legitimately matches very little.
 - **Claude component names**: Anthropic occasionally renames products
   (the console is now officially "platform.claude.com (formerly
   console.anthropic.com)"). When in doubt, check the current component

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ZendeskSspAdapter } from "../../src/adapters/zendeskSsp.js";
 import type { ProviderConfig } from "../../src/lib/config.js";
 import incidentsFixture from "../fixtures/zendesk-ssp-incidents.json";
-import servicesFixture from "../fixtures/zendesk-ssp-services.json";
 
 vi.mock("../../src/lib/httpClient.js", () => ({ httpGet: vi.fn() }));
 vi.mock("../../src/lib/logger.js", () => ({
@@ -28,14 +27,6 @@ function mockIncidents() {
   });
 }
 
-function mockServices() {
-  mockedHttpGet.mockResolvedValueOnce({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify(servicesFixture),
-  });
-}
-
 describe("ZendeskSspAdapter", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -52,20 +43,58 @@ describe("ZendeskSspAdapter", () => {
     expect(open[0].title).toContain("Help Center");
   });
 
-  it("filters by componentFilter substring against incident name (case-insensitive)", async () => {
+  it("filters by the service name carried in included[] (case-insensitive)", async () => {
     mockIncidents();
-    mockServices();
     const incidents = await new ZendeskSspAdapter({
       ...baseConfig,
-      componentFilter: "help center",
+      componentFilter: ["knowledge"],
     }).fetchIncidents();
     expect(incidents).toHaveLength(1);
     expect(incidents[0].externalId).toBe("9002");
   });
 
-  it("does not fetch services when no componentFilter is set", async () => {
+  it("matches no incident when the filter names a service that no longer exists", async () => {
+    // Regression: "Help Center" was renamed "Knowledge" upstream. The old
+    // code matched the filter against incident *titles*, which made this
+    // look like it worked for some incidents and silently broke others.
     mockIncidents();
-    await new ZendeskSspAdapter(baseConfig).fetchIncidents();
+    const incidents = await new ZendeskSspAdapter({
+      ...baseConfig,
+      componentFilter: ["Help Center"],
+    }).fetchIncidents();
+    expect(incidents).toHaveLength(0);
+  });
+
+  it("falls back to the incident title when no service reference resolves", async () => {
+    mockedHttpGet.mockResolvedValueOnce({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: [
+          {
+            id: "9500",
+            type: "incident",
+            attributes: {
+              name: "Help Center Slow Page Loads",
+              status: "investigating",
+              startedAt: "2026-07-01T10:00:00.000Z",
+              resolvedAt: null,
+            },
+          },
+        ],
+      }),
+    });
+    const incidents = await new ZendeskSspAdapter({
+      ...baseConfig,
+      componentFilter: ["help center"],
+    }).fetchIncidents();
+    expect(incidents).toHaveLength(1);
+    expect(incidents[0].externalId).toBe("9500");
+  });
+
+  it("never issues a second request — service names come from included[]", async () => {
+    mockIncidents();
+    await new ZendeskSspAdapter({ ...baseConfig, componentFilter: ["knowledge"] }).fetchIncidents();
     expect(mockedHttpGet).toHaveBeenCalledTimes(1);
   });
 

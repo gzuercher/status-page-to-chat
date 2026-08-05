@@ -26,26 +26,47 @@ type AtlassianIncidentsResponse = {
   incidents: AtlassianIncident[];
 };
 
+/**
+ * Entry of `/api/v2/components.json`. Statuspage models component *groups*
+ * as components with `group: true`; the members carry `group_id`. Incidents
+ * only ever reference members, never the group itself.
+ */
+type AtlassianComponent = {
+  id: string;
+  name: string;
+  group?: boolean;
+  group_id?: string | null;
+};
+
+type AtlassianComponentsResponse = {
+  components?: AtlassianComponent[];
+};
+
+/** Resolution of a componentFilter against the provider's live catalogue. */
+type FilterTargets = {
+  /** Ids of the components an incident must reference to pass the filter. */
+  componentIds: Set<string>;
+  /** Filter entries that matched neither a component nor a group name. */
+  unmatched: string[];
+};
+
 /** Status values that count as "resolved". */
 const RESOLVED_STATUSES = new Set(["resolved", "completed", "postmortem"]);
 
 /**
- * Checks whether an incident passes the component filter.
- * Without filter: all incidents are included.
- * With filter: at least one component must contain one of the filter substrings
- * (case-insensitive, OR logic).
+ * Fallback filter used when the component catalogue is unreachable: match
+ * the filter against the component names carried by the incident itself.
+ *
+ * Cannot resolve group names (an incident never names its group), so it is
+ * strictly weaker than the catalogue-based path — but it keeps a provider
+ * working through a transient failure of components.json.
  */
-function matchesComponentFilter(
-  incident: AtlassianIncident,
-  componentFilter?: string | string[],
-): boolean {
-  if (!componentFilter) return true;
+function matchesByName(incident: AtlassianIncident, componentFilter?: string[]): boolean {
+  if (!componentFilter || componentFilter.length === 0) return true;
   if (!incident.components || incident.components.length === 0) return false;
 
-  const filters = Array.isArray(componentFilter) ? componentFilter : [componentFilter];
-
   return incident.components.some((comp) =>
-    filters.some((filter) => comp.name.toLowerCase().includes(filter.toLowerCase())),
+    componentFilter.some((filter) => comp.name.toLowerCase().includes(filter.toLowerCase())),
   );
 }
 
@@ -63,8 +84,12 @@ function mapStatus(atlassianStatus: string): "open" | "resolved" {
 export class AtlassianStatuspageAdapter implements StatusProvider {
   readonly key: string;
   readonly displayName: string;
+  /** Upstream incident count of the last fetch, before componentFilter. */
+  lastUpstreamCount = 0;
+  /** Whether componentFilter matched no current component. See StatusProvider. */
+  lastConfigDrift: boolean | undefined = false;
   private readonly baseUrl: string;
-  private readonly componentFilter?: string | string[];
+  private readonly componentFilter?: string[];
   private readonly userAgent?: string;
   private readonly logoUrl?: string;
 
@@ -109,10 +134,17 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
       incidentMap.set(inc.id, inc);
     }
 
+    this.lastUpstreamCount = incidentMap.size;
+
+    // Resolve the filter against the live catalogue once per fetch. `null`
+    // means the catalogue was unreachable — we then fall back to matching
+    // the names the incidents carry themselves.
+    const targets = this.componentFilter?.length ? await this.resolveFilterTargets() : undefined;
+
     const normalized: NormalizedIncident[] = [];
 
     for (const incident of incidentMap.values()) {
-      if (!matchesComponentFilter(incident, this.componentFilter)) {
+      if (!this.passesFilter(incident, targets)) {
         continue;
       }
 
@@ -130,11 +162,119 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
     }
 
     logger.info(
-      { provider: this.key, incidentCount: normalized.length },
+      {
+        provider: this.key,
+        incidentCount: normalized.length,
+        upstreamCount: this.lastUpstreamCount,
+        filterTargets: targets?.componentIds.size,
+      },
       "Atlassian Statuspage incidents fetched",
     );
 
+    this.lastConfigDrift = this.verdictFrom(targets);
+
     return normalized;
+  }
+
+  /**
+   * Whether an incident passes the component filter.
+   *
+   *   - `undefined` targets — no filter configured, everything passes.
+   *   - `null` targets — catalogue unreachable, fall back to name matching.
+   *   - otherwise — the incident must reference one of the resolved
+   *     component ids. Matching by id rather than by name is what lets a
+   *     filter name a *group*: incidents never mention their group, so a
+   *     name-only comparison can never match one.
+   */
+  private passesFilter(
+    incident: AtlassianIncident,
+    targets: FilterTargets | null | undefined,
+  ): boolean {
+    if (targets === undefined) return true;
+    if (targets === null) return matchesByName(incident, this.componentFilter);
+    return (incident.components ?? []).some((comp) => targets.componentIds.has(comp.id));
+  }
+
+  /**
+   * Turns the filter resolution into the drift verdict consumed by the
+   * health tracker. See StatusProvider.lastConfigDrift for the tri-state.
+   */
+  private verdictFrom(targets: FilterTargets | null | undefined): boolean | undefined {
+    if (targets === undefined) return false;
+    // Catalogue unreachable — unknown, not broken. Never alarm on a
+    // transient failure.
+    if (targets === null) return undefined;
+    return targets.componentIds.size === 0;
+  }
+
+  /**
+   * Resolves the componentFilter against `/api/v2/components.json`.
+   *
+   * A filter entry matches a component either by its own name or by the
+   * name of the group it belongs to. Group support matters in practice:
+   * on multi-tenant pages the useful unit is the group — Kaseya publishes
+   * an "IT Glue" group over 393 components, and Bitdefender models each
+   * GravityZone cloud instance as a group whose members are all called
+   * "Management Console", "Licensing" and so on. Filtering those by
+   * component name alone is impossible.
+   *
+   * Returns null when the catalogue is unreachable.
+   */
+  private async resolveFilterTargets(): Promise<FilterTargets | null> {
+    const filters = this.componentFilter ?? [];
+    const url = `${this.baseUrl}/api/v2/components.json`;
+    let components: AtlassianComponent[];
+    try {
+      const response = await httpGet(url, {
+        accept: "application/json",
+        userAgent: this.userAgent,
+      });
+      this.validateJsonResponse(response, url);
+      const data = JSON.parse(response.body) as AtlassianComponentsResponse;
+      components = data.components ?? [];
+    } catch (err) {
+      logger.warn(
+        { provider: this.key, url, err },
+        "Component catalogue unreachable, falling back to name matching",
+      );
+      return null;
+    }
+
+    const groupNameById = new Map<string, string>();
+    for (const comp of components) {
+      if (comp.group === true) groupNameById.set(comp.id, comp.name);
+    }
+
+    const componentIds = new Set<string>();
+    const matched = new Set<string>();
+    for (const comp of components) {
+      // Groups themselves are never referenced by an incident — skip them
+      // as targets, they only contribute their name to their members.
+      if (comp.group === true) continue;
+      const groupName = comp.group_id ? groupNameById.get(comp.group_id) : undefined;
+      const haystacks = [comp.name, groupName].filter((n): n is string => !!n);
+      for (const filter of filters) {
+        if (haystacks.some((h) => h.toLowerCase().includes(filter.toLowerCase()))) {
+          componentIds.add(comp.id);
+          matched.add(filter);
+        }
+      }
+    }
+
+    const unmatched = filters.filter((f) => !matched.has(f));
+    if (unmatched.length === filters.length) {
+      logger.warn(
+        { provider: this.key, componentFilter: filters, componentCount: components.length },
+        "componentFilter matches no component or group on the status page — the names have changed",
+      );
+    } else if (unmatched.length > 0) {
+      logger.warn(
+        { provider: this.key, unmatchedFilters: unmatched },
+        "Some componentFilter entries match no component or group on the status page",
+      );
+    }
+
+    return { componentIds, unmatched };
   }
 
   /**

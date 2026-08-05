@@ -12,8 +12,14 @@
       "created_at": "2026-04-15T10:00:00Z",
       "updated_at": "2026-04-15T10:30:00Z",
       "components": [
-        { "id": "comp-1", "name": "API" },
-        { "id": "comp-2", "name": "Dashboard" }
+        {
+          "id": "comp-1",
+          "name": "API"
+        },
+        {
+          "id": "comp-2",
+          "name": "Dashboard"
+        }
       ]
     },
     {
@@ -23,7 +29,12 @@
       "shortlink": "https://stspg.io/test004",
       "created_at": "2026-04-14T20:00:00Z",
       "updated_at": "2026-04-14T22:00:00Z",
-      "components": [{ "id": "comp-1", "name": "API" }]
+      "components": [
+        {
+          "id": "comp-1",
+          "name": "API"
+        }
+      ]
     },
     {
       "id": "inc-005",
@@ -32,7 +43,12 @@
       "shortlink": "https://stspg.io/test005",
       "created_at": "2026-04-13T10:00:00Z",
       "updated_at": "2026-04-13T12:00:00Z",
-      "components": [{ "id": "comp-6", "name": "cloudgz.gravityzone.bitdefender.com" }]
+      "components": [
+        {
+          "id": "comp-6",
+          "name": "Management Console"
+        }
+      ]
     }
   ]
 }

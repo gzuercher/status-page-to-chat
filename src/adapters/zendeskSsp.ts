@@ -11,9 +11,10 @@ import type { ProviderConfig } from "../lib/config.js";
  * exposes JSON-API-style endpoints under `/api/ssp/`. There is no public
  * per-incident URL, so we link every incident back to the homepage.
  *
- * componentFilter works against the `name` of the related service. To
- * resolve service IDs → names we fetch `/api/ssp/services.json` once per
- * poll and cache the lookup for the duration of `fetchIncidents()`.
+ * componentFilter works against the name of the related service. The
+ * incidents payload already carries those names: every incidentService in
+ * the top-level `included[]` array has an `attributes.serviceName`. No
+ * second round-trip is needed — see `matchesFilter()`.
  */
 
 const INCIDENTS_PATH = "/api/ssp/incidents.json";
@@ -34,23 +35,33 @@ type SspIncident = {
   };
 };
 
+/**
+ * Entry of the top-level `included[]` array. Bridges an incidentService id
+ * (referenced by the incident) to the human service name.
+ */
+type SspIncidentServiceRef = {
+  id: string;
+  type?: string;
+  attributes?: { serviceName?: string };
+};
+
+type SspResponse<T> = { data: T[]; included?: SspIncidentServiceRef[] };
+
+/** Entry of `/api/ssp/services.json` — the authoritative service catalogue. */
 type SspService = {
   id: string;
   attributes: { name: string };
 };
 
-type SspIncidentServiceRef = {
-  id: string;
-  attributes?: { serviceId?: string; name?: string };
-};
-
-type SspResponse<T> = { data: T[]; included?: SspIncidentServiceRef[] };
-
 export class ZendeskSspAdapter implements StatusProvider {
   readonly key: string;
   readonly displayName: string;
+  /** Upstream incident count of the last fetch, before componentFilter. */
+  lastUpstreamCount = 0;
+  /** Whether componentFilter matched no current service. See StatusProvider. */
+  lastConfigDrift: boolean | undefined = false;
   private readonly baseUrl: string;
-  private readonly componentFilter?: string | string[];
+  private readonly componentFilter?: string[];
   private readonly userAgent?: string;
   private readonly logoUrl?: string;
 
@@ -84,17 +95,19 @@ export class ZendeskSspAdapter implements StatusProvider {
       throw new Error(`JSON parsing failed: ${String(err)}`);
     }
 
-    // Resolve service-id → name only if a filter is configured. Otherwise
-    // we don't need the second round-trip.
-    let serviceNameById: Map<string, string> | null = null;
-    if (this.componentFilter) {
-      serviceNameById = await this.fetchServiceNames();
+    // incidentService id → service name, straight out of `included[]`.
+    const serviceNameByRefId = new Map<string, string>();
+    for (const ref of incidentsData.included ?? []) {
+      const name = ref.attributes?.serviceName;
+      if (name) serviceNameByRefId.set(ref.id, name);
     }
+
+    this.lastUpstreamCount = incidentsData.data.length;
 
     const normalized: NormalizedIncident[] = [];
 
     for (const inc of incidentsData.data) {
-      if (!this.matchesFilter(inc, serviceNameById)) continue;
+      if (!this.matchesFilter(inc, serviceNameByRefId)) continue;
 
       const isResolved = inc.attributes.status === "resolved" || !!inc.attributes.resolvedAt;
       normalized.push({
@@ -111,45 +124,80 @@ export class ZendeskSspAdapter implements StatusProvider {
     }
 
     logger.info(
-      { provider: this.key, incidentCount: normalized.length },
+      {
+        provider: this.key,
+        incidentCount: normalized.length,
+        upstreamCount: this.lastUpstreamCount,
+      },
       "Zendesk SSP incidents fetched",
     );
+
+    this.lastConfigDrift = await this.detectConfigDrift(normalized.length);
 
     return normalized;
   }
 
-  private async fetchServiceNames(): Promise<Map<string, string>> {
+  /**
+   * Decides whether the componentFilter has gone stale, by checking it
+   * against the service catalogue. Only asks when filtering discarded
+   * everything. Mirrors AtlassianStatuspageAdapter.detectConfigDrift().
+   */
+  private async detectConfigDrift(matchedCount: number): Promise<boolean | undefined> {
+    if (!this.componentFilter || this.componentFilter.length === 0) return false;
+    if (matchedCount > 0) return false;
+
     const url = `${this.baseUrl}${SERVICES_PATH}`;
-    const response = await httpGet(url, {
-      accept: "application/json",
-      userAgent: this.userAgent,
-    });
-    if (response.status !== 200) {
-      throw new Error(`HTTP ${response.status} from ${url}`);
+    let names: string[];
+    try {
+      const response = await httpGet(url, {
+        accept: "application/json",
+        userAgent: this.userAgent,
+      });
+      if (response.status !== 200) {
+        throw new Error(`HTTP ${response.status} from ${url}`);
+      }
+      const parsed = JSON.parse(response.body) as SspResponse<SspService>;
+      names = parsed.data.map((svc) => svc.attributes.name);
+    } catch (err) {
+      logger.warn(
+        { provider: this.key, url, err },
+        "Could not fetch service catalogue to validate componentFilter",
+      );
+      return undefined;
     }
-    const parsed = JSON.parse(response.body) as SspResponse<SspService>;
-    const map = new Map<string, string>();
-    for (const svc of parsed.data) {
-      map.set(svc.id, svc.attributes.name);
+
+    const matchesSomething = this.componentFilter.some((filter) =>
+      names.some((name) => name.toLowerCase().includes(filter.toLowerCase())),
+    );
+
+    if (!matchesSomething) {
+      logger.warn(
+        { provider: this.key, componentFilter: this.componentFilter, serviceCount: names.length },
+        "componentFilter matches no service on the status page — the names have changed",
+      );
+      return true;
     }
-    return map;
+
+    return false;
   }
 
-  private matchesFilter(inc: SspIncident, serviceNameById: Map<string, string> | null): boolean {
-    if (!this.componentFilter || !serviceNameById) return true;
+  /**
+   * Matches the filter against the names of the services an incident
+   * affects, falling back to the incident title when the payload carries
+   * no resolvable service reference.
+   */
+  private matchesFilter(inc: SspIncident, serviceNameByRefId: Map<string, string>): boolean {
+    if (!this.componentFilter || this.componentFilter.length === 0) return true;
 
-    const filters = Array.isArray(this.componentFilter)
-      ? this.componentFilter
-      : [this.componentFilter];
-    const refs = inc.relationships?.incidentServices?.data ?? [];
-    // incidentService IDs are not the same as service IDs — we'd need
-    // /api/ssp/incident_services.json to bridge. As a pragmatic fallback,
-    // match the filter substring against the incident name itself, which
-    // typically mentions the affected pod or product (e.g. "Pod 13 …",
-    // "Help Center …"). This catches the common case without an extra
-    // round-trip and matches user intent (filter by free-text).
-    void refs;
-    const haystack = inc.attributes.name.toLowerCase();
-    return filters.some((f) => haystack.includes(f.toLowerCase()));
+    const serviceNames = (inc.relationships?.incidentServices?.data ?? [])
+      .map((ref) => serviceNameByRefId.get(ref.id))
+      .filter((name): name is string => !!name);
+
+    // Without any resolvable service the title is the only signal we have.
+    const haystacks = serviceNames.length > 0 ? serviceNames : [inc.attributes.name];
+
+    return haystacks.some((haystack) =>
+      this.componentFilter?.some((f) => haystack.toLowerCase().includes(f.toLowerCase())),
+    );
   }
 }

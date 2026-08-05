@@ -10,9 +10,17 @@ import type { ProviderConfig } from "../lib/config.js";
  *
  * BetterStack does not expose a public JSON API but ships an RSS 2.0 feed
  * at `/feed.atom` (despite the name, the payload is RSS, not Atom). Each
- * `<item>` represents one *update* — multiple updates for the same incident
- * share a `<link>` of the form `…/incident/<id>`, which we use as the
- * stable externalId and to deduplicate.
+ * `<item>` represents one *update*; updates belonging to the same incident
+ * share an id, which we use as the stable externalId and to deduplicate.
+ *
+ * That id has moved between feed generations, so we accept both shapes:
+ *
+ *   - `<link>https://…/incident/12345</link>`     (older pages)
+ *   - `<guid>https://…/#<sha256></guid>`          (current pages)
+ *
+ * Older code read the id only from `<link>`. When BetterStack switched to
+ * a bare `<link>` plus a hash `<guid>`, every item lost its id and the
+ * adapter silently reported zero incidents forever.
  *
  * An incident is treated as resolved once any of its updates contains
  * "resolved" or "fixed" in title/description, otherwise open. Since the
@@ -28,8 +36,22 @@ import type { ProviderConfig } from "../lib/config.js";
 const FEED_PATH = "/feed.atom";
 const MAX_INCIDENT_AGE_DAYS = 7;
 
-/** Words in title or description that mark an incident as resolved. */
-const RESOLVED_KEYWORDS = ["resolved", "fixed", "restored", "behoben", "gelöst"];
+/**
+ * Words in title or description that mark an incident as resolved.
+ *
+ * "recovered" is what BetterStack's own monitor-driven updates say
+ * ("Workflows Runtime recovered" closing "Workflows Runtime went down").
+ * Leaving it out marks every such incident permanently open.
+ */
+const RESOLVED_KEYWORDS = [
+  "resolved",
+  "recovered",
+  "fixed",
+  "restored",
+  "behoben",
+  "gelöst",
+  "wiederhergestellt",
+];
 
 type RssItem = {
   title?: string;
@@ -47,10 +69,25 @@ type RssFeed = {
   };
 };
 
-function extractIncidentId(link: string): string | null {
-  // Match …/incident/<id> — id may be numeric or hash-like.
-  const m = link.match(/\/incident\/([^/?#]+)/);
-  return m ? m[1] : null;
+/** Reads the `#text` payload out of a possibly-wrapped RSS scalar. */
+function textOf(value: string | { "#text": string } | undefined): string {
+  if (value === undefined) return "";
+  return typeof value === "string" ? value : String(value["#text"] ?? "");
+}
+
+/**
+ * Derives a stable per-incident id from an item's `<link>` and `<guid>`.
+ * Tries the `/incident/<id>` path first, then the `#<hash>` fragment, then
+ * the whole guid — returns null only when the item carries neither.
+ */
+function extractIncidentId(link: string, guid: string): string | null {
+  const path = link.match(/\/incident\/([^/?#]+)/) ?? guid.match(/\/incident\/([^/?#]+)/);
+  if (path) return path[1];
+
+  const fragment = guid.match(/#(.+)$/);
+  if (fragment) return fragment[1];
+
+  return guid.trim() || null;
 }
 
 function isResolved(title: string, description: string): boolean {
@@ -61,6 +98,8 @@ function isResolved(title: string, description: string): boolean {
 export class BetterStackFeedAdapter implements StatusProvider {
   readonly key: string;
   readonly displayName: string;
+  /** Distinct incidents seen in the feed on the last fetch, before the age cap. */
+  lastUpstreamCount = 0;
   private readonly baseUrl: string;
   private readonly userAgent?: string;
   private readonly logoUrl?: string;
@@ -114,10 +153,15 @@ export class BetterStackFeedAdapter implements StatusProvider {
     };
     const byIncident = new Map<string, Aggregated>();
 
+    let skippedWithoutId = 0;
+
     for (const item of items) {
-      const link = item.link ?? "";
-      const id = extractIncidentId(link);
-      if (!id) continue;
+      const link = textOf(item.link);
+      const id = extractIncidentId(link, textOf(item.guid));
+      if (!id) {
+        skippedWithoutId++;
+        continue;
+      }
 
       const title = String(item.title ?? "Unknown incident");
       const description = String(item.description ?? "");
@@ -166,8 +210,21 @@ export class BetterStackFeedAdapter implements StatusProvider {
       });
     }
 
+    this.lastUpstreamCount = byIncident.size;
+
+    if (skippedWithoutId > 0) {
+      logger.warn(
+        { provider: this.key, skippedWithoutId, itemCount: items.length },
+        "BetterStack feed items without a derivable incident id were skipped",
+      );
+    }
+
     logger.info(
-      { provider: this.key, incidentCount: normalized.length },
+      {
+        provider: this.key,
+        incidentCount: normalized.length,
+        upstreamCount: this.lastUpstreamCount,
+      },
       "BetterStack feed incidents fetched",
     );
 

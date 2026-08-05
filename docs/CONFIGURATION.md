@@ -34,12 +34,36 @@ providers:
     healthyMatch: <string>     # required for html-scrape — text or attribute value
                                # that means "no incident"
     titleTemplate: <string>    # optional, only for html-scrape
-    componentFilter: <string | list<string>>  # optional, atlassian-statuspage + zendesk-ssp
+    componentFilter: <list<string> | string>   # optional, atlassian-statuspage + zendesk-ssp
+                               # case-insensitive substring match, OR logic. A single
+                               # string is split on commas, so `a, b` means [a, b].
+                               # Verify names against <baseUrl>/api/v2/components.json —
+                               # a filter that stops matching silences the provider.
     logoUrl: <url>             # optional, override the auto-derived brand favicon
-                               # (set this for hosts without a favicon registered at
-                               # Google, e.g. point status.zendesk.com → zendesk.com)
+                               # (set this when the status host's icon is not the brand's,
+                               # e.g. wedos.status.online shows the status platform's logo)
+                               # Legacy www.google.com/s2/favicons values are upgraded
+                               # automatically — see "Brand logos" below.
     userAgent: <string>        # optional, overrides the default User-Agent for this provider
 ```
+
+## Brand logos
+
+Cards carry the provider's brand icon. Without an explicit `logoUrl` it is derived from the host of
+`baseUrl`; providers without a `baseUrl` (e.g. `github-issues`) render without a logo.
+
+The icon is fetched **by the chat client**, not by this service, so the URL has to resolve in a
+single hop. We therefore address Google's `t0.gstatic.com/faviconV2` endpoint directly instead of
+the older `www.google.com/s2/favicons`, which answers `301` — Teams does not follow that
+cross-origin redirect and shows a broken image. The same endpoint also returns a usable icon for
+hosts that the legacy URL answers `404` for (`status.zendesk.com`, `wedos.status.online`).
+
+Existing `logoUrl` values pointing at the legacy endpoint are rewritten automatically at load time,
+so no configuration edit is required. Any other URL is used verbatim — point `logoUrl` at your own
+CDN if you want full control.
+
+Set `logoUrl` explicitly when the status host's favicon is not the brand's. `wedos.status.online`,
+for instance, serves the status platform's green checkmark rather than the WEDOS logo.
 
 ## Output formats: `teams` vs `teamsJson`
 
@@ -79,7 +103,8 @@ The JSON envelope (`teamsJson`, `schemaVersion: 2`). The key set is **stable acr
     "providerKey": "…", "providerName": "…",
     "logoUrl": null,                    // string | null
     "errorCategory": "HTTP 503",        // string (down) | null (recovered, halfDead)
-    "durationLabel": "2h"               // pre-formatted duration
+    "durationLabel": "2h"               // pre-formatted, language-neutral duration:
+                                        // "<1min" | "30min" | "2h" | "2h 15min" | "7d"
   } }
 ```
 
@@ -158,6 +183,9 @@ providers:
     adapter: atlassian-statuspage
     baseUrl: https://status.zendesk.com
     componentFilter: example-helpcenter     # placeholder — replace with your subdomain
+                                            # (for the real status.zendesk.com use the
+                                            # zendesk-ssp adapter; the service formerly
+                                            # called "Help Center" is now "Knowledge")
 
   - key: kaseya-itglue
     displayName: Kaseya IT Glue

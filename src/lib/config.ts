@@ -38,7 +38,29 @@ export const providerSchema = z
     baseUrl: z.string().url().optional(),
     owner: z.string().optional(),
     repo: z.string().optional(),
-    componentFilter: z.union([z.string(), z.array(z.string())]).optional(),
+    /**
+     * Narrows a provider to specific components/services. Accepted forms:
+     *
+     *   componentFilter: Recursive DNS            → ["Recursive DNS"]
+     *   componentFilter: claude.ai, Claude Code   → ["claude.ai", "Claude Code"]
+     *   componentFilter: [claude.ai, Claude Code] → ["claude.ai", "Claude Code"]
+     *
+     * The comma form matters: YAML parses an unquoted `a, b, c` as ONE
+     * string, and matching that verbatim as a substring never hits any
+     * real component name — the filter then silently drops every
+     * incident. Normalising here means every adapter receives a clean
+     * string[] and cannot get this wrong individually.
+     */
+    componentFilter: z
+      .union([z.string(), z.array(z.string())])
+      .optional()
+      .transform((value) => {
+        if (value === undefined) return undefined;
+        const parts = (Array.isArray(value) ? value : value.split(","))
+          .map((part) => part.trim())
+          .filter((part) => part.length > 0);
+        return parts.length > 0 ? parts : undefined;
+      }),
     userAgent: z.string().optional(),
     /**
      * CSS selector for the html-scrape adapter. Points at the element

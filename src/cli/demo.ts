@@ -2,7 +2,11 @@ import { loadConfig } from "../lib/config.js";
 import { logger } from "../lib/logger.js";
 import { closeStore, createStore } from "../state/store.js";
 import { createNotifier } from "../notifiers/index.js";
+import { faviconUrlForHost } from "../lib/logo.js";
 import type { AdapterHealthAlert, NormalizedIncident, Notifier } from "../lib/types.js";
+
+/** Derived, not hardcoded, so demo cards exercise the real logo source. */
+const DEMO_LOGO_URL = faviconUrlForHost("example.com");
 
 /** The card variants a `demo` run can emit. */
 export type DemoType = "opened" | "resolved" | "down" | "recovered" | "halfdead";
@@ -51,7 +55,7 @@ export function sampleIncident(status: "open" | "resolved"): NormalizedIncident 
     url: "https://status.example.com/incidents/demo-0001",
     startedAt: "2026-06-22T10:00:00Z",
     updatedAt: "2026-06-22T10:30:00Z",
-    logoUrl: "https://www.google.com/s2/favicons?domain=example.com&sz=64",
+    logoUrl: DEMO_LOGO_URL,
   };
 }
 
@@ -60,7 +64,7 @@ export function sampleAlert(kind: AdapterHealthAlert["kind"]): AdapterHealthAler
   const base = {
     providerKey: "demo",
     providerName: "Demo Service",
-    logoUrl: "https://www.google.com/s2/favicons?domain=example.com&sz=64",
+    logoUrl: DEMO_LOGO_URL,
   };
   switch (kind) {
     case "down":

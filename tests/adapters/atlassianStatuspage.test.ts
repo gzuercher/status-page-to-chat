@@ -32,6 +32,40 @@ function mockJsonResponse(data: unknown) {
   };
 }
 
+/**
+ * Component catalogue matching the incident fixtures, shaped like a real
+ * `/api/v2/components.json`: groups are components with `group: true`, and
+ * members point back via `group_id`. `comp-6` sits inside a group whose
+ * name is the only place the cloud instance is mentioned — exactly the
+ * Bitdefender/Kaseya layout that name-only filtering cannot express.
+ */
+const CATALOGUE = [
+  {
+    id: "grp-1",
+    name: "GravityZone Cloud Instance 1 (cloudgz.gravityzone.bitdefender.com)",
+    group: true,
+    group_id: null,
+  },
+  { id: "comp-1", name: "API", group: false, group_id: null },
+  { id: "comp-2", name: "Dashboard", group: false, group_id: null },
+  { id: "comp-3", name: "Authentication", group: false, group_id: null },
+  { id: "comp-4", name: "IT Glue", group: false, group_id: null },
+  { id: "comp-5", name: "VSA", group: false, group_id: null },
+  { id: "comp-6", name: "Management Console", group: false, group_id: "grp-1" },
+];
+
+/** Queues the two incident endpoints followed by the component catalogue. */
+function mockEndpoints(
+  unresolved: unknown,
+  recent: unknown,
+  components: unknown = CATALOGUE,
+): void {
+  mockedHttpGet
+    .mockResolvedValueOnce(mockJsonResponse(unresolved))
+    .mockResolvedValueOnce(mockJsonResponse(recent))
+    .mockResolvedValueOnce(mockJsonResponse({ components }));
+}
+
 describe("AtlassianStatuspageAdapter", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -74,14 +108,128 @@ describe("AtlassianStatuspageAdapter", () => {
     expect(incidents.every((i) => i.status === "open")).toBe(true);
   });
 
-  it("filtert nach einzelnem componentFilter (String)", async () => {
-    mockedHttpGet
-      .mockResolvedValueOnce(mockJsonResponse(unresolvedFixture))
-      .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }));
+  describe("componentFilter drift detection", () => {
+    // Feeds the two incident endpoints, then a flat component catalogue.
+    function mockIncidentsThenComponents(componentNames: string[]) {
+      mockEndpoints(
+        { incidents: [] },
+        recentFixture,
+        componentNames.map((name, i) => ({ id: `c-${i}`, name, group: false, group_id: null })),
+      );
+    }
+
+    it("reports drift when the filter matches no current component", async () => {
+      mockIncidentsThenComponents(["Management Console", "Email Security"]);
+      const adapter = new AtlassianStatuspageAdapter({
+        ...baseConfig,
+        componentFilter: ["Member experience"],
+      });
+
+      expect(await adapter.fetchIncidents()).toHaveLength(0);
+      expect(adapter.lastConfigDrift).toBe(true);
+    });
+
+    it("reports no drift for a narrow but valid filter that simply had no incident", async () => {
+      // kaseya-itglue in production: "IT Glue" is a real component, it just
+      // had no incident among the most recent ones. Healthy, not half-dead.
+      mockIncidentsThenComponents(["IT Glue", "Backup", "KaseyaOne"]);
+      const adapter = new AtlassianStatuspageAdapter({
+        ...baseConfig,
+        componentFilter: ["IT Glue"],
+      });
+
+      expect(await adapter.fetchIncidents()).toHaveLength(0);
+      expect(adapter.lastConfigDrift).toBe(false);
+    });
+
+    it("reports no drift when a filter naming a group resolves to its members", async () => {
+      // gravityzone-bitdefender in production: the filter names a cloud
+      // instance, which Statuspage models as a group. Resolving it yields
+      // real components, so the config is healthy — not drifted.
+      mockEndpoints({ incidents: [] }, recentFixture);
+      const adapter = new AtlassianStatuspageAdapter({
+        ...baseConfig,
+        componentFilter: ["cloudgz.gravityzone.bitdefender.com"],
+      });
+
+      expect((await adapter.fetchIncidents()).length).toBeGreaterThan(0);
+      expect(adapter.lastConfigDrift).toBe(false);
+    });
+
+    it("reports drift when the filter only matches a group that has no members", async () => {
+      // A group name that resolves to nothing is as dead as a missing one.
+      mockEndpoints({ incidents: [] }, recentFixture, [
+        { id: "grp-9", name: "Empty Group", group: true, group_id: null },
+        { id: "comp-9", name: "Something Else", group: false, group_id: null },
+      ]);
+      const adapter = new AtlassianStatuspageAdapter({
+        ...baseConfig,
+        componentFilter: ["Empty Group"],
+      });
+
+      expect(await adapter.fetchIncidents()).toHaveLength(0);
+      expect(adapter.lastConfigDrift).toBe(true);
+    });
+
+    it("reports no drift when there is no filter at all", async () => {
+      mockedHttpGet
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }))
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }));
+      const adapter = new AtlassianStatuspageAdapter(baseConfig);
+
+      expect(await adapter.fetchIncidents()).toHaveLength(0);
+      expect(adapter.lastConfigDrift).toBe(false);
+      expect(mockedHttpGet).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps filtering by name when the catalogue is unreachable", async () => {
+      // A transient components.json failure must not silence the provider.
+      mockedHttpGet
+        .mockResolvedValueOnce(mockJsonResponse(unresolvedFixture))
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }))
+        .mockRejectedValueOnce(new Error("ECONNRESET"));
+      const adapter = new AtlassianStatuspageAdapter({
+        ...baseConfig,
+        componentFilter: ["IT Glue"],
+      });
+
+      const incidents = await adapter.fetchIncidents();
+      expect(incidents).toHaveLength(1);
+      expect(incidents[0].externalId).toBe("inc-003");
+      expect(adapter.lastConfigDrift).toBeUndefined();
+    });
+
+    it("does not fetch the catalogue when no filter is configured", async () => {
+      mockedHttpGet
+        .mockResolvedValueOnce(mockJsonResponse(unresolvedFixture))
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }));
+      const adapter = new AtlassianStatuspageAdapter(baseConfig);
+
+      await adapter.fetchIncidents();
+      expect(mockedHttpGet).toHaveBeenCalledTimes(2);
+    });
+
+    it("stays undecided when the catalogue is unreachable", async () => {
+      mockedHttpGet
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }))
+        .mockResolvedValueOnce(mockJsonResponse(recentFixture))
+        .mockRejectedValueOnce(new Error("ECONNRESET"));
+      const adapter = new AtlassianStatuspageAdapter({
+        ...baseConfig,
+        componentFilter: ["Member experience"],
+      });
+
+      await adapter.fetchIncidents();
+      expect(adapter.lastConfigDrift).toBeUndefined();
+    });
+  });
+
+  it("filtert nach einzelnem componentFilter", async () => {
+    mockEndpoints(unresolvedFixture, { incidents: [] });
 
     const config: ProviderConfig = {
       ...baseConfig,
-      componentFilter: "IT Glue",
+      componentFilter: ["IT Glue"],
     };
     const adapter = new AtlassianStatuspageAdapter(config);
     const incidents = await adapter.fetchIncidents();
@@ -91,9 +239,7 @@ describe("AtlassianStatuspageAdapter", () => {
   });
 
   it("filtert nach componentFilter-Liste (OR-Logik)", async () => {
-    mockedHttpGet
-      .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }))
-      .mockResolvedValueOnce(mockJsonResponse(recentFixture));
+    mockEndpoints({ incidents: [] }, recentFixture);
 
     const config: ProviderConfig = {
       ...baseConfig,
@@ -156,13 +302,11 @@ describe("AtlassianStatuspageAdapter", () => {
   });
 
   it("componentFilter ist case-insensitive", async () => {
-    mockedHttpGet
-      .mockResolvedValueOnce(mockJsonResponse(unresolvedFixture))
-      .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }));
+    mockEndpoints(unresolvedFixture, { incidents: [] });
 
     const config: ProviderConfig = {
       ...baseConfig,
-      componentFilter: "it glue", // Kleinbuchstaben
+      componentFilter: ["it glue"], // Kleinbuchstaben
     };
     const adapter = new AtlassianStatuspageAdapter(config);
     const incidents = await adapter.fetchIncidents();

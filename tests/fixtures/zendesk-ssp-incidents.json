@@ -11,7 +11,14 @@
         "resolvedAt": "2026-05-13T18:38:00.000Z"
       },
       "relationships": {
-        "incidentServices": { "data": [{ "id": "228965", "type": "incidentService" }] }
+        "incidentServices": {
+          "data": [
+            {
+              "id": "228965",
+              "type": "incidentService"
+            }
+          ]
+        }
       }
     },
     {
@@ -25,7 +32,14 @@
         "resolvedAt": null
       },
       "relationships": {
-        "incidentServices": { "data": [{ "id": "228970", "type": "incidentService" }] }
+        "incidentServices": {
+          "data": [
+            {
+              "id": "228970",
+              "type": "incidentService"
+            }
+          ]
+        }
       }
     },
     {
@@ -39,7 +53,43 @@
         "resolvedAt": "2026-05-15T08:00:00.000Z"
       },
       "relationships": {
-        "incidentServices": { "data": [{ "id": "228971", "type": "incidentService" }] }
+        "incidentServices": {
+          "data": [
+            {
+              "id": "228971",
+              "type": "incidentService"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "included": [
+    {
+      "id": "228965",
+      "type": "incidentService",
+      "attributes": {
+        "incidentId": 9001,
+        "serviceId": 31,
+        "serviceName": "Voice"
+      }
+    },
+    {
+      "id": "228970",
+      "type": "incidentService",
+      "attributes": {
+        "incidentId": 9002,
+        "serviceId": 15,
+        "serviceName": "Knowledge"
+      }
+    },
+    {
+      "id": "228971",
+      "type": "incidentService",
+      "attributes": {
+        "incidentId": 9003,
+        "serviceId": 31,
+        "serviceName": "Voice"
       }
     }
   ]
