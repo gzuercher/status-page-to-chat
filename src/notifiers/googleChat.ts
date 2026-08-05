@@ -126,6 +126,12 @@ function buildReportCard(report: StatusReport): Record<string, unknown> {
   if (hidden > 0) {
     widgets.push({ textParagraph: { text: `<i>and ${hidden} more services</i>` } });
   }
+  if (rendered.silentRows.length > 0) {
+    widgets.push({ textParagraph: { text: `<b>${rendered.silentHeading}</b>` } });
+    for (const row of rendered.silentRows) {
+      widgets.push({ decoratedText: { topLabel: row.displayName, text: row.line } });
+    }
+  }
   if (rendered.stillOpenNote) {
     widgets.push({ textParagraph: { text: `<i>${rendered.stillOpenNote}</i>` } });
   }

@@ -24,6 +24,12 @@ const CREATE_TABLE_SQL = `
     key   TEXT NOT NULL PRIMARY KEY,
     value TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS provider_health (
+    provider_key        TEXT NOT NULL PRIMARY KEY,
+    first_seen_at       TEXT NOT NULL,
+    last_polled_at      TEXT NOT NULL,
+    last_upstream_count INTEGER
+  );
   CREATE TABLE IF NOT EXISTS translations (
     source_hash  TEXT NOT NULL,
     target_lang  TEXT NOT NULL,
@@ -297,4 +303,81 @@ export function getIncidentsBetween(
       startedAt: row.started_at,
       updatedAt: row.updated_at,
     }));
+}
+
+/** Observation bookkeeping per provider, independent of any incident. */
+export type ProviderHealthRow = {
+  providerKey: string;
+  /** When this provider was first polled — the baseline for "never reported". */
+  firstSeenAt: string;
+  lastPolledAt: string;
+  /**
+   * Incidents the provider's own page returned on the last poll, *before*
+   * our filters. Distinguishes "this page is genuinely quiet" from "the
+   * page is busy but nothing of it reaches us".
+   */
+  lastUpstreamCount: number | null;
+};
+
+/**
+ * Records that a provider was polled successfully.
+ *
+ * `first_seen_at` is written once and never updated — it is what makes
+ * "configured 40 days ago, never reported anything" a statement we can
+ * actually make. A provider removed and re-added starts over, which is the
+ * intended reading.
+ */
+export function recordProviderPoll(
+  store: Store,
+  providerKey: string,
+  polledAt: string,
+  upstreamCount: number | null,
+): void {
+  store
+    .prepare(
+      `INSERT INTO provider_health (provider_key, first_seen_at, last_polled_at, last_upstream_count)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(provider_key) DO UPDATE SET
+         last_polled_at      = excluded.last_polled_at,
+         last_upstream_count = excluded.last_upstream_count`,
+    )
+    .run(providerKey, polledAt, polledAt, upstreamCount);
+}
+
+/** Observation bookkeeping for every provider we have ever polled. */
+export function getProviderHealth(store: Store): Map<string, ProviderHealthRow> {
+  const rows = store
+    .prepare<
+      [],
+      {
+        provider_key: string;
+        first_seen_at: string;
+        last_polled_at: string;
+        last_upstream_count: number | null;
+      }
+    >(
+      `SELECT provider_key, first_seen_at, last_polled_at, last_upstream_count FROM provider_health`,
+    )
+    .all();
+  return new Map(
+    rows.map((r) => [
+      r.provider_key,
+      {
+        providerKey: r.provider_key,
+        firstSeenAt: r.first_seen_at,
+        lastPolledAt: r.last_polled_at,
+        lastUpstreamCount: r.last_upstream_count,
+      },
+    ]),
+  );
+}
+
+/** Most recent incident start per provider, across the whole history. */
+export function getLastIncidentPerProvider(store: Store): Map<string, string> {
+  const rows = store
+    .prepare<[], { provider_key: string; last_started: string }>(
+      `SELECT provider_key, MAX(started_at) AS last_started FROM incidents GROUP BY provider_key`,
+    )
+    .all();
+  return new Map(rows.map((r) => [r.provider_key, r.last_started]));
 }

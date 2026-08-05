@@ -40,6 +40,12 @@ export async function runReport(periodArg?: string, dryRun = false): Promise<voi
     for (const row of rendered.rows) {
       process.stdout.write(`  ${row.displayName.padEnd(28)} ${row.line}\n`);
     }
+    if (rendered.silentRows.length > 0) {
+      process.stdout.write(`\n${rendered.silentHeading}\n`);
+      for (const row of rendered.silentRows) {
+        process.stdout.write(`  ${row.displayName.padEnd(28)} ${row.line}\n`);
+      }
+    }
     if (rendered.stillOpenNote) process.stdout.write(`  ${rendered.stillOpenNote}\n`);
     process.stdout.write(`  [${report.from} .. ${report.to})\n\n`);
 

@@ -49,6 +49,13 @@ export interface Messages {
   reportStillOpen: (count: number) => string;
   /** Report card: note that the ranking was truncated. */
   reportMoreProviders: (count: number) => string;
+  /** Report card: heading above the list of sources that never reported. */
+  reportSilentHeading: string;
+  /**
+   * Report card: one silent-source line. `upstreamCount` is what the
+   * provider's own page returned before our filters — null when unknown.
+   */
+  reportSilentLine: (observedDays: number, upstreamCount: number | null) => string;
   /**
    * Localises an error category string from errorCategory.ts. Pass-through
    * for anything not in the map (e.g. "HTTP 404", which is language-neutral).
@@ -93,6 +100,14 @@ const de: Messages = {
     count === 1 ? "1 Ausfall ist noch offen." : `${count} Ausfälle sind noch offen.`,
   reportMoreProviders: (count) =>
     count === 1 ? "und 1 weiterer Dienst" : `und ${count} weitere Dienste`,
+  reportSilentHeading: "Ohne jede Meldung",
+  reportSilentLine: (observedDays, upstreamCount) => {
+    const seit = `seit ${observedDays} Tagen überwacht, nie eine Meldung`;
+    if (upstreamCount === null) return seit;
+    return upstreamCount > 0
+      ? `${seit} — Statusseite meldet aber ${upstreamCount} Vorfälle: Filter oder Adapter prüfen`
+      : `${seit} — Statusseite meldet ebenfalls nichts`;
+  },
   errorCategory: (category) => ERROR_CATEGORIES_DE[category] ?? category,
 };
 
@@ -123,6 +138,14 @@ const en: Messages = {
     count === 1 ? "1 outage is still open." : `${count} outages are still open.`,
   reportMoreProviders: (count) =>
     count === 1 ? "and 1 more service" : `and ${count} more services`,
+  reportSilentHeading: "Never reported anything",
+  reportSilentLine: (observedDays, upstreamCount) => {
+    const seen = `watched for ${observedDays} days, never reported`;
+    if (upstreamCount === null) return seen;
+    return upstreamCount > 0
+      ? `${seen} — but its status page lists ${upstreamCount} incidents: check the filter or adapter`
+      : `${seen} — its status page reports nothing either`;
+  },
   errorCategory: (category) => category,
 };
 
