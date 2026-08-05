@@ -18,6 +18,12 @@ chatTarget: googleChat         # "googleChat" | "teams" | "teamsJson"
 # Override per deployment with the LANGUAGE env var.
 language: de
 
+# Optional: lowest incident severity that still produces a card.
+# "none" | "minor" | "major" | "critical". Unset reports everything.
+# Only atlassian-statuspage publishes a severity. Overridable per provider.
+# See ADAPTERS.md → Severity filter for the volume this controls.
+minImpact: major
+
 # List of monitored services
 providers:
   - key: <string>              # Unique key, only [a-z0-9-]
@@ -39,6 +45,9 @@ providers:
                                # string is split on commas, so `a, b` means [a, b].
                                # Verify names against <baseUrl>/api/v2/components.json —
                                # a filter that stops matching silences the provider.
+                               # A group name matches all of its members.
+    minImpact: <level>         # optional, atlassian-statuspage only; overrides the
+                               # top-level minImpact for this provider
     logoUrl: <url>             # optional, override the auto-derived brand favicon
                                # (set this when the status host's icon is not the brand's,
                                # e.g. wedos.status.online shows the status platform's logo)

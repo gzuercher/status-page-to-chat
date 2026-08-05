@@ -11,6 +11,22 @@ import { logger } from "./logger.js";
 const YAML_PARSE_OPTIONS = { maxAliasCount: 100 } as const;
 
 /**
+ * Statuspage severity levels, ordered from harmless to severe. Used by
+ * `minImpact` to suppress low-severity noise.
+ */
+export const impactSchema = z.enum(["none", "minor", "major", "critical"]);
+
+export type Impact = z.infer<typeof impactSchema>;
+
+/** Rank of each level, so `minImpact` can be compared numerically. */
+export const IMPACT_RANK: Record<Impact, number> = {
+  none: 0,
+  minor: 1,
+  major: 2,
+  critical: 3,
+};
+
+/**
  * zod schema for a single provider entry in providers.yaml.
  * Exported so the API server can validate incoming PUT payloads against
  * the same rules the poller enforces.
@@ -61,6 +77,15 @@ export const providerSchema = z
           .filter((part) => part.length > 0);
         return parts.length > 0 ? parts : undefined;
       }),
+    /**
+     * Lowest severity that still produces a card, e.g. `major` suppresses
+     * `minor` and `none`. Overrides the top-level `minImpact`; when neither
+     * is set, every incident is reported.
+     *
+     * Only `atlassian-statuspage` publishes a severity — for every other
+     * adapter this field has no effect (documented in docs/ADAPTERS.md).
+     */
+    minImpact: impactSchema.optional(),
     userAgent: z.string().optional(),
     /**
      * CSS selector for the html-scrape adapter. Points at the element
@@ -148,6 +173,17 @@ export const configSchema = z
      * Defaults to German. Override per deployment with the `LANGUAGE` env var.
      */
     language: z.enum(["de", "en"]).default("de"),
+    /**
+     * Deployment-wide floor for incident severity. A provider's own
+     * `minImpact` overrides it. Unset means "report everything", which is
+     * how the service behaved before this option existed.
+     *
+     * Raptus runs `major`: the Statuspage pages of large providers publish
+     * a steady stream of `minor` regional blips (Cloudflare alone ~22/month)
+     * that nobody acts on, and drowning the real outages in them is worse
+     * than missing the blips.
+     */
+    minImpact: impactSchema.optional(),
     // Empty list is valid — the service starts in "no providers configured"
     // state and the operator adds entries via the REST API or by editing the
     // mounted providers.yaml. Poll cycles log a zero-count run_summary.
@@ -163,6 +199,21 @@ export const configSchema = z
 
 export type ProviderConfig = z.infer<typeof providerSchema>;
 export type AppConfig = z.infer<typeof configSchema>;
+
+/**
+ * Applies deployment-wide defaults to a provider entry. Currently only
+ * `minImpact`, where the provider's own value wins over the global floor.
+ *
+ * Resolved at use time rather than at parse time, so the API keeps writing
+ * back exactly what the operator configured instead of baking the global
+ * default into every entry.
+ */
+export function withDefaults(providerConfig: ProviderConfig, config: AppConfig): ProviderConfig {
+  if (providerConfig.minImpact !== undefined || config.minImpact === undefined) {
+    return providerConfig;
+  }
+  return { ...providerConfig, minImpact: config.minImpact };
+}
 
 export type ConfigErrorKind = "read" | "parse" | "validate";
 

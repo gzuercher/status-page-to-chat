@@ -1,6 +1,12 @@
 import { existsSync, copyFileSync, statSync } from "node:fs";
 import { Cron } from "croner";
-import { loadConfig, parseConfig, type AppConfig, type ProviderConfig } from "./lib/config.js";
+import {
+  loadConfig,
+  parseConfig,
+  withDefaults,
+  type AppConfig,
+  type ProviderConfig,
+} from "./lib/config.js";
 import { logger } from "./lib/logger.js";
 import type { AdapterHealthAlert, Notifier, RunSummary } from "./lib/types.js";
 import { createAdapter } from "./adapters/index.js";
@@ -63,9 +69,13 @@ async function runPoll(
   // polled. One entry per configured provider, success or failure.
   const healthInput: HealthPollResult[] = [];
 
+  // Resolve deployment-wide defaults once, so the adapters and the health
+  // fingerprints both see the same effective configuration.
+  const providers = config.providers.map((p) => withDefaults(p, config));
+
   try {
     const adapterResults = await Promise.allSettled(
-      config.providers.map(async (providerConfig) => {
+      providers.map(async (providerConfig) => {
         const adapter = createAdapter(providerConfig);
         const incidents = await adapter.fetchIncidents();
         return {
@@ -78,7 +88,7 @@ async function runPoll(
 
     for (let i = 0; i < adapterResults.length; i++) {
       const result = adapterResults[i];
-      const providerConfig = config.providers[i];
+      const providerConfig = providers[i];
 
       if (result.status === "rejected") {
         summary.providersFailed++;
@@ -205,12 +215,14 @@ function buildHealthInput(
     providerName: providerConfig.displayName,
     // componentFilter is part of the identity: editing a stale filter is
     // exactly the fix for a half-dead provider, and the counters must
-    // restart so the old verdict does not linger.
+    // restart so the old verdict does not linger. minImpact likewise
+    // changes what "the provider reports nothing" means.
     fingerprint: [
       providerConfig.adapter,
       providerConfig.baseUrl ?? "",
       `${providerConfig.owner ?? ""}/${providerConfig.repo ?? ""}`,
       (providerConfig.componentFilter ?? []).join("|"),
+      providerConfig.minImpact ?? "",
     ].join(":"),
     logoUrl: resolveProviderLogoUrl({
       explicitLogoUrl: providerConfig.logoUrl,

@@ -45,7 +45,12 @@
           "repo": { "type": "string", "description": "Required for github-issues." },
           "componentFilter": {
             "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
-            "description": "Narrows the provider to specific components/services. Case-insensitive substring match against component names, OR logic. A single comma-separated string is split on commas. Supported by atlassian-statuspage and zendesk-ssp. A filter that stops matching (component renamed upstream) silences the provider — verify names against <baseUrl>/api/v2/components.json."
+            "description": "Narrows the provider to specific components/services. Case-insensitive substring match, OR logic. A single comma-separated string is split on commas. Supported by atlassian-statuspage and zendesk-ssp. An entry may also name a component GROUP, which matches all of its members. A filter that stops matching (component renamed upstream) silences the provider — verify names against <baseUrl>/api/v2/components.json."
+          },
+          "minImpact": {
+            "type": "string",
+            "enum": ["none", "minor", "major", "critical"],
+            "description": "Lowest incident severity that still produces a card; 'major' suppresses 'minor' and 'none'. atlassian-statuspage only — no other status page publishes a severity. Omit to inherit the deployment-wide default. Incidents with a missing or unrecognised impact are always reported."
           },
           "userAgent": { "type": "string" }
         }

@@ -2,7 +2,7 @@ import { httpGet } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
 import { resolveProviderLogoUrl } from "../lib/logo.js";
 import type { NormalizedIncident, StatusProvider } from "../lib/types.js";
-import type { ProviderConfig } from "../lib/config.js";
+import { IMPACT_RANK, type Impact, type ProviderConfig } from "../lib/config.js";
 
 /**
  * Response types for the Atlassian Statuspage API.
@@ -16,6 +16,8 @@ type AtlassianIncident = {
   id: string;
   name: string;
   status: string;
+  /** "none" | "minor" | "major" | "critical"; absent on very old incidents. */
+  impact?: string;
   shortlink?: string;
   created_at: string;
   updated_at: string;
@@ -78,6 +80,20 @@ function mapStatus(atlassianStatus: string): "open" | "resolved" {
 }
 
 /**
+ * Whether an incident is severe enough to report.
+ *
+ * An unknown or missing `impact` is treated as passing: suppressing an
+ * incident we cannot classify would hide exactly the kind of surprise the
+ * service exists to surface.
+ */
+function meetsMinImpact(incident: AtlassianIncident, minImpact?: Impact): boolean {
+  if (!minImpact) return true;
+  const rank = IMPACT_RANK[incident.impact as Impact];
+  if (rank === undefined) return true;
+  return rank >= IMPACT_RANK[minImpact];
+}
+
+/**
  * Adapter for status pages running on Atlassian Statuspage.
  * Covers approximately 15 of the configured services.
  */
@@ -90,6 +106,7 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
   lastConfigDrift: boolean | undefined = false;
   private readonly baseUrl: string;
   private readonly componentFilter?: string[];
+  private readonly minImpact?: Impact;
   private readonly userAgent?: string;
   private readonly logoUrl?: string;
 
@@ -99,6 +116,7 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
     if (!config.baseUrl) throw new Error(`baseUrl missing for ${config.key}`);
     this.baseUrl = config.baseUrl;
     this.componentFilter = config.componentFilter;
+    this.minImpact = config.minImpact;
     this.userAgent = config.userAgent;
     this.logoUrl = resolveProviderLogoUrl({
       explicitLogoUrl: config.logoUrl,
@@ -142,9 +160,17 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
     const targets = this.componentFilter?.length ? await this.resolveFilterTargets() : undefined;
 
     const normalized: NormalizedIncident[] = [];
+    let belowMinImpact = 0;
 
     for (const incident of incidentMap.values()) {
       if (!this.passesFilter(incident, targets)) {
+        continue;
+      }
+
+      // Severity is checked after the component filter so the log counts
+      // only incidents that were actually relevant to this provider.
+      if (!meetsMinImpact(incident, this.minImpact)) {
+        belowMinImpact++;
         continue;
       }
 
@@ -167,6 +193,8 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
         incidentCount: normalized.length,
         upstreamCount: this.lastUpstreamCount,
         filterTargets: targets?.componentIds.size,
+        minImpact: this.minImpact,
+        belowMinImpact,
       },
       "Atlassian Statuspage incidents fetched",
     );
