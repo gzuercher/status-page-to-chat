@@ -1,6 +1,7 @@
 import { httpPost } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
-import type { Locale } from "../lib/i18n.js";
+import { getMessages, type Locale } from "../lib/i18n.js";
+import { renderReport, type StatusReport } from "../lib/report.js";
 import type { AdapterHealthAlert, Notifier, NormalizedIncident } from "../lib/types.js";
 
 /**
@@ -67,6 +68,55 @@ type AdapterEvent = {
   severity: Severity;
   language: Locale;
   alert: JsonAlert;
+};
+
+/**
+ * Periodic stability report on the wire.
+ *
+ * Unlike incidents, the display strings are pre-rendered here rather than
+ * left to the renderer: the wording depends on the numbers (singular vs
+ * plural, and the "nothing happened" case is a sentence, not an empty
+ * list). The structured values are included alongside so a renderer can
+ * lay them out differently — e.g. as a table — without re-deriving them.
+ */
+type JsonReport = {
+  period: "weekly" | "monthly" | "quarterly";
+  /** Period identifier, e.g. "2026-W31". */
+  label: string;
+  /** Window covered; `from` inclusive, `to` exclusive. */
+  from: string;
+  to: string;
+  /** Pre-rendered headline, e.g. "Wochenbericht KW 31/2026". */
+  title: string;
+  /** Pre-rendered one-liner, e.g. "13 Ausfälle bei 6 von 24 Diensten." */
+  summary: string;
+  /** Heading above the ranking; null when there is nothing to rank. */
+  rankingHeading: string | null;
+  /** Note about unresolved outages; null when everything is closed. */
+  stillOpenNote: string | null;
+  totalIncidents: number;
+  providersTotal: number;
+  providersAffected: number;
+  /** Worst first. Empty when the period had no incident at all. */
+  providers: Array<{
+    providerKey: string;
+    displayName: string;
+    incidentCount: number;
+    openCount: number;
+    /** Human duration, e.g. "3h 20min"; "-" when not measurable. */
+    downtimeLabel: string;
+    /** Ready-to-print detail line, e.g. "4 Ausfälle · 3h 20min". */
+    line: string;
+  }>;
+};
+
+type ReportEvent = {
+  schemaVersion: typeof SCHEMA_VERSION;
+  source: "status-page-to-chat";
+  event: `report.${JsonReport["period"]}`;
+  severity: Severity;
+  language: Locale;
+  report: JsonReport;
 };
 
 function toJsonIncident(incident: NormalizedIncident): JsonIncident {
@@ -170,13 +220,41 @@ export class TeamsJsonNotifier implements Notifier {
     });
   }
 
+  async notifyReport(report: StatusReport): Promise<void> {
+    const rendered = renderReport(report, getMessages(this.language));
+    const payload: ReportEvent = {
+      schemaVersion: SCHEMA_VERSION,
+      source: "status-page-to-chat",
+      event: `report.${report.period}`,
+      // A report is a summary, never an active problem — even when it
+      // counts outages, they are in the past.
+      severity: "ok",
+      language: this.language,
+      report: {
+        period: report.period,
+        label: report.label,
+        from: report.from,
+        to: report.to,
+        title: rendered.title,
+        summary: rendered.summary,
+        rankingHeading: rendered.rankingHeading,
+        stillOpenNote: rendered.stillOpenNote,
+        totalIncidents: report.totalIncidents,
+        providersTotal: report.providersTotal,
+        providersAffected: report.providersAffected,
+        providers: rendered.rows,
+      },
+    };
+    await this.send(payload, { type: `report-${report.period}`, label: report.label });
+  }
+
   /**
    * Posts the payload once. Retry/backoff (429/5xx/network) lives in the
    * shared httpClient; on a final non-2xx or network failure this throws, and
    * the poll loop leaves the incident un-notified so the next cycle retries.
    */
   private async send(
-    payload: IncidentEvent | AdapterEvent,
+    payload: IncidentEvent | AdapterEvent | ReportEvent,
     context: Record<string, unknown>,
   ): Promise<void> {
     const response = await httpPost(this.webhookUrl, payload);

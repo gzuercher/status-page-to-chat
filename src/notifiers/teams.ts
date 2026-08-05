@@ -2,7 +2,14 @@ import { httpPost } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
 import { getMessages, type Locale, type Messages } from "../lib/i18n.js";
 import type { Translator } from "../lib/translator.js";
+import { renderReport, type StatusReport } from "../lib/report.js";
 import type { AdapterHealthAlert, Notifier, NormalizedIncident } from "../lib/types.js";
+
+/**
+ * Providers listed in a report's ranking before it is truncated. Keeps a
+ * quarterly card readable; the summary line still names the true totals.
+ */
+const MAX_REPORT_ROWS = 10;
 
 /**
  * Formats an ISO-8601 timestamp as `DD.MM.YYYY HH:mm UTC`. Uses UTC
@@ -233,6 +240,97 @@ function buildAdapterHealthCard(
   };
 }
 
+/**
+ * Builds the periodic stability report card.
+ *
+ * Styled neutrally (`emphasis`, not `attention`/`good`): a report is
+ * information, and colouring it red because it counts past outages would
+ * make a routine summary look like an active incident.
+ *
+ * The ranking is capped — a quarter with two dozen affected providers
+ * would otherwise produce a card nobody scrolls through. The summary line
+ * always states the true totals, so the cap hides no information that
+ * changes the conclusion.
+ */
+function buildReportCard(report: StatusReport, messages: Messages): Record<string, unknown> {
+  const rendered = renderReport(report, messages);
+  const shown = rendered.rows.slice(0, MAX_REPORT_ROWS);
+  const hidden = rendered.rows.length - shown.length;
+
+  const rankingItems =
+    shown.length > 0
+      ? [
+          {
+            type: "TextBlock",
+            text: rendered.rankingHeading ?? "",
+            weight: "Bolder",
+            wrap: true,
+            spacing: "Medium",
+          },
+          {
+            type: "FactSet",
+            facts: shown.map((row) => ({ title: row.displayName, value: row.line })),
+          },
+        ]
+      : [];
+
+  const footnotes = [
+    ...(hidden > 0
+      ? [
+          {
+            type: "TextBlock",
+            text: messages.reportMoreProviders(hidden),
+            wrap: true,
+            isSubtle: true,
+            size: "Small",
+          },
+        ]
+      : []),
+    ...(rendered.stillOpenNote
+      ? [
+          {
+            type: "TextBlock",
+            text: rendered.stillOpenNote,
+            wrap: true,
+            isSubtle: true,
+            size: "Small",
+          },
+        ]
+      : []),
+  ];
+
+  // Bare Adaptive Card — see the note in buildAdaptiveCard().
+  return {
+    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    type: "AdaptiveCard",
+    version: "1.4",
+    msteams: { width: "Full" },
+    body: [
+      {
+        type: "Container",
+        style: "emphasis",
+        items: [
+          {
+            type: "TextBlock",
+            text: `\u{1f4ca} **${rendered.title}**`,
+            size: "Medium",
+            weight: "Bolder",
+            wrap: true,
+          },
+          {
+            type: "TextBlock",
+            text: rendered.summary,
+            wrap: true,
+            spacing: "Small",
+          },
+          ...rankingItems,
+          ...footnotes,
+        ],
+      },
+    ],
+  };
+}
+
 function renderAdapterHealthBody(alert: AdapterHealthAlert, messages: Messages): string {
   switch (alert.kind) {
     case "down":
@@ -282,6 +380,11 @@ export class TeamsNotifier implements Notifier {
       provider: alert.providerKey,
       type: `adapter-${alert.kind}`,
     });
+  }
+
+  async notifyReport(report: StatusReport): Promise<void> {
+    const payload = buildReportCard(report, this.messages);
+    await this.send(payload, { type: `report-${report.period}`, label: report.label });
   }
 
   /**

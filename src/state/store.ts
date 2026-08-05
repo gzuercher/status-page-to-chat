@@ -259,3 +259,42 @@ export function setCachedTranslation(
     )
     .run(sourceHash, targetLang, translated);
 }
+
+/** One incident row reduced to what the statistics report needs. */
+export type ReportIncidentRow = {
+  providerKey: string;
+  status: "open" | "resolved";
+  startedAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Loads every stored incident that *started* within the given window.
+ *
+ * The store only ever holds incidents we actually reported — anything
+ * suppressed by `componentFilter` or `minImpact`, and anything already
+ * resolved when we first saw it, never lands here. The statistics are
+ * therefore "what we told you about", which is exactly what a report on
+ * notification volume should count.
+ */
+export function getIncidentsBetween(
+  store: Store,
+  fromIso: string,
+  toIso: string,
+): ReportIncidentRow[] {
+  return store
+    .prepare<[string, string], IncidentRow>(
+      `SELECT provider_key, external_id, title, status,
+              started_at, updated_at, url,
+              notified_opened, notified_resolved
+         FROM incidents
+        WHERE started_at >= ? AND started_at < ?`,
+    )
+    .all(fromIso, toIso)
+    .map((row) => ({
+      providerKey: row.provider_key,
+      status: row.status,
+      startedAt: row.started_at,
+      updatedAt: row.updated_at,
+    }));
+}

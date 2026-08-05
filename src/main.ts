@@ -19,6 +19,7 @@ import {
   type PollResult as HealthPollResult,
 } from "./lib/healthTracker.js";
 import { resolveProviderLogoUrl } from "./lib/logo.js";
+import { buildReport, dueReports } from "./lib/report.js";
 import {
   LAST_RUN_METADATA_KEY,
   closeStore,
@@ -32,6 +33,7 @@ import {
 import { runValidate } from "./cli/validate.js";
 import { runHealthcheck } from "./cli/health.js";
 import { runDemo } from "./cli/demo.js";
+import { runReport } from "./cli/report.js";
 import { startApiServer, type LastRunRef } from "./api/server.js";
 
 /**
@@ -191,6 +193,29 @@ async function runPoll(
     }
   } catch (err) {
     logger.error({ err }, "Health tracker raised");
+  }
+
+  // Periodic reports run last: they read the state the cycle just wrote,
+  // so a report covering a period that ended minutes ago includes
+  // everything from this run. Isolated like health events — a failing
+  // report must never affect incident notification.
+  try {
+    for (const period of dueReports(store, new Date())) {
+      try {
+        const report = buildReport(store, providers, period, new Date());
+        await notifier.notifyReport(report);
+        summary.notificationsSent++;
+        logger.info(
+          { period, label: report.label, incidents: report.totalIncidents },
+          "Status report sent",
+        );
+      } catch (err) {
+        summary.notificationsFailed++;
+        logger.error({ period, err }, "Status report failed");
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "Report scheduling raised");
   }
 
   summary.durationMs = Date.now() - startTime;
@@ -388,6 +413,14 @@ if (subcommand === "validate") {
     logger.fatal({ err }, "Demo run failed");
     process.exit(1);
   });
+} else if (subcommand === "report") {
+  runReport(
+    process.argv[3] && !process.argv[3].startsWith("--") ? process.argv[3] : undefined,
+    process.argv.includes("--dry-run"),
+  ).catch((err: unknown) => {
+    logger.fatal({ err }, "Report run failed");
+    process.exit(1);
+  });
 } else if (subcommand === undefined || subcommand === "poll") {
   main().catch((err: unknown) => {
     logger.fatal({ err }, "Poller failed to start");
@@ -396,7 +429,7 @@ if (subcommand === "validate") {
 } else {
   process.stderr.write(
     `Unknown subcommand: ${subcommand}\n` +
-      `Usage: node dist/src/main.js [poll|validate|health|demo [type]]\n`,
+      `Usage: node dist/src/main.js [poll|validate|health|demo [type]|report [period] [--dry-run]]\n`,
   );
   process.exit(2);
 }

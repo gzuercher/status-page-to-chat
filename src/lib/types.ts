@@ -1,3 +1,5 @@
+import type { StatusReport } from "./report.js";
+
 /**
  * Unified incident model.
  * All adapters map their raw data into this format.
@@ -108,6 +110,8 @@ export interface Notifier {
   notifyOpened(incident: NormalizedIncident): Promise<void>;
   notifyResolved(incident: NormalizedIncident): Promise<void>;
   notifyAdapterHealth(alert: AdapterHealthAlert): Promise<void>;
+  /** Periodic stability summary. See lib/report.ts. */
+  notifyReport(report: StatusReport): Promise<void>;
 }
 
 /**

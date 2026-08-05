@@ -1,5 +1,10 @@
 import { httpPost } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
+import { getMessages } from "../lib/i18n.js";
+import { renderReport, type StatusReport } from "../lib/report.js";
+
+/** Providers listed in a report ranking before truncation. */
+const MAX_REPORT_ROWS = 10;
 import type { AdapterHealthAlert, Notifier, NormalizedIncident } from "../lib/types.js";
 
 /**
@@ -102,6 +107,43 @@ function renderAdapterHealthSubtitle(alert: AdapterHealthAlert): string {
 }
 
 /**
+ * Builds the periodic stability report card.
+ *
+ * Google Chat is not localised (see the module header) — the English
+ * message bundle is used deliberately, matching the incident cards.
+ */
+function buildReportCard(report: StatusReport): Record<string, unknown> {
+  const rendered = renderReport(report, getMessages("en"));
+  const shown = rendered.rows.slice(0, MAX_REPORT_ROWS);
+  const hidden = rendered.rows.length - shown.length;
+
+  const widgets: Record<string, unknown>[] = [
+    { textParagraph: { text: rendered.summary } },
+    ...shown.map((row) => ({
+      decoratedText: { topLabel: row.displayName, text: row.line },
+    })),
+  ];
+  if (hidden > 0) {
+    widgets.push({ textParagraph: { text: `<i>and ${hidden} more services</i>` } });
+  }
+  if (rendered.stillOpenNote) {
+    widgets.push({ textParagraph: { text: `<i>${rendered.stillOpenNote}</i>` } });
+  }
+
+  return {
+    cardsV2: [
+      {
+        cardId: `report-${report.period}-${report.label}`,
+        card: {
+          header: { title: `\u{1f4ca} ${rendered.title}`, subtitle: rendered.rankingHeading ?? "" },
+          sections: [{ widgets }],
+        },
+      },
+    ],
+  };
+}
+
+/**
  * Notifier for Google Chat Incoming Webhooks.
  */
 export class GoogleChatNotifier implements Notifier {
@@ -135,6 +177,11 @@ export class GoogleChatNotifier implements Notifier {
       provider: alert.providerKey,
       type: `adapter-${alert.kind}`,
     });
+  }
+
+  async notifyReport(report: StatusReport): Promise<void> {
+    const payload = buildReportCard(report);
+    await this.send(payload, { type: `report-${report.period}`, label: report.label });
   }
 
   /**
