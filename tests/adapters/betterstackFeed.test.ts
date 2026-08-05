@@ -14,6 +14,7 @@ import { httpGet } from "../../src/lib/httpClient.js";
 const mockedHttpGet = vi.mocked(httpGet);
 
 const fixture = readFileSync(join(__dirname, "../fixtures/betterstack-feed.xml"), "utf-8");
+const guidFixture = readFileSync(join(__dirname, "../fixtures/betterstack-feed-guid.xml"), "utf-8");
 
 const config: ProviderConfig = {
   key: "langdock",
@@ -34,6 +35,50 @@ describe("BetterStackFeedAdapter", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers().setSystemTime(new Date("2026-05-16T13:00:00Z"));
+  });
+
+  describe("guid-based feeds (current BetterStack generation)", () => {
+    function mockGuidFeed() {
+      mockedHttpGet.mockResolvedValueOnce({
+        status: 200,
+        contentType: "application/atom+xml",
+        body: guidFixture,
+      });
+    }
+
+    it("derives the incident id from the guid fragment when link has no /incident/ path", async () => {
+      // Regression: BetterStack dropped the per-incident <link>. Reading the
+      // id only from <link> made extractIncidentId return null for every
+      // item, so the adapter silently reported zero incidents forever.
+      vi.setSystemTime(new Date("2026-07-29T12:00:00Z"));
+      mockGuidFeed();
+      const incidents = await new BetterStackFeedAdapter(config).fetchIncidents();
+
+      expect(incidents).toHaveLength(2);
+      expect(incidents.map((i) => i.externalId).sort()).toEqual(["aaa111", "bbb222"]);
+    });
+
+    it('treats "recovered" as resolved so monitor-driven incidents close', async () => {
+      // Regression: RESOLVED_KEYWORDS lacked "recovered", which is exactly
+      // how BetterStack words its automatic recovery updates. Every such
+      // incident stayed "open" — a channel flood waiting to happen.
+      vi.setSystemTime(new Date("2026-07-29T12:00:00Z"));
+      mockGuidFeed();
+      const incidents = await new BetterStackFeedAdapter(config).fetchIncidents();
+
+      const recovered = incidents.find((i) => i.externalId === "aaa111");
+      const stillDown = incidents.find((i) => i.externalId === "bbb222");
+      expect(recovered?.status).toBe("resolved");
+      expect(stillDown?.status).toBe("open");
+    });
+
+    it("reports the pre-age-cap incident count for health tracking", async () => {
+      vi.setSystemTime(new Date("2026-07-29T12:00:00Z"));
+      mockGuidFeed();
+      const adapter = new BetterStackFeedAdapter(config);
+      await adapter.fetchIncidents();
+      expect(adapter.lastUpstreamCount).toBe(2);
+    });
   });
 
   it("deduplicates updates by incident link and classifies resolved", async () => {

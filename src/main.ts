@@ -68,7 +68,11 @@ async function runPoll(
       config.providers.map(async (providerConfig) => {
         const adapter = createAdapter(providerConfig);
         const incidents = await adapter.fetchIncidents();
-        return { providerKey: providerConfig.key, incidents };
+        return {
+          providerKey: providerConfig.key,
+          incidents,
+          configDrift: adapter.lastConfigDrift,
+        };
       }),
     );
 
@@ -102,6 +106,7 @@ async function runPoll(
         buildHealthInput(providerConfig, {
           kind: "success",
           hasIncidents: incidents.length > 0,
+          configDrift: result.value.configDrift,
         }),
       );
 
@@ -198,7 +203,15 @@ function buildHealthInput(
   return {
     providerKey: providerConfig.key,
     providerName: providerConfig.displayName,
-    fingerprint: `${providerConfig.adapter}:${providerConfig.baseUrl ?? ""}:${providerConfig.owner ?? ""}/${providerConfig.repo ?? ""}`,
+    // componentFilter is part of the identity: editing a stale filter is
+    // exactly the fix for a half-dead provider, and the counters must
+    // restart so the old verdict does not linger.
+    fingerprint: [
+      providerConfig.adapter,
+      providerConfig.baseUrl ?? "",
+      `${providerConfig.owner ?? ""}/${providerConfig.repo ?? ""}`,
+      (providerConfig.componentFilter ?? []).join("|"),
+    ].join(":"),
     logoUrl: resolveProviderLogoUrl({
       explicitLogoUrl: providerConfig.logoUrl,
       baseUrl: providerConfig.baseUrl,

@@ -49,12 +49,41 @@ The task of each adapter: fetch raw data, extract open + recently closed inciden
 
 ### Component filter
 
-Optional (`componentFilter`): string **or** list of strings. An incident is included if at least one linked component (case-insensitive) contains one of the filter substrings. With a list, **OR logic** applies: one match is sufficient.
+Optional (`componentFilter`): list of strings, or a single string. **OR logic** applies: one match is sufficient.
+
+A filter entry matches a component when it is a case-insensitive substring of either
+
+- the **component's own name**, or
+- the name of the **group** the component belongs to.
 
 Examples:
 
 - `componentFilter: "example-helpcenter"` — single substring
 - `componentFilter: ["cloudgz.gravityzone", "cloud.gravityzone"]` — multiple substrings (e.g. multiple geographic instances of one provider)
+- `componentFilter: cloudgz.gravityzone, cloud.gravityzone` — same thing; a single string is split on commas
+
+The comma form exists because YAML parses an unquoted `a, b, c` as **one** string. Before this was normalised, such a value was matched verbatim as a single substring, hit no real component name, and silently dropped every incident. Prefer the explicit list — it cannot be misread.
+
+#### Groups
+
+Statuspage models a group as a component with `group: true`; its members point back via `group_id`. **An incident only ever references members, never the group.** Filtering on names carried by the incident therefore cannot express "everything in group X" — the group name appears nowhere in the incident.
+
+That distinction is not academic. Two configured providers depend on it:
+
+- **Kaseya** publishes an `IT Glue` group over 393 components. `IT Glue` is not a component name.
+- **Bitdefender** models each GravityZone cloud instance as a group (`cloudgz.gravityzone.bitdefender.com`), and every instance contains members with the *same* names — `Management Console`, `Licensing`, `API`. The instance is only identifiable through its group.
+
+Both filters silently matched nothing until group resolution was added. The adapter now resolves the filter to a set of component **ids** and matches incidents against those ids.
+
+#### Drift detection
+
+Providers rename their components, and a filter that stops matching makes a provider go permanently silent. Whenever a filter is configured, the adapter fetches `{baseUrl}/api/v2/components.json` and resolves it:
+
+- the filter resolves to no component at all → the config is stale. A warning is logged every cycle and the health tracker fires one `halfDead` card after 7 days.
+- it resolves to at least one component → the filter is fine; the provider is merely quiet. **No alert.** A narrow-but-valid filter on a busy page (e.g. `IT Glue` on the Kaseya page) legitimately reports nothing for weeks.
+- the catalogue is unreachable → undecided, no alert. Filtering falls back to matching the component names the incidents carry themselves, so a transient failure degrades rather than silencing the provider.
+
+This costs one extra request per poll for providers that use a filter (5 of 24 in the Raptus deployment); providers without a filter are unaffected. Verify names against `{baseUrl}/api/v2/components.json` when configuring a filter — note that entries with `"group": true` are the group names.
 
 ### Configuration
 
@@ -180,14 +209,18 @@ BetterStack has no public JSON API. The RSS 2.0 feed at `/feed.atom` carries one
 
 | Feed field | Normalized field |
 |---|---|
-| `<link>` trailing segment | `externalId` (deduplication key) |
+| `<link>`'s `/incident/<id>` segment, else the `<guid>` fragment | `externalId` (deduplication key) |
 | latest update's `<title>` | `title` |
-| any update containing "resolved" / "fixed" / "restored" / "behoben" / "gelöst" → `resolved`, else `open` | `status` |
+| any update containing "resolved" / "recovered" / "fixed" / "restored" / "behoben" / "gelöst" / "wiederhergestellt" → `resolved`, else `open` | `status` |
 | oldest update's `<pubDate>` | `startedAt` |
 | newest update's `<pubDate>` | `updatedAt` |
 | `<link>` | `url` |
 
 Incidents whose newest update is older than 7 days are dropped — the feed only keeps recent updates, so resolution posts of old incidents have rolled out and they'd otherwise appear permanently "open".
+
+**Feed generations.** BetterStack has changed where the incident id lives. Older pages carried a per-incident `<link>` (`…/incident/12345`); current pages set `<link>` to the bare status-page root and put the id in the `<guid>` fragment (`https://status.example.com/#<sha256>`). Both are accepted. Reading the id only from `<link>` made every item unidentifiable on current feeds, and the adapter reported zero incidents indefinitely.
+
+**Resolution wording.** BetterStack's monitor-driven updates say "X went down" / "X recovered". `recovered` must therefore be in the resolved-keyword list; without it every such incident stays `open` forever, which turns the first successful poll into a channel flood.
 
 ### Configuration
 
@@ -239,7 +272,7 @@ Hund's REST API (`/api/v1/*`) requires an API key. The public Atom feed at `/sta
 ### Endpoints
 
 - Incidents: `{baseUrl}/api/ssp/incidents.json`
-- Services (only fetched if `componentFilter` is set): `{baseUrl}/api/ssp/services.json`
+- Services (only fetched to validate a filter that matched nothing): `{baseUrl}/api/ssp/services.json`
 
 ### Mapping
 
@@ -254,7 +287,13 @@ Hund's REST API (`/api/v1/*`) requires an API key. The public Atom feed at `/sta
 
 ### Component filter
 
-The SSP API exposes incident-service refs that are an extra hop away from service names. The current implementation matches the filter substrings against the **incident title** (which usually mentions the affected pod or product, e.g. "Pod 13 …", "Help Center …"). Set `componentFilter: ["Help Center"]` to narrow.
+The filter matches against the **service names** an incident affects. Those names ship with the incidents payload: every `incidentService` in the top-level `included[]` array carries `attributes.serviceName`, so no extra request is needed. Only when an incident has no resolvable service reference does the adapter fall back to matching the incident title.
+
+An earlier implementation matched the title *only*, on the assumption that bridging incidentService ids to service names needed a second round-trip. That made filters look like they worked (titles often mention the product) while silently missing every incident whose title happened not to.
+
+Drift detection works as for `atlassian-statuspage`, using `/api/ssp/services.json` as the catalogue.
+
+**Note:** Zendesk renamed the "Help Center" service to **`Knowledge`**. The current service list is: Support, Knowledge, AI Agents, Chat, Voice, Analytics, Workforce Management, Quality Assurance, Sales, Forethought AI Agents, Sunshine Platform, Sunshine Conversations, Contact Center, Services.
 
 ### Configuration
 
@@ -263,7 +302,7 @@ The SSP API exposes incident-service refs that are an extra hop away from servic
   displayName: Zendesk Help Center
   adapter: zendesk-ssp
   baseUrl: https://status.zendesk.com
-  componentFilter: "Help Center"
+  # componentFilter: Knowledge   # optional; omit to report every Zendesk incident
 ```
 
 ---

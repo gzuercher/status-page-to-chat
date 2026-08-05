@@ -28,7 +28,10 @@ export interface Messages {
   healthDown: (duration: string, error: string) => string;
   /** Health card: polling resumed after `duration` of downtime. */
   healthRecovered: (duration: string) => string;
-  /** Health card: polled cleanly for `duration` but never returned an incident. */
+  /**
+   * Health card: polled cleanly for `duration`, the upstream page reported
+   * incidents, but none of them survived our filter.
+   */
   healthHalfDead: (duration: string) => string;
   /**
    * Localises an error category string from errorCategory.ts. Pass-through
@@ -55,7 +58,7 @@ const de: Messages = {
   healthDown: (duration, error) => `Polling seit ${duration} fehlgeschlagen. ${error}.`,
   healthRecovered: (duration) => `Polling wieder aktiv (war ${duration} ausgefallen).`,
   healthHalfDead: (duration) =>
-    `Seit ${duration} sauber gepollt, aber nie ein Incident erhalten — URL prüfen.`,
+    `Seit ${duration} sauber gepollt, aber kein gemeldeter Incident passte zum Filter — componentFilter und URL prüfen.`,
   errorCategory: (category) => ERROR_CATEGORIES_DE[category] ?? category,
 };
 
@@ -67,7 +70,7 @@ const en: Messages = {
   healthDown: (duration, error) => `Unable to poll for the last ${duration}. ${error}.`,
   healthRecovered: (duration) => `Polling resumed (was down for ${duration}).`,
   healthHalfDead: (duration) =>
-    `Polled cleanly for ${duration} but never returned any incident — check the URL.`,
+    `Polled cleanly for ${duration}, but no reported incident matched the filter — check componentFilter and URL.`,
   errorCategory: (category) => category,
 };
 

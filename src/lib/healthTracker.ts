@@ -8,12 +8,18 @@
  *      Recovery is M consecutive successes after a down state, fires
  *      one "recovered" message.
  *
- *   2. **Half-dead** — an adapter polls cleanly but never returns any
- *      incident at all for HALF_DEAD_DAYS. Almost always indicates a
- *      misconfigured baseUrl (e.g. operator pointed it at a valid but
- *      wrong status page via the MCP API). One message, never repeated
- *      once the flag is set, reset only by the adapter actually
- *      returning an incident or by a config change to adapter/baseUrl.
+ *   2. **Half-dead** — an adapter polls cleanly for HALF_DEAD_DAYS, returns
+ *      no incident, and reports that its componentFilter no longer matches
+ *      anything the provider publishes (`configDrift`). That means the
+ *      config has gone stale — typically a component renamed upstream — and
+ *      the provider would stay silent forever. One message, never repeated
+ *      once the flag is set, reset only by the adapter actually returning an
+ *      incident or by a config change to adapter/baseUrl.
+ *
+ *      Crucially this needs the adapter's explicit drift verdict, not just
+ *      an absence of incidents. A quiet status page and a narrow-but-valid
+ *      filter both yield zero incidents indefinitely and are perfectly
+ *      healthy; alerting on those produced a false card every seven days.
  *
  * Global suppression: if more than GLOBAL_SUPPRESS_FRACTION of all
  * configured adapters fail in the same poll cycle, no "down" message is
@@ -42,7 +48,18 @@ export const GLOBAL_SUPPRESS_FRACTION = 0.5;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export type PollOutcome =
-  { kind: "success"; hasIncidents: boolean } | { kind: "failure"; errorCategory: string };
+  | {
+      kind: "success";
+      hasIncidents: boolean;
+      /**
+       * The adapter's verdict that its componentFilter matches nothing the
+       * provider currently publishes. `undefined`/`false` mean "no known
+       * problem", so adapters that cannot check never raise a false alarm.
+       * See StatusProvider.lastConfigDrift.
+       */
+      configDrift?: boolean;
+    }
+  | { kind: "failure"; errorCategory: string };
 
 export type PollResult = {
   providerKey: string;
@@ -91,6 +108,12 @@ type ProviderState = {
   firstFailureAt: number | null;
   downAlertSent: boolean;
   hasEverReturnedIncident: boolean;
+  /**
+   * True while the adapter reports that its filter no longer matches any
+   * published component. Cleared as soon as it stops reporting drift, so a
+   * fixed config silences the alert without a restart.
+   */
+  configDrift: boolean;
   halfDeadAlertSent: boolean;
 };
 
@@ -178,6 +201,7 @@ export class HealthTracker {
       firstFailureAt: null,
       downAlertSent: false,
       hasEverReturnedIncident: false,
+      configDrift: false,
       halfDeadAlertSent: false,
     };
     this.state.set(result.providerKey, fresh);
@@ -192,6 +216,7 @@ export class HealthTracker {
     state.firstFailureAt = null;
     state.downAlertSent = false;
     state.hasEverReturnedIncident = false;
+    state.configDrift = false;
     state.halfDeadAlertSent = false;
   }
 
@@ -200,6 +225,9 @@ export class HealthTracker {
     const downSince = state.firstFailureAt;
     state.consecutiveFailures = 0;
     state.consecutiveSuccesses += 1;
+    if (result.outcome.kind === "success") {
+      state.configDrift = result.outcome.configDrift === true;
+    }
     if (result.outcome.kind === "success" && result.outcome.hasIncidents) {
       state.hasEverReturnedIncident = true;
       // An adapter that finally produced an incident is definitively
@@ -260,6 +288,9 @@ export class HealthTracker {
   private checkHalfDead(state: ProviderState, result: PollResult, now: number): HealthEvent | null {
     if (state.halfDeadAlertSent) return null;
     if (state.hasEverReturnedIncident) return null;
+    // Only alert on a verdict, never on mere silence: a quiet page and a
+    // narrow-but-valid filter are both healthy.
+    if (!state.configDrift) return null;
     if (now - state.firstSeenAt < this.halfDeadMs) return null;
 
     state.halfDeadAlertSent = true;
@@ -275,14 +306,19 @@ export class HealthTracker {
 
 /**
  * Formats an elapsed millisecond value as a short human label, e.g.
- * "2h 15min", "30min", "7 days".
+ * "2h 15min", "30min", "7d".
+ *
+ * Deliberately language-neutral: the label is substituted into sentences
+ * that are themselves localised (i18n.ts) or rendered downstream by the
+ * teamsJson consumer, so a spelled-out "7 days" would read as English
+ * inside a German sentence.
  */
 export function formatDuration(ms: number): string {
   if (ms < 60_000) return "<1min";
   const totalMinutes = Math.floor(ms / 60_000);
   const days = Math.floor(totalMinutes / (60 * 24));
   if (days >= 1) {
-    return days === 1 ? "1 day" : `${days} days`;
+    return `${days}d`;
   }
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;

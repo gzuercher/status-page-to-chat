@@ -11,15 +11,28 @@ function fakeNow(initial: number): { now: () => number; advance: (ms: number) =>
   };
 }
 
+/**
+ * A clean poll. `configDrift` defaults to true: the half-dead checks below
+ * are about a filter that no longer matches anything, which is the only
+ * situation that warrants an alert.
+ */
 function success(
   key: string,
-  opts: { hasIncidents?: boolean; fingerprint?: string } = {},
+  opts: {
+    hasIncidents?: boolean;
+    configDrift?: boolean;
+    fingerprint?: string;
+  } = {},
 ): PollResult {
   return {
     providerKey: key,
     providerName: key,
     fingerprint: opts.fingerprint ?? `${key}-fp`,
-    outcome: { kind: "success", hasIncidents: opts.hasIncidents ?? false },
+    outcome: {
+      kind: "success",
+      hasIncidents: opts.hasIncidents ?? false,
+      configDrift: opts.configDrift ?? true,
+    },
   };
 }
 
@@ -122,7 +135,7 @@ describe("HealthTracker — global suppression", () => {
 });
 
 describe("HealthTracker — half-dead detection", () => {
-  it("fires once after HALF_DEAD_DAYS of clean polls without any incident", () => {
+  it("fires once after HALF_DEAD_DAYS of a filter that matches nothing", () => {
     const clock = fakeNow(1_000_000);
     const tracker = new HealthTracker({
       downThreshold: 999,
@@ -163,6 +176,60 @@ describe("HealthTracker — half-dead detection", () => {
 
     clock.advance(10 * 24 * 60 * 60 * 1000);
     expect(tracker.ingest([success("a")])).toEqual([]); // would re-fire if flag had persisted
+  });
+
+  it("stays silent for a healthy provider that simply has no incidents", () => {
+    // Regression: a genuinely quiet status page (WEDOS: `"incidents": []`,
+    // `"status": "ok"`) and a narrow-but-valid filter on a busy page
+    // (kaseya-itglue: "IT Glue" exists, just no recent incident) both used
+    // to earn a false half-dead card every 7 days.
+    const clock = fakeNow(1_000_000);
+    const tracker = new HealthTracker({
+      downThreshold: 999,
+      recoveryThreshold: 999,
+      halfDeadDays: 1,
+      now: clock.now,
+    });
+
+    tracker.ingest([success("quiet", { configDrift: false })]);
+    clock.advance(30 * 24 * 60 * 60 * 1000);
+    expect(tracker.ingest([success("quiet", { configDrift: false })])).toEqual([]);
+  });
+
+  it("stops alerting once the drift verdict clears, without a restart", () => {
+    const clock = fakeNow(1_000_000);
+    const tracker = new HealthTracker({
+      downThreshold: 999,
+      recoveryThreshold: 999,
+      halfDeadDays: 1,
+      now: clock.now,
+    });
+
+    tracker.ingest([success("a", { configDrift: true })]);
+    clock.advance(2 * 24 * 60 * 60 * 1000);
+    // Operator fixes the filter before the window elapses on a fresh state.
+    expect(tracker.ingest([success("a", { configDrift: false })])).toEqual([]);
+  });
+
+  it("stays silent when the adapter reports no drift verdict at all", () => {
+    const clock = fakeNow(1_000_000);
+    const tracker = new HealthTracker({
+      downThreshold: 999,
+      recoveryThreshold: 999,
+      halfDeadDays: 1,
+      now: clock.now,
+    });
+
+    const unknown: PollResult = {
+      providerKey: "unknown",
+      providerName: "unknown",
+      fingerprint: "unknown-fp",
+      outcome: { kind: "success", hasIncidents: false },
+    };
+
+    tracker.ingest([unknown]);
+    clock.advance(30 * 24 * 60 * 60 * 1000);
+    expect(tracker.ingest([unknown])).toEqual([]);
   });
 });
 
@@ -209,8 +276,8 @@ describe("formatDuration", () => {
     expect(formatDuration(2 * 60 * 60_000 + 15 * 60_000)).toBe("2h 15min");
   });
 
-  it("renders days for long durations", () => {
-    expect(formatDuration(24 * 60 * 60_000)).toBe("1 day");
-    expect(formatDuration(7 * 24 * 60 * 60_000)).toBe("7 days");
+  it("renders days language-neutrally for long durations", () => {
+    expect(formatDuration(24 * 60 * 60_000)).toBe("1d");
+    expect(formatDuration(7 * 24 * 60 * 60_000)).toBe("7d");
   });
 });

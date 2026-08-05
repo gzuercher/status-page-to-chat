@@ -52,9 +52,9 @@ providers: []
 #     owner: onetimesecret
 #     repo: status
 #
-# componentFilter narrows Atlassian status pages to specific products.
-# Single string or list of strings — substring match against component
-# names (case-sensitive). Example:
+# componentFilter narrows a status page to specific products/services.
+# Substring match against component names, case-INsensitive, OR logic.
+# A YAML list is the clearest form:
 #
 #   - key: claude
 #     displayName: Claude
@@ -64,23 +64,37 @@ providers: []
 #       - claude.ai
 #       - api.anthropic.com
 #
-# logoUrl overrides the auto-derived brand logo (Google favicon of the
-# baseUrl host). Use it when the status page host has no favicon entry
-# at Google (e.g. status.zendesk.com falls back to a globe — point it at
-# zendesk.com), or for adapters without a baseUrl (github-issues).
+# A single comma-separated string is also accepted and split on commas,
+# so `componentFilter: claude.ai, Claude Code` is equivalent to the list
+# above. Prefer the list — it cannot be misread.
 #
-#   - key: zendesk-helpcenter
-#     displayName: Zendesk Help Center
-#     adapter: atlassian-statuspage
-#     baseUrl: https://status.zendesk.com
-#     logoUrl: https://www.google.com/s2/favicons?domain=zendesk.com&sz=64
+# Beware: providers DO rename their components, and a filter that stops
+# matching makes a provider go permanently silent. The adapter logs a
+# warning ("componentFilter matched none of the upstream incidents")
+# every cycle in that case, and a half-dead card follows after 7 days.
+# Verify names against <baseUrl>/api/v2/components.json.
+#
+# logoUrl overrides the auto-derived brand logo (favicon of the baseUrl
+# host). Use it when the status host's icon is not the brand's — e.g.
+# wedos.status.online serves the status platform's checkmark, not the
+# WEDOS logo — or for adapters without a baseUrl (github-issues).
+#
+# Any URL works; it is fetched by the chat client, so it must resolve
+# without a redirect. Legacy www.google.com/s2/favicons values are
+# rewritten automatically. See docs/CONFIGURATION.md → Brand logos.
+#
+#   - key: wedos
+#     displayName: WEDOS
+#     adapter: wedos-status-online
+#     baseUrl: https://wedos.status.online
+#     logoUrl: https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE%2CSIZE%2CURL&size=64&url=https%3A%2F%2Fwedos.cz
 #
 #   - key: onetimesecret
 #     displayName: Onetime Secret
 #     adapter: github-issues
 #     owner: onetimesecret
 #     repo: status
-#     logoUrl: https://www.google.com/s2/favicons?domain=onetimesecret.com&sz=64
+#     logoUrl: https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE%2CSIZE%2CURL&size=64&url=https%3A%2F%2Fonetimesecret.com
 #
 # html-scrape is a generic adapter for status pages without any JSON or
 # feed endpoint. It fetches the HTML, runs a CSS selector and treats the

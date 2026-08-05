@@ -126,9 +126,15 @@ function registerTools(server: McpServer, ctx: McpContext): void {
         "     calling this tool, so they can correct it in one step rather than after a",
         "     wrong write.",
         "",
-        "componentFilter is an optional substring or list of substrings to narrow Atlassian",
-        "Statuspage notifications to specific components (case-sensitive substring match",
-        "against component names).",
+        "componentFilter optionally narrows a provider to specific components/services.",
+        "Case-INsensitive substring match against component names, OR logic. Pass a list",
+        "of strings; a single comma-separated string is also accepted and split on commas.",
+        "Supported by the atlassian-statuspage and zendesk-ssp adapters.",
+        "",
+        "CAUTION: providers rename their components, and a filter that no longer matches",
+        "makes the provider go permanently silent. Verify the names against",
+        "<baseUrl>/api/v2/components.json before writing, and prefer no filter over a",
+        "guessed one.",
       ].join("\n"),
       inputSchema: {
         key: z

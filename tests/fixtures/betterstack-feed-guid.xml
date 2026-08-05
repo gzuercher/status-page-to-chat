@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Current-generation BetterStack feed: <link> is the bare status-page root
+  for every item, and the stable per-incident id lives in the <guid>
+  fragment. Mirrors status.langdock.com as of 2026-07-30.
+-->
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Incidents | Langdock</title>
+    <link>https://status.example.com/</link>
+    <item>
+      <title>Workflows Runtime recovered</title>
+      <link>https://status.example.com/</link>
+      <pubDate>Wed, 29 Jul 2026 06:54:56 +0000</pubDate>
+      <guid>https://status.example.com/#aaa111</guid>
+      <description>Workflows Runtime recovered</description>
+    </item>
+    <item>
+      <title>Workflows Runtime went down</title>
+      <link>https://status.example.com/</link>
+      <pubDate>Wed, 29 Jul 2026 06:44:18 +0000</pubDate>
+      <guid>https://status.example.com/#aaa111</guid>
+      <description>Workflows Runtime went down</description>
+    </item>
+    <item>
+      <title>Chat API went down</title>
+      <link>https://status.example.com/</link>
+      <pubDate>Wed, 29 Jul 2026 05:00:00 +0000</pubDate>
+      <guid>https://status.example.com/#bbb222</guid>
+      <description>Chat API went down</description>
+    </item>
+  </channel>
+</rss>
