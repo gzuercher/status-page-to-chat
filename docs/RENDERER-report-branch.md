@@ -37,7 +37,29 @@ Die Report-Karte liest ausschliesslich vorgerenderte Felder (`title`, `summary`,
 übersetzt — mit `setProperty` statt String-Verkettung, damit ein Anführungszeichen in einem
 Dienstnamen das JSON nicht zerlegen kann.
 
-## Ausführen
+## Wo ausführen: im Integration Router, nicht hier
+
+Die Logic App wird per Bicep aus `raptus-integration-router` deployt —
+`integrations/status-pages/main.bicep` lädt die Definition mit
+`loadJsonContent('workflow.json')`. Ein direkter `az rest`-Patch auf die laufende Instanz würde beim
+nächsten Bicep-Deploy **still überschrieben**; der Report-Zweig wäre weg und niemand merkte es bis
+zum folgenden Montag.
+
+Deshalb: `workflow.json` im Router ersetzen und normal deployen. Die Live-Definition wurde mit der
+Repo-Version verglichen und ist **inhaltlich identisch** (nur Schlüsselreihenfolge weicht ab), die
+fertige Datei kann also 1:1 übernommen werden:
+
+```bash
+cp /opt/stacks/raptus-status-notifs/logicapp-patch/workflow.json \
+   ~/git-work/raptus-integration-router/integrations/status-pages/workflow.json
+```
+
+Der Incident-Zweig darin ist nachweislich unverändert.
+
+## Notfallvariante: direkt patchen
+
+Nur wenn es bis zum nächsten Router-Deploy nicht warten kann — und dann **muss** der Router
+trotzdem nachgezogen werden, sonst ist der Zweig beim nächsten Deploy wieder weg.
 
 Die fertigen Dateien liegen unter `/opt/stacks/raptus-status-notifs/logicapp-patch/`:
 
@@ -46,6 +68,7 @@ Die fertigen Dateien liegen unter `/opt/stacks/raptus-status-notifs/logicapp-pat
 | `logicapp-backup.json` | vollständiger Stand **vor** dem Patch (Rollback-Quelle) |
 | `logicapp-new-definition.json` | die neue `definition` |
 | `patch-body.json` | fertiger Request-Body (`{"properties":{"definition":…}}`) |
+| `workflow.json` | dieselbe Definition, fertig zum Kopieren ins Router-Repo |
 
 ```bash
 ID=$(az logic workflow show -g rg-teams-feeds -n status-pages-feed --query id -o tsv)
