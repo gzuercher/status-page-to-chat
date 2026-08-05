@@ -274,6 +274,26 @@ function buildReportCard(report: StatusReport, messages: Messages): Record<strin
         ]
       : [];
 
+  const silentItems =
+    rendered.silentRows.length > 0
+      ? [
+          {
+            type: "TextBlock",
+            text: rendered.silentHeading ?? "",
+            weight: "Bolder",
+            wrap: true,
+            spacing: "Medium",
+          },
+          {
+            type: "FactSet",
+            facts: rendered.silentRows.map((row) => ({
+              title: row.displayName,
+              value: row.line,
+            })),
+          },
+        ]
+      : [];
+
   const footnotes = [
     ...(hidden > 0
       ? [
@@ -324,6 +344,7 @@ function buildReportCard(report: StatusReport, messages: Messages): Record<strin
             spacing: "Small",
           },
           ...rankingItems,
+          ...silentItems,
           ...footnotes,
         ],
       },

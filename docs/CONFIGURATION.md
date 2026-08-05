@@ -128,6 +128,11 @@ The JSON envelope (`teamsJson`, `schemaVersion: 2`). The key set is **stable acr
     "title": "Wochenbericht KW 31/2026",           // pre-rendered, localised
     "summary": "9 Ausfälle bei 7 von 24 Diensten.",// pre-rendered, localised
     "rankingHeading": "Am häufigsten betroffen",   // string | null (null = no incidents)
+    "silentHeading": "Ohne jede Meldung",          // string | null (null = none silent)
+    "silentProviders": [                           // sources that never reported; may be empty
+      { "displayName": "WEDOS",
+        "line": "seit 40 Tagen überwacht, nie eine Meldung — Statusseite meldet ebenfalls nichts" }
+    ],
     "stillOpenNote": "1 Ausfall ist noch offen.",  // string | null
     "totalIncidents": 9, "providersTotal": 24, "providersAffected": 7,
     "providers": [                      // worst first; empty when nothing happened
@@ -169,6 +174,52 @@ Reports count **what was actually notified**: anything suppressed by `componentF
 therefore never appears in a report. Downtime sums only **resolved** incidents — an open one has no
 end yet — and is a sum over possibly overlapping outages, so it can exceed wall-clock time. The
 label says "gesamt"/"total" to make that explicit.
+
+### Sources that never report anything
+
+Every report ends with the sources that have **never produced a single card** since we started
+watching them — listed after `SILENT_MIN_DAYS` (14) days of observation, so a freshly added provider
+is not flagged on day one.
+
+Silence is ambiguous: a genuinely reliable service looks exactly like a broken adapter. The list
+therefore states what the provider's *own* status page returned on the last poll, before our filters:
+
+```
+Ohne jede Meldung
+  Kaseya IT Glue   seit 40 Tagen überwacht, nie eine Meldung — Statusseite meldet aber 50 Vorfälle:
+                   Filter oder Adapter prüfen
+  WEDOS            seit 40 Tagen überwacht, nie eine Meldung — Statusseite meldet ebenfalls nichts
+```
+
+The first line is worth acting on, the second is not. This is deliberately **not** an alert — the
+half-dead card still fires only on a proven config drift, because silence alone is not evidence of a
+defect. But "nobody has heard from this source in 40 days" is worth stating out loud once a period.
+
+The observation baseline lives in the `provider_health` table (`first_seen_at`, never updated after
+the first successful poll, plus the last upstream incident count).
+
+### Scheduling
+
+By default the poller triggers reports itself, using the metadata bookkeeping described above. Set
+
+```yaml
+REPORTS_SCHEDULER: external
+```
+
+in the container environment to switch that off and let an outside scheduler (host cron) call the
+`report` subcommand instead. **Never leave both active** — every report would be sent twice.
+
+The Raptus deployment runs `external`, driven by the operator's crontab:
+
+```cron
+15 8 * * 1        docker exec raptus-status-notifs node dist/src/main.js report weekly
+30 8 1 * *        docker exec raptus-status-notifs node dist/src/main.js report monthly
+45 8 1 1,4,7,10 * docker exec raptus-status-notifs node dist/src/main.js report quarterly
+```
+
+Staggered by 15 minutes so that a 1 January falling on a Monday does not fire three cards at once.
+The trade-off versus the internal scheduler: cron has no memory, so a report missed while the host
+was down is missed for good rather than sent late.
 
 Send one on demand, e.g. to check rendering without waiting a week:
 

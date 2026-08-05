@@ -97,6 +97,13 @@ type JsonReport = {
   totalIncidents: number;
   providersTotal: number;
   providersAffected: number;
+  /** Heading above the silent-source list; null when every source reported. */
+  silentHeading: string | null;
+  /**
+   * Sources that have never reported anything since we started watching.
+   * Not an alert — a list to read. See lib/report.ts → SilentProvider.
+   */
+  silentProviders: Array<{ displayName: string; line: string }>;
   /** Worst first. Empty when the period had no incident at all. */
   providers: Array<{
     providerKey: string;
@@ -242,6 +249,8 @@ export class TeamsJsonNotifier implements Notifier {
         totalIncidents: report.totalIncidents,
         providersTotal: report.providersTotal,
         providersAffected: report.providersAffected,
+        silentHeading: rendered.silentHeading,
+        silentProviders: rendered.silentRows,
         providers: rendered.rows,
       },
     };

@@ -5,10 +5,17 @@ import {
   isoWeek,
   metadataKeyFor,
   periodBounds,
+  findSilentProviders,
   periodLabel,
   renderReport,
 } from "../../src/lib/report.js";
-import { createStore, upsertIncident, setMetadata, type Store } from "../../src/state/store.js";
+import {
+  createStore,
+  recordProviderPoll,
+  setMetadata,
+  upsertIncident,
+  type Store,
+} from "../../src/state/store.js";
 import { getMessages } from "../../src/lib/i18n.js";
 import type { ProviderConfig } from "../../src/lib/config.js";
 import type { NormalizedIncident } from "../../src/lib/types.js";
@@ -262,6 +269,7 @@ describe("renderReport", () => {
             downtimeMs: null,
           },
         ],
+        silent: [],
         ...overrides,
       },
       messages,
@@ -291,5 +299,123 @@ describe("renderReport", () => {
     expect(rendered.summary).toBe("Keine Ausfälle — alle überwachten Dienste liefen durchgehend.");
     expect(rendered.rankingHeading).toBeNull();
     expect(rendered.stillOpenNote).toBeNull();
+  });
+});
+
+describe("findSilentProviders", () => {
+  let store: Store;
+  const now = new Date("2026-08-05T09:00:00Z");
+  const longAgo = new Date("2026-06-01T00:00:00Z").toISOString(); // 65 days
+
+  beforeEach(() => {
+    store = createStore(":memory:");
+  });
+
+  it("lists a provider watched long enough that never reported", () => {
+    recordProviderPoll(store, "figma", longAgo, 0);
+    const silent = findSilentProviders(store, PROVIDERS, now);
+    expect(silent.map((s) => s.providerKey)).toEqual(["figma"]);
+    expect(silent[0]).toMatchObject({ displayName: "Figma", observedDays: 65, upstreamCount: 0 });
+  });
+
+  it("keeps quiet about a provider that has reported something", async () => {
+    recordProviderPoll(store, "figma", longAgo, 3);
+    await upsertIncident(
+      store,
+      incident("figma", "f1", "2026-07-01T10:00:00Z", "2026-07-01T11:00:00Z", "resolved"),
+      true,
+      true,
+    );
+    expect(findSilentProviders(store, PROVIDERS, now)).toEqual([]);
+  });
+
+  it("ignores a provider added too recently for silence to mean anything", () => {
+    recordProviderPoll(store, "figma", new Date("2026-08-01T00:00:00Z").toISOString(), 0);
+    expect(findSilentProviders(store, PROVIDERS, now)).toEqual([]);
+  });
+
+  it("ignores a provider that was never polled successfully", () => {
+    // The health tracker owns that case and raises a "down" alert.
+    expect(findSilentProviders(store, PROVIDERS, now)).toEqual([]);
+  });
+
+  it("carries the upstream count so a busy page can be told from a quiet one", () => {
+    recordProviderPoll(store, "figma", longAgo, 0);
+    recordProviderPoll(store, "vercel", longAgo, 50);
+    const byKey = new Map(
+      findSilentProviders(store, PROVIDERS, now).map((s) => [s.providerKey, s]),
+    );
+    expect(byKey.get("figma")?.upstreamCount).toBe(0);
+    expect(byKey.get("vercel")?.upstreamCount).toBe(50);
+  });
+
+  it("keeps first_seen_at stable across later polls", () => {
+    recordProviderPoll(store, "figma", longAgo, 0);
+    recordProviderPoll(store, "figma", now.toISOString(), 7);
+    const silent = findSilentProviders(store, PROVIDERS, now);
+    expect(silent[0].observedDays).toBe(65);
+    expect(silent[0].upstreamCount).toBe(7);
+  });
+
+  it("sorts the longest-observed source first", () => {
+    recordProviderPoll(store, "figma", longAgo, 0);
+    recordProviderPoll(store, "vercel", new Date("2026-07-01T00:00:00Z").toISOString(), 0);
+    expect(findSilentProviders(store, PROVIDERS, now).map((s) => s.providerKey)).toEqual([
+      "figma",
+      "vercel",
+    ]);
+  });
+});
+
+describe("renderReport — silent sources", () => {
+  const messages = getMessages("de");
+
+  function withSilent(silent: Parameters<typeof renderReport>[0]["silent"]) {
+    return renderReport(
+      {
+        period: "weekly",
+        label: "2026-W31",
+        from: "2026-07-27T00:00:00.000Z",
+        to: "2026-08-03T00:00:00.000Z",
+        totalIncidents: 0,
+        providersTotal: 24,
+        providersAffected: 0,
+        byProvider: [],
+        silent,
+      },
+      messages,
+    );
+  }
+
+  it("points at the filter when the status page itself is busy", () => {
+    const rendered = withSilent([
+      { providerKey: "kaseya", displayName: "Kaseya", observedDays: 40, upstreamCount: 50 },
+    ]);
+    expect(rendered.silentHeading).toBe("Ohne jede Meldung");
+    expect(rendered.silentRows[0].line).toBe(
+      "seit 40 Tagen überwacht, nie eine Meldung — Statusseite meldet aber 50 Vorfälle: Filter oder Adapter prüfen",
+    );
+  });
+
+  it("says so plainly when the page is quiet too", () => {
+    const rendered = withSilent([
+      { providerKey: "wedos", displayName: "WEDOS", observedDays: 40, upstreamCount: 0 },
+    ]);
+    expect(rendered.silentRows[0].line).toBe(
+      "seit 40 Tagen überwacht, nie eine Meldung — Statusseite meldet ebenfalls nichts",
+    );
+  });
+
+  it("omits the verdict when the adapter reports no count", () => {
+    const rendered = withSilent([
+      { providerKey: "wedos", displayName: "WEDOS", observedDays: 40, upstreamCount: null },
+    ]);
+    expect(rendered.silentRows[0].line).toBe("seit 40 Tagen überwacht, nie eine Meldung");
+  });
+
+  it("has no heading when every source has reported", () => {
+    const rendered = withSilent([]);
+    expect(rendered.silentHeading).toBeNull();
+    expect(rendered.silentRows).toEqual([]);
   });
 });

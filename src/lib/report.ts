@@ -22,7 +22,14 @@
 import type { ProviderConfig } from "./config.js";
 import type { Messages } from "./i18n.js";
 import { formatDuration } from "./healthTracker.js";
-import { getIncidentsBetween, getMetadata, setMetadata, type Store } from "../state/store.js";
+import {
+  getIncidentsBetween,
+  getLastIncidentPerProvider,
+  getMetadata,
+  getProviderHealth,
+  setMetadata,
+  type Store,
+} from "../state/store.js";
 
 export const REPORT_PERIODS = ["weekly", "monthly", "quarterly"] as const;
 
@@ -49,6 +56,29 @@ export type ProviderStat = {
   downtimeMs: number | null;
 };
 
+/**
+ * A provider that has never produced a single card since we started
+ * watching it.
+ *
+ * Silence is ambiguous, and the ambiguity is the point of this list: a
+ * genuinely reliable service looks exactly like a broken adapter. The two
+ * are told apart by `upstreamCount` — how many incidents the provider's
+ * own page returned on the last poll, before our filters:
+ *
+ *   - `0`   — the page itself reports nothing. The silence is real.
+ *   - `> 0` — the page is busy but nothing reaches us. Either the filter
+ *             is too narrow or the adapter is broken. Worth a look.
+ *   - null  — the adapter does not report a count; undecidable.
+ */
+export type SilentProvider = {
+  providerKey: string;
+  displayName: string;
+  /** Days since this provider was first polled. */
+  observedDays: number;
+  /** Incidents on the provider's own page at the last poll, before filters. */
+  upstreamCount: number | null;
+};
+
 export type StatusReport = {
   period: ReportPeriod;
   /** Label of the period being reported, e.g. "2026-W31". */
@@ -63,6 +93,11 @@ export type StatusReport = {
   providersAffected: number;
   /** Ranked worst-first; only providers with at least one incident. */
   byProvider: ProviderStat[];
+  /**
+   * Providers that have never reported anything, ever — not just in this
+   * window. Longest-observed first, so the most suspicious entry leads.
+   */
+  silent: SilentProvider[];
 };
 
 /** Metadata key holding the label of the last report sent for a period. */
@@ -207,7 +242,57 @@ export function buildReport(
     providersTotal: providers.length,
     providersAffected: byProvider.length,
     byProvider,
+    silent: findSilentProviders(store, providers, now),
   };
+}
+
+/**
+ * Minimum observation time before a silent provider is worth mentioning.
+ * Below this, silence says nothing — a service simply may not have broken
+ * yet, and a freshly added provider would otherwise be flagged on day one.
+ */
+export const SILENT_MIN_DAYS = 14;
+
+/**
+ * Providers that never produced a card across the entire history.
+ *
+ * Deliberately not an alert: this is a list to read, not a page to answer.
+ * The half-dead alert fires only on a proven config drift, precisely
+ * because silence alone is not evidence of a defect — but "nobody has
+ * heard from this source in 40 days" is still worth stating out loud once
+ * a period, which is what this does.
+ */
+export function findSilentProviders(
+  store: Store,
+  providers: ProviderConfig[],
+  now: Date,
+): SilentProvider[] {
+  const lastIncident = getLastIncidentPerProvider(store);
+  const health = getProviderHealth(store);
+
+  const silent: SilentProvider[] = [];
+  for (const provider of providers) {
+    if (lastIncident.has(provider.key)) continue;
+
+    const row = health.get(provider.key);
+    // Never polled successfully — the health tracker owns that case and
+    // will have raised a "down" alert; do not double-report it here.
+    if (!row) continue;
+
+    const observedDays = Math.floor(
+      (now.getTime() - new Date(row.firstSeenAt).getTime()) / 86_400_000,
+    );
+    if (!Number.isFinite(observedDays) || observedDays < SILENT_MIN_DAYS) continue;
+
+    silent.push({
+      providerKey: provider.key,
+      displayName: provider.displayName,
+      observedDays,
+      upstreamCount: row.lastUpstreamCount,
+    });
+  }
+
+  return silent.sort((a, b) => b.observedDays - a.observedDays);
 }
 
 /**
@@ -260,6 +345,10 @@ export type RenderedReport = {
   /** Note about incidents that have not been resolved yet, or null. */
   stillOpenNote: string | null;
   rows: RenderedProviderRow[];
+  /** Heading above the silent-source list, or null when there is none. */
+  silentHeading: string | null;
+  /** One ready-to-print line per silent source. */
+  silentRows: Array<{ displayName: string; line: string }>;
 };
 
 /**
@@ -284,6 +373,11 @@ export function renderReport(report: StatusReport, messages: Messages): Rendered
       : messages.reportNoIncidents,
     rankingHeading: hasIncidents ? messages.reportRankingHeading : null,
     stillOpenNote: stillOpen > 0 ? messages.reportStillOpen(stillOpen) : null,
+    silentHeading: report.silent.length > 0 ? messages.reportSilentHeading : null,
+    silentRows: report.silent.map((p) => ({
+      displayName: p.displayName,
+      line: messages.reportSilentLine(p.observedDays, p.upstreamCount),
+    })),
     rows: report.byProvider.map((p) => {
       const downtimeLabel = p.downtimeMs && p.downtimeMs > 0 ? formatDuration(p.downtimeMs) : "-";
       return {

@@ -26,6 +26,7 @@ import {
   createStore,
   diffIncidents,
   getStoredIncidents,
+  recordProviderPoll,
   setMetadata,
   upsertIncident,
   type Store,
@@ -84,6 +85,7 @@ async function runPoll(
           providerKey: providerConfig.key,
           incidents,
           configDrift: adapter.lastConfigDrift,
+          upstreamCount: adapter.lastUpstreamCount ?? null,
         };
       }),
     );
@@ -106,6 +108,18 @@ async function runPoll(
 
       summary.providersSucceeded++;
       const { providerKey } = result.value;
+      // Observation bookkeeping — the basis for "watched for 40 days,
+      // never reported anything" in the periodic report.
+      try {
+        recordProviderPoll(
+          store,
+          providerKey,
+          new Date().toISOString(),
+          result.value.upstreamCount,
+        );
+      } catch (err) {
+        logger.error({ provider: providerKey, err }, "Failed to record provider poll");
+      }
       // Attach the operator-authored service description (config-level, same
       // for every incident of this provider) so the notifier can render it.
       const incidents = providerConfig.description
@@ -199,7 +213,14 @@ async function runPoll(
   // so a report covering a period that ended minutes ago includes
   // everything from this run. Isolated like health events — a failing
   // report must never affect incident notification.
+  //
+  // Set REPORTS_SCHEDULER=external when an outside scheduler (host cron)
+  // triggers `main.js report` instead. Leaving both enabled would send
+  // every report twice.
   try {
+    if (process.env.REPORTS_SCHEDULER === "external") {
+      throw new SkipReports();
+    }
     for (const period of dueReports(store, new Date())) {
       try {
         const report = buildReport(store, providers, period, new Date());
@@ -215,7 +236,7 @@ async function runPoll(
       }
     }
   } catch (err) {
-    logger.error({ err }, "Report scheduling raised");
+    if (!(err instanceof SkipReports)) logger.error({ err }, "Report scheduling raised");
   }
 
   summary.durationMs = Date.now() - startTime;
@@ -230,6 +251,9 @@ async function runPoll(
   }
   logger.info({ run_summary: summary }, "run_summary");
 }
+
+/** Signals that report scheduling is delegated to an external scheduler. */
+class SkipReports extends Error {}
 
 function buildHealthInput(
   providerConfig: ProviderConfig,
