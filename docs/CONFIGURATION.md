@@ -117,6 +117,69 @@ The JSON envelope (`teamsJson`, `schemaVersion: 2`). The key set is **stable acr
   } }
 ```
 
+```json
+{ "schemaVersion": 2, "source": "status-page-to-chat",
+  "event": "report.weekly",             // report.weekly | report.monthly | report.quarterly
+  "severity": "ok",                     // always ok — a report summarises the past
+  "language": "de",
+  "report": {
+    "period": "weekly", "label": "2026-W31",
+    "from": "…", "to": "…",             // window; from inclusive, to exclusive
+    "title": "Wochenbericht KW 31/2026",           // pre-rendered, localised
+    "summary": "9 Ausfälle bei 7 von 24 Diensten.",// pre-rendered, localised
+    "rankingHeading": "Am häufigsten betroffen",   // string | null (null = no incidents)
+    "stillOpenNote": "1 Ausfall ist noch offen.",  // string | null
+    "totalIncidents": 9, "providersTotal": 24, "providersAffected": 7,
+    "providers": [                      // worst first; empty when nothing happened
+      { "providerKey": "retool", "displayName": "Retool",
+        "incidentCount": 2, "openCount": 0,
+        "downtimeLabel": "9h 50min",    // "-" when nothing measurable closed
+        "line": "2 Ausfälle · 9h 50min gesamt" }   // pre-rendered detail line
+    ] } }
+```
+
+Reports are the one variant whose display strings are **pre-rendered here** rather than left to the
+renderer. The wording depends on the numbers — singular vs plural, and "nothing happened" reads as a
+sentence rather than an empty list — so it belongs with the calculation. The structured values are
+included alongside, so a renderer is free to lay them out differently (a table, say) without
+re-deriving anything.
+
+## Periodic stability reports
+
+Incident cards answer "what is broken right now". None of them answers "which of our services is
+actually reliable" — that only emerges from counting over time. One card per period does:
+
+| cadence | period | example label |
+|---|---|---|
+| `weekly` | ISO week, Monday–Sunday | `2026-W31` |
+| `monthly` | calendar month | `2026-07` |
+| `quarterly` | calendar quarter | `2026-Q3` |
+
+Each report covers the period that has **just ended** and is sent on the first poll after the
+rollover. The label of the last report sent is stored in the `metadata` table, which makes the
+trigger idempotent: a container that was down all Monday still sends the weekly report on Tuesday,
+and never sends the same one twice.
+
+On first start nothing is due — the current labels are recorded silently, so the first real report
+covers a period that was observed in full. Without that, a fresh container would immediately emit
+three reports about windows it has no data for.
+
+Reports count **what was actually notified**: anything suppressed by `componentFilter` or
+`minImpact`, and anything already resolved when first seen, never enters the state store and
+therefore never appears in a report. Downtime sums only **resolved** incidents — an open one has no
+end yet — and is a sum over possibly overlapping outages, so it can exceed wall-clock time. The
+label says "gesamt"/"total" to make that explicit.
+
+Send one on demand, e.g. to check rendering without waiting a week:
+
+```bash
+docker exec raptus-status-notifs node dist/src/main.js report weekly --dry-run  # print only
+docker exec raptus-status-notifs node dist/src/main.js report monthly           # print and send
+```
+
+The manual path deliberately does **not** touch the bookkeeping, so it neither suppresses nor
+triggers the scheduled report.
+
 ## Localisation & translation (Teams)
 
 The Teams Adaptive Card is fully localised and defaults to **German**.

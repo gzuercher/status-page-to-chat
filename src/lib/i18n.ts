@@ -10,6 +10,8 @@
  * The config `language` enum (config.ts) and this map must stay in sync.
  */
 
+import type { ReportPeriod } from "./report.js";
+
 /** Supported UI languages. Keep in sync with the config `language` enum. */
 export type Locale = "de" | "en";
 
@@ -33,6 +35,20 @@ export interface Messages {
    * incidents, but none of them survived our filter.
    */
   healthHalfDead: (duration: string) => string;
+  /** Report card: headline naming the period, e.g. "Wochenbericht KW 31". */
+  reportTitle: (period: ReportPeriod, label: string) => string;
+  /** Report card: one-line summary of incident count and affected services. */
+  reportSummary: (incidents: number, affected: number, total: number) => string;
+  /** Report card: shown instead of a ranking when nothing happened at all. */
+  reportNoIncidents: string;
+  /** Report card: column heading above the per-provider ranking. */
+  reportRankingHeading: string;
+  /** Report card: one ranking row, e.g. "3 Ausfälle · 2h 15min". */
+  reportProviderLine: (incidents: number, downtime: string) => string;
+  /** Report card: note that some incidents are still open. */
+  reportStillOpen: (count: number) => string;
+  /** Report card: note that the ranking was truncated. */
+  reportMoreProviders: (count: number) => string;
   /**
    * Localises an error category string from errorCategory.ts. Pass-through
    * for anything not in the map (e.g. "HTTP 404", which is language-neutral).
@@ -59,6 +75,24 @@ const de: Messages = {
   healthRecovered: (duration) => `Polling wieder aktiv (war ${duration} ausgefallen).`,
   healthHalfDead: (duration) =>
     `Seit ${duration} sauber gepollt, aber kein gemeldeter Incident passte zum Filter — componentFilter und URL prüfen.`,
+  reportTitle: (period, label) => {
+    if (period === "weekly")
+      return `Wochenbericht ${label.replace(/^(\d{4})-W(\d+)$/, "KW $2/$1")}`;
+    if (period === "monthly") return `Monatsbericht ${label}`;
+    return `Quartalsbericht ${label.replace("-", " ")}`;
+  },
+  reportSummary: (incidents, affected, total) =>
+    incidents === 1
+      ? `1 Ausfall bei 1 von ${total} Diensten.`
+      : `${incidents} Ausfälle bei ${affected} von ${total} Diensten.`,
+  reportNoIncidents: "Keine Ausfälle — alle überwachten Dienste liefen durchgehend.",
+  reportRankingHeading: "Am häufigsten betroffen",
+  reportProviderLine: (incidents, downtime) =>
+    `${incidents === 1 ? "1 Ausfall" : `${incidents} Ausfälle`}${downtime === "-" ? "" : ` · ${downtime} gesamt`}`,
+  reportStillOpen: (count) =>
+    count === 1 ? "1 Ausfall ist noch offen." : `${count} Ausfälle sind noch offen.`,
+  reportMoreProviders: (count) =>
+    count === 1 ? "und 1 weiterer Dienst" : `und ${count} weitere Dienste`,
   errorCategory: (category) => ERROR_CATEGORIES_DE[category] ?? category,
 };
 
@@ -71,6 +105,24 @@ const en: Messages = {
   healthRecovered: (duration) => `Polling resumed (was down for ${duration}).`,
   healthHalfDead: (duration) =>
     `Polled cleanly for ${duration}, but no reported incident matched the filter — check componentFilter and URL.`,
+  reportTitle: (period, label) => {
+    if (period === "weekly")
+      return `Weekly report ${label.replace(/^(\d{4})-W(\d+)$/, "week $2/$1")}`;
+    if (period === "monthly") return `Monthly report ${label}`;
+    return `Quarterly report ${label.replace("-", " ")}`;
+  },
+  reportSummary: (incidents, affected, total) =>
+    incidents === 1
+      ? `1 outage across 1 of ${total} services.`
+      : `${incidents} outages across ${affected} of ${total} services.`,
+  reportNoIncidents: "No outages — every monitored service stayed up.",
+  reportRankingHeading: "Most affected",
+  reportProviderLine: (incidents, downtime) =>
+    `${incidents === 1 ? "1 outage" : `${incidents} outages`}${downtime === "-" ? "" : ` · ${downtime} total`}`,
+  reportStillOpen: (count) =>
+    count === 1 ? "1 outage is still open." : `${count} outages are still open.`,
+  reportMoreProviders: (count) =>
+    count === 1 ? "and 1 more service" : `and ${count} more services`,
   errorCategory: (category) => category,
 };
 
