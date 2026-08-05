@@ -224,6 +224,151 @@ describe("AtlassianStatuspageAdapter", () => {
     });
   });
 
+  describe("minImpact", () => {
+    const incidents = {
+      incidents: [
+        {
+          id: "i-crit",
+          name: "Total outage",
+          status: "investigating",
+          impact: "critical",
+          created_at: "2026-08-01T10:00:00Z",
+          updated_at: "2026-08-01T10:00:00Z",
+        },
+        {
+          id: "i-major",
+          name: "Degraded API",
+          status: "identified",
+          impact: "major",
+          created_at: "2026-08-01T10:00:00Z",
+          updated_at: "2026-08-01T10:00:00Z",
+        },
+        {
+          id: "i-minor",
+          name: "Network blip in Bangalore",
+          status: "monitoring",
+          impact: "minor",
+          created_at: "2026-08-01T10:00:00Z",
+          updated_at: "2026-08-01T10:00:00Z",
+        },
+        {
+          id: "i-none",
+          name: "Informational notice",
+          status: "investigating",
+          impact: "none",
+          created_at: "2026-08-01T10:00:00Z",
+          updated_at: "2026-08-01T10:00:00Z",
+        },
+      ],
+    };
+
+    it("reports everything when minImpact is unset", async () => {
+      mockedHttpGet
+        .mockResolvedValueOnce(mockJsonResponse(incidents))
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }));
+      const adapter = new AtlassianStatuspageAdapter(baseConfig);
+
+      expect(await adapter.fetchIncidents()).toHaveLength(4);
+    });
+
+    it("suppresses minor and none at minImpact major", async () => {
+      mockedHttpGet
+        .mockResolvedValueOnce(mockJsonResponse(incidents))
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }));
+      const adapter = new AtlassianStatuspageAdapter({ ...baseConfig, minImpact: "major" });
+
+      const result = await adapter.fetchIncidents();
+      expect(result.map((i) => i.externalId).sort()).toEqual(["i-crit", "i-major"]);
+    });
+
+    it("keeps only critical at minImpact critical", async () => {
+      mockedHttpGet
+        .mockResolvedValueOnce(mockJsonResponse(incidents))
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }));
+      const adapter = new AtlassianStatuspageAdapter({ ...baseConfig, minImpact: "critical" });
+
+      const result = await adapter.fetchIncidents();
+      expect(result.map((i) => i.externalId)).toEqual(["i-crit"]);
+    });
+
+    it("reports an incident whose impact is missing or unknown", async () => {
+      // Never hide what we cannot classify — that is the surprising case.
+      mockedHttpGet
+        .mockResolvedValueOnce(
+          mockJsonResponse({
+            incidents: [
+              {
+                id: "i-noimpact",
+                name: "Legacy incident",
+                status: "investigating",
+                created_at: "2026-08-01T10:00:00Z",
+                updated_at: "2026-08-01T10:00:00Z",
+              },
+              {
+                id: "i-weird",
+                name: "Odd",
+                status: "investigating",
+                impact: "maintenance",
+                created_at: "2026-08-01T10:00:00Z",
+                updated_at: "2026-08-01T10:00:00Z",
+              },
+            ],
+          }),
+        )
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }));
+      const adapter = new AtlassianStatuspageAdapter({ ...baseConfig, minImpact: "critical" });
+
+      expect(await adapter.fetchIncidents()).toHaveLength(2);
+    });
+
+    it("applies minImpact on top of componentFilter, not instead of it", async () => {
+      mockEndpoints(
+        {
+          incidents: [
+            {
+              id: "i-a",
+              name: "IT Glue major",
+              status: "investigating",
+              impact: "major",
+              created_at: "2026-08-01T10:00:00Z",
+              updated_at: "2026-08-01T10:00:00Z",
+              components: [{ id: "comp-4", name: "IT Glue" }],
+            },
+            {
+              id: "i-b",
+              name: "IT Glue minor",
+              status: "investigating",
+              impact: "minor",
+              created_at: "2026-08-01T10:00:00Z",
+              updated_at: "2026-08-01T10:00:00Z",
+              components: [{ id: "comp-4", name: "IT Glue" }],
+            },
+            {
+              id: "i-c",
+              name: "Other major",
+              status: "investigating",
+              impact: "major",
+              created_at: "2026-08-01T10:00:00Z",
+              updated_at: "2026-08-01T10:00:00Z",
+              components: [{ id: "comp-1", name: "API" }],
+            },
+          ],
+        },
+        { incidents: [] },
+      );
+      const adapter = new AtlassianStatuspageAdapter({
+        ...baseConfig,
+        componentFilter: ["IT Glue"],
+        minImpact: "major",
+      });
+
+      const result = await adapter.fetchIncidents();
+      expect(result.map((i) => i.externalId)).toEqual(["i-a"]);
+      // Filtering everything out by severity is not config drift.
+      expect(adapter.lastConfigDrift).toBe(false);
+    });
+  });
+
   it("filtert nach einzelnem componentFilter", async () => {
     mockEndpoints(unresolvedFixture, { incidents: [] });
 

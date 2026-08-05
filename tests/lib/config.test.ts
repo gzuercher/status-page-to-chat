@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { parseConfigFromString } from "../../src/lib/config.js";
+import { parseConfigFromString, withDefaults } from "../../src/lib/config.js";
 
 const SAMPLE = `
 chatTarget: googleChat
@@ -94,5 +94,73 @@ describe("parseConfigFromString — componentFilter normalisation", () => {
 
   it("leaves componentFilter undefined when absent", () => {
     expect(filterOf(providerYaml("    userAgent: test-agent"))).toBeUndefined();
+  });
+});
+
+describe("minImpact", () => {
+  function parse(yaml: string) {
+    const result = parseConfigFromString(yaml);
+    if (!result.ok) throw new Error(result.error.message);
+    return result.config;
+  }
+
+  const provider = [
+    "  - key: claude",
+    "    displayName: Claude",
+    "    adapter: atlassian-statuspage",
+    "    baseUrl: https://status.claude.com",
+  ];
+
+  it("accepts the four Statuspage severity levels", () => {
+    for (const level of ["none", "minor", "major", "critical"]) {
+      const config = parse(
+        ["chatTarget: googleChat", `minImpact: ${level}`, "providers:", ...provider].join("\n"),
+      );
+      expect(config.minImpact).toBe(level);
+    }
+  });
+
+  it("rejects an unknown severity level", () => {
+    const result = parseConfigFromString(
+      ["chatTarget: googleChat", "minImpact: catastrophic", "providers: []"].join("\n"),
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("stays undefined when unset, so nothing is suppressed", () => {
+    const config = parse(["chatTarget: googleChat", "providers:", ...provider].join("\n"));
+    expect(config.minImpact).toBeUndefined();
+    expect(config.providers[0].minImpact).toBeUndefined();
+  });
+
+  it("applies the global floor to a provider that has none", () => {
+    const config = parse(
+      ["chatTarget: googleChat", "minImpact: major", "providers:", ...provider].join("\n"),
+    );
+    expect(withDefaults(config.providers[0], config).minImpact).toBe("major");
+  });
+
+  it("lets a provider override the global floor in both directions", () => {
+    const config = parse(
+      [
+        "chatTarget: googleChat",
+        "minImpact: major",
+        "providers:",
+        ...provider,
+        "    minImpact: none",
+        "  - key: bexio",
+        "    displayName: Bexio",
+        "    adapter: atlassian-statuspage",
+        "    baseUrl: https://www.bexio-status.com",
+        "    minImpact: critical",
+      ].join("\n"),
+    );
+    expect(withDefaults(config.providers[0], config).minImpact).toBe("none");
+    expect(withDefaults(config.providers[1], config).minImpact).toBe("critical");
+  });
+
+  it("leaves the provider untouched when no global floor is set", () => {
+    const config = parse(["chatTarget: googleChat", "providers:", ...provider].join("\n"));
+    expect(withDefaults(config.providers[0], config)).toBe(config.providers[0]);
   });
 });

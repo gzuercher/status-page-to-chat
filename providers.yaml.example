@@ -20,6 +20,14 @@ chatTarget: googleChat        # "teams" (renders the card) or "teamsJson" (posts
 # requires the ANTHROPIC_API_KEY env var; see docs/CONFIGURATION.md.
 language: de
 
+# Lowest incident severity that still produces a card:
+# "none" | "minor" | "major" | "critical". Omit to report everything.
+# Only atlassian-statuspage publishes a severity; every other adapter
+# ignores this. Overridable per provider. "major" removes roughly three
+# quarters of the volume on busy pages — Cloudflare alone publishes ~22
+# "minor" regional blips a month. See docs/ADAPTERS.md → Severity filter.
+minImpact: major
+
 providers: []
 
 # --- Example entries (uncomment and adapt) ----------------------------

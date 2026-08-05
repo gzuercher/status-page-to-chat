@@ -75,6 +75,25 @@ That distinction is not academic. Two configured providers depend on it:
 
 Both filters silently matched nothing until group resolution was added. The adapter now resolves the filter to a set of component **ids** and matches incidents against those ids.
 
+### Severity filter (`minImpact`)
+
+Statuspage classifies every incident as `none`, `minor`, `major` or `critical`. `minImpact` sets the lowest level that still produces a card — `major` suppresses `minor` and `none`.
+
+Configurable per provider, or deployment-wide via the top-level `minImpact`; the provider's own value wins. Unset means everything is reported.
+
+This is a volume control, and the numbers argue for using it. Measured over the 18 configured Statuspage providers:
+
+| | incidents/month | cards/month |
+|---|---|---|
+| everything | 133 | 265 |
+| `minImpact: major` | 33 | 66 |
+
+The bulk of what it removes is regional noise nobody acts on — Cloudflare alone publishes ~22 `minor` incidents a month along the lines of "Network Performance Issues in Bangalore". Note that each incident produces **two** cards (opened + resolved), so incident counts double.
+
+An incident whose `impact` is missing or unrecognised is always reported. Suppressing what we cannot classify would hide exactly the surprises this service exists to surface.
+
+`minImpact` applies **only to `atlassian-statuspage`** — no other supported status page publishes a comparable severity. It is applied after `componentFilter`, and filtering everything out by severity is never treated as config drift.
+
 #### Drift detection
 
 Providers rename their components, and a filter that stops matching makes a provider go permanently silent. Whenever a filter is configured, the adapter fetches `{baseUrl}/api/v2/components.json` and resolves it:
