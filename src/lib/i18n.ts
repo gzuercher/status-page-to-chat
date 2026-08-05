@@ -105,7 +105,7 @@ const de: Messages = {
     const seit = `seit ${observedDays} Tagen überwacht, nie eine Meldung`;
     if (upstreamCount === null) return seit;
     return upstreamCount > 0
-      ? `${seit} — Statusseite meldet aber ${upstreamCount} Vorfälle: Filter oder Adapter prüfen`
+      ? `${seit} — Statusseite listet ${upstreamCount} Vorfälle: Filter oder Adapter prüfen`
       : `${seit} — Statusseite meldet ebenfalls nichts`;
   },
   errorCategory: (category) => ERROR_CATEGORIES_DE[category] ?? category,
@@ -143,7 +143,7 @@ const en: Messages = {
     const seen = `watched for ${observedDays} days, never reported`;
     if (upstreamCount === null) return seen;
     return upstreamCount > 0
-      ? `${seen} — but its status page lists ${upstreamCount} incidents: check the filter or adapter`
+      ? `${seen} — its status page lists ${upstreamCount} incidents: check the filter or adapter`
       : `${seen} — its status page reports nothing either`;
   },
   errorCategory: (category) => category,

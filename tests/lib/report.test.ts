@@ -393,7 +393,7 @@ describe("renderReport — silent sources", () => {
     ]);
     expect(rendered.silentHeading).toBe("Ohne jede Meldung");
     expect(rendered.silentRows[0].line).toBe(
-      "seit 40 Tagen überwacht, nie eine Meldung — Statusseite meldet aber 50 Vorfälle: Filter oder Adapter prüfen",
+      "seit 40 Tagen überwacht, nie eine Meldung — Statusseite listet 50 Vorfälle: Filter oder Adapter prüfen",
     );
   });
 
