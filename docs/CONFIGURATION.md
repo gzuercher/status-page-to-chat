@@ -129,6 +129,12 @@ The JSON envelope (`teamsJson`, `schemaVersion: 2`). The key set is **stable acr
     "summary": "9 Ausfälle bei 7 von 24 Diensten.",// pre-rendered, localised
     "rankingHeading": "Am häufigsten betroffen",   // string | null (null = no incidents)
     "silentHeading": "Ohne jede Meldung",          // string | null (null = none silent)
+    "facts": [                                     // ranking as Adaptive-Card FactSet pairs
+      { "title": "Retool", "value": "2 Ausfälle · 9h 50min gesamt" }
+    ],
+    "silentFacts": [                               // same, for the silent-source list
+      { "title": "WEDOS", "value": "seit 40 Tagen überwacht, nie eine Meldung — …" }
+    ],
     "silentProviders": [                           // sources that never reported; may be empty
       { "displayName": "WEDOS",
         "line": "seit 40 Tagen überwacht, nie eine Meldung — Statusseite meldet ebenfalls nichts" }
@@ -142,6 +148,12 @@ The JSON envelope (`teamsJson`, `schemaVersion: 2`). The key set is **stable acr
         "line": "2 Ausfälle · 9h 50min gesamt" }   // pre-rendered detail line
     ] } }
 ```
+
+`facts` / `silentFacts` duplicate `providers` / `silentProviders` in the exact shape an Adaptive-Card
+`FactSet` expects. The Logic App's Workflow Definition Language has **no map/select function** —
+`select()` is Power Automate, not WDL — so the renderer cannot turn an array of objects into
+`{title, value}` pairs itself, and building them by string concatenation would break on a quote in a
+provider name. Emitting both keeps the renderer a single unconditional reference.
 
 Reports are the one variant whose display strings are **pre-rendered here** rather than left to the
 renderer. The wording depends on the numbers — singular vs plural, and "nothing happened" reads as a
