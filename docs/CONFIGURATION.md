@@ -136,7 +136,9 @@ The JSON envelope (`teamsJson`, `schemaVersion: 2`). The key set is **stable acr
       { "title": "WEDOS", "value": "seit 40 Tagen überwacht, nie eine Meldung — …" }
     ],
     "silentProviders": [                           // sources that never reported; may be empty
-      { "displayName": "WEDOS",
+      { "providerKey": "wedos", "displayName": "WEDOS",
+        "observedDays": 40,             // raw
+        "upstreamCount": 0,             // number | null — 0 = silence is real, >0 = nothing reaches us
         "line": "seit 40 Tagen überwacht, nie eine Meldung — Statusseite meldet ebenfalls nichts" }
     ],
     "stillOpenNote": "1 Ausfall ist noch offen.",  // string | null
@@ -144,6 +146,7 @@ The JSON envelope (`teamsJson`, `schemaVersion: 2`). The key set is **stable acr
     "providers": [                      // worst first; empty when nothing happened
       { "providerKey": "retool", "displayName": "Retool",
         "incidentCount": 2, "openCount": 0,
+        "downtimeMs": 35400000,         // number | null — raw, for own formatting
         "downtimeLabel": "9h 50min",    // "-" when nothing measurable closed
         "line": "2 Ausfälle · 9h 50min gesamt" }   // pre-rendered detail line
     ] } }

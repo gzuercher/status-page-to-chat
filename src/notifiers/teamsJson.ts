@@ -116,13 +116,31 @@ type JsonReport = {
    * Sources that have never reported anything since we started watching.
    * Not an alert — a list to read. See lib/report.ts → SilentProvider.
    */
-  silentProviders: Array<{ displayName: string; line: string }>;
+  silentProviders: Array<{
+    providerKey: string;
+    displayName: string;
+    /** Days under observation — the basis for "watched for 40 days". */
+    observedDays: number;
+    /**
+     * Incidents the provider's own page listed at the last poll, before our
+     * filters. `0` means the silence is real, `> 0` means nothing reaches
+     * us, `null` means the adapter cannot tell.
+     */
+    upstreamCount: number | null;
+    line: string;
+  }>;
   /** Worst first. Empty when the period had no incident at all. */
   providers: Array<{
     providerKey: string;
     displayName: string;
     incidentCount: number;
     openCount: number;
+    /**
+     * Summed outage time of the resolved incidents, in milliseconds, or
+     * null when nothing measurable closed. The raw value, so a renderer
+     * can format or aggregate it itself.
+     */
+    downtimeMs: number | null;
     /** Human duration, e.g. "3h 20min"; "-" when not measurable. */
     downtimeLabel: string;
     /** Ready-to-print detail line, e.g. "4 Ausfälle · 3h 20min". */
@@ -263,13 +281,22 @@ export class TeamsJsonNotifier implements Notifier {
         providersTotal: report.providersTotal,
         providersAffected: report.providersAffected,
         silentHeading: rendered.silentHeading,
-        silentProviders: rendered.silentRows,
+        silentProviders: report.silent.map((p, i) => ({
+          providerKey: p.providerKey,
+          displayName: p.displayName,
+          observedDays: p.observedDays,
+          upstreamCount: p.upstreamCount,
+          line: rendered.silentRows[i].line,
+        })),
         facts: rendered.rows.map((row) => ({ title: row.displayName, value: row.line })),
         silentFacts: rendered.silentRows.map((row) => ({
           title: row.displayName,
           value: row.line,
         })),
-        providers: rendered.rows,
+        providers: rendered.rows.map((row, i) => ({
+          ...row,
+          downtimeMs: report.byProvider[i].downtimeMs,
+        })),
       },
     };
     await this.send(payload, { type: `report-${report.period}`, label: report.label });
