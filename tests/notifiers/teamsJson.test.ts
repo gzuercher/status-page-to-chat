@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TeamsJsonNotifier } from "../../src/notifiers/teamsJson.js";
 import type { NormalizedIncident } from "../../src/lib/types.js";
+import type { StatusReport } from "../../src/lib/report.js";
 
 vi.mock("../../src/lib/httpClient.js", () => ({
   httpPost: vi.fn(),
@@ -146,5 +147,87 @@ describe("TeamsJsonNotifier", () => {
 
     await expect(newNotifier().notifyOpened(testIncident)).rejects.toThrow("HTTP 500");
     expect(mockedHttpPost).toHaveBeenCalledOnce();
+  });
+});
+
+describe("TeamsJsonNotifier — report envelope", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedHttpPost.mockResolvedValue({ status: 200, contentType: "application/json", body: "" });
+  });
+
+  const report: StatusReport = {
+    period: "weekly",
+    label: "2026-W31",
+    from: "2026-07-27T00:00:00.000Z",
+    to: "2026-08-03T00:00:00.000Z",
+    totalIncidents: 3,
+    providersTotal: 24,
+    providersAffected: 2,
+    byProvider: [
+      {
+        providerKey: "retool",
+        displayName: "Retool",
+        incidentCount: 2,
+        openCount: 0,
+        downtimeMs: 90 * 60_000,
+      },
+      {
+        providerKey: "figma",
+        displayName: 'Figma "EU"',
+        incidentCount: 1,
+        openCount: 1,
+        downtimeMs: null,
+      },
+    ],
+    silent: [{ providerKey: "wedos", displayName: "WEDOS", observedDays: 40, upstreamCount: 0 }],
+  };
+
+  it("labels the event by period and marks it as a summary, not a problem", async () => {
+    await newNotifier().notifyReport(report);
+    const payload = lastPayload();
+    expect(payload.event).toBe("report.weekly");
+    expect(payload.severity).toBe("ok");
+    expect(payload.schemaVersion).toBe(2);
+  });
+
+  it("emits FactSet-ready pairs the renderer can reference directly", async () => {
+    // The Logic App's WDL has no map/select, so it cannot build these itself.
+    await newNotifier().notifyReport(report);
+    const r = lastPayload().report as Record<string, unknown>;
+    expect(r.facts).toEqual([
+      { title: "Retool", value: "2 Ausfälle · 1h 30min gesamt" },
+      { title: 'Figma "EU"', value: "1 Ausfall" },
+    ]);
+    expect(r.silentFacts).toEqual([
+      {
+        title: "WEDOS",
+        value: "seit 40 Tagen überwacht, nie eine Meldung — Statusseite meldet ebenfalls nichts",
+      },
+    ]);
+  });
+
+  it("keeps the structured arrays alongside the rendered pairs", async () => {
+    await newNotifier().notifyReport(report);
+    const r = lastPayload().report as Record<string, unknown>;
+    expect((r.providers as unknown[]).length).toBe(2);
+    expect((r.silentProviders as unknown[]).length).toBe(1);
+    expect(r.title).toBe("Wochenbericht KW 31/2026");
+  });
+
+  it("sends empty fact arrays rather than omitting them when nothing happened", async () => {
+    // A stable key set is what lets the renderer reference fields unconditionally.
+    await newNotifier().notifyReport({
+      ...report,
+      totalIncidents: 0,
+      providersAffected: 0,
+      byProvider: [],
+      silent: [],
+    });
+    const r = lastPayload().report as Record<string, unknown>;
+    expect(r.facts).toEqual([]);
+    expect(r.silentFacts).toEqual([]);
+    expect(r.rankingHeading).toBeNull();
+    expect(r.silentHeading).toBeNull();
   });
 });

@@ -97,6 +97,19 @@ type JsonReport = {
   totalIncidents: number;
   providersTotal: number;
   providersAffected: number;
+  /**
+   * The ranking as ready-to-use Adaptive-Card `FactSet` facts.
+   *
+   * Duplicates `providers` in the shape a renderer actually needs. The
+   * Logic App's Workflow Definition Language has no map/select function —
+   * `select()` is Power Automate, not WDL — so it cannot turn an array of
+   * objects into `{title, value}` pairs itself, and building them by string
+   * concatenation would break on a quote in a provider name. Emitting them
+   * here keeps the renderer a single unconditional reference.
+   */
+  facts: Array<{ title: string; value: string }>;
+  /** Same, for the silent-source list. */
+  silentFacts: Array<{ title: string; value: string }>;
   /** Heading above the silent-source list; null when every source reported. */
   silentHeading: string | null;
   /**
@@ -251,6 +264,11 @@ export class TeamsJsonNotifier implements Notifier {
         providersAffected: report.providersAffected,
         silentHeading: rendered.silentHeading,
         silentProviders: rendered.silentRows,
+        facts: rendered.rows.map((row) => ({ title: row.displayName, value: row.line })),
+        silentFacts: rendered.silentRows.map((row) => ({
+          title: row.displayName,
+          value: row.line,
+        })),
         providers: rendered.rows,
       },
     };
