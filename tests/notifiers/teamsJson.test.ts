@@ -215,6 +215,25 @@ describe("TeamsJsonNotifier — report envelope", () => {
     expect(r.title).toBe("Wochenbericht KW 31/2026");
   });
 
+  it("carries the raw values a renderer needs to format things itself", async () => {
+    await newNotifier().notifyReport(report);
+    const r = lastPayload().report as Record<string, unknown>;
+    const providers = r.providers as Array<Record<string, unknown>>;
+    expect(providers[0]).toMatchObject({
+      providerKey: "retool",
+      incidentCount: 2,
+      openCount: 0,
+      downtimeMs: 90 * 60_000,
+    });
+    // Nothing measurable closed — the raw value stays null, not 0.
+    expect(providers[1].downtimeMs).toBeNull();
+    expect((r.silentProviders as Array<Record<string, unknown>>)[0]).toMatchObject({
+      providerKey: "wedos",
+      observedDays: 40,
+      upstreamCount: 0,
+    });
+  });
+
   it("sends empty fact arrays rather than omitting them when nothing happened", async () => {
     // A stable key set is what lets the renderer reference fields unconditionally.
     await newNotifier().notifyReport({
