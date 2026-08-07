@@ -193,8 +193,7 @@ function listProviders(): Provider[] {
   return result.config.providers;
 }
 
-/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-function formatZodError(err: z.ZodError): any {
+function formatZodError(err: z.ZodError): ReturnType<z.ZodError["flatten"]> {
   return err.flatten();
 }
 

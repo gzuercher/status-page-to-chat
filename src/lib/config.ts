@@ -31,6 +31,38 @@ export const IMPACT_RANK: Record<Impact, number> = {
  * Exported so the API server can validate incoming PUT payloads against
  * the same rules the poller enforces.
  */
+/**
+ * Hostnamen, die ein Provider nicht haben darf.
+ *
+ * `baseUrl` ist über die Management-API setzbar, und die ist ausdrücklich
+ * dafür da, von einem Chat-Assistenten bedient zu werden — jemand tippt
+ * eine URL, das Modell schreibt sie weg. Ohne diese Prüfung liesse sich
+ * der Poller so auf interne Adressen richten (Cloud-Metadaten, Dienste im
+ * Hostnetz), und er würde sie alle fünf Minuten abrufen.
+ *
+ * Bewusst eine Namensprüfung, keine DNS-Auflösung: Auflösen wäre umgehbar
+ * (der Name kann später auf eine andere Adresse zeigen) und würde beim
+ * Validieren Netzwerkzugriffe auslösen. Was hier bleibt, ist die simple,
+ * ehrliche Hürde gegen die naheliegenden Fälle.
+ */
+function isPrivateHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal"))
+    return true;
+  if (host === "::1" || host === "0.0.0.0") return true;
+  // IPv6 unique-local (fc00::/7) und link-local (fe80::/10)
+  if (/^f[cd][0-9a-f]{2}:/.test(host) || /^fe[89ab][0-9a-f]:/.test(host)) return true;
+
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!v4) return false;
+  const [a, b] = v4.slice(1).map(Number);
+  if (a === 127 || a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 169 && b === 254) return true; // Link-local, u.a. Cloud-Metadaten
+  return false;
+}
+
 export const providerSchema = z
   .object({
     key: z.string().regex(/^[a-z0-9-]+$/, "key may only contain a-z, 0-9 and -"),
@@ -51,7 +83,17 @@ export const providerSchema = z
       "zendesk-ssp",
       "html-scrape",
     ]),
-    baseUrl: z.string().url().optional(),
+    baseUrl: z
+      .string()
+      .url()
+      .refine((value) => {
+        try {
+          return !isPrivateHost(new URL(value).hostname);
+        } catch {
+          return false;
+        }
+      }, "baseUrl must not point at a private, loopback or link-local address")
+      .optional(),
     owner: z.string().optional(),
     repo: z.string().optional(),
     /**

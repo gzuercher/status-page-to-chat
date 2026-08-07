@@ -186,7 +186,13 @@ notifications.
 - `WEBHOOK_URL`, `API_TOKEN` and `ANTHROPIC_API_KEY` are the only secrets. They live in the
   container environment — never in the repo, never in the image.
 - The management API requires a bearer token; without `API_TOKEN` it refuses to start.
-- No personal data in logs.
+- No personal data in logs. The webhook URL is never logged: it can carry a SAS signature, and a
+  throttled webhook is exactly the situation that writes a retry log line. Status-page URLs *are*
+  logged — there they are the useful diagnostic.
+- `baseUrl` is checked against private, loopback and link-local ranges. The management API exists to
+  be driven by a chat assistant, so a URL someone types is a weaker trust boundary than a YAML file
+  an operator edits; without the check the poller could be aimed at cloud metadata every 5 minutes.
+- Responses are capped at 5 MB. Without a cap the far end decides how much memory we spend.
 - Outbound calls go only to configured hosts.
 
 ## What is explicitly NOT built

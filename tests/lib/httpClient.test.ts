@@ -96,4 +96,28 @@ describe("httpClient", () => {
     expect(res.status).toBe(202);
     expect(JSON.parse(receivedBody)).toEqual({ hello: "world" });
   });
+
+  it("refuses a response larger than the cap instead of buffering it", () => {
+    // Without a cap the far end decides how much memory we spend.
+    const huge = "x".repeat(6 * 1024 * 1024);
+    mockAgent
+      .get("https://api.example.com")
+      .intercept({ path: "/huge", method: "GET" })
+      .reply(200, huge, { headers: { "content-type": "text/plain" } });
+
+    return expect(httpGet("https://api.example.com/huge", { retries: 0 })).rejects.toThrow(
+      /exceeds/,
+    );
+  });
+
+  it("accepts a response comfortably below the cap", async () => {
+    const big = "y".repeat(1024 * 1024);
+    mockAgent
+      .get("https://api.example.com")
+      .intercept({ path: "/big", method: "GET" })
+      .reply(200, big, { headers: { "content-type": "text/plain" } });
+
+    const res = await httpGet("https://api.example.com/big", { retries: 0 });
+    expect(res.body.length).toBe(big.length);
+  });
 });

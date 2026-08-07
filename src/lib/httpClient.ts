@@ -22,6 +22,13 @@ import { logger } from "./logger.js";
 /** Timeout je Versuch (nicht gesamt). */
 const REQUEST_TIMEOUT_MS = 10_000;
 
+/**
+ * Obergrenze für eine Antwort. Die grösste real beobachtete Statusseite
+ * liegt bei gut 200 kB (Kaseya, 424 Komponenten), 5 MB lässt also reichlich
+ * Luft und deckelt trotzdem, was eine fremde Gegenstelle uns aufzwingen kann.
+ */
+const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+
 /** Wiederholungen nach dem Erstversuch. */
 const DEFAULT_RETRIES = 2;
 
@@ -88,6 +95,34 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * Liest den Body, bricht aber bei MAX_RESPONSE_BYTES ab.
+ *
+ * Ohne Obergrenze bestimmt die Gegenstelle, wie viel Speicher wir
+ * belegen — bei fremden Status-Seiten und erst recht bei einer per API
+ * gesetzten baseUrl keine Annahme, die man treffen sollte.
+ */
+async function readCapped(response: Awaited<ReturnType<typeof fetch>>): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return response.text();
+
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_RESPONSE_BYTES) {
+      await reader.cancel();
+      throw new Error(`Response exceeds ${MAX_RESPONSE_BYTES} bytes`);
+    }
+    chunks.push(decoder.decode(value, { stream: true }));
+  }
+  chunks.push(decoder.decode());
+  return chunks.join("");
+}
+
 async function attemptOnce(
   url: string,
   init: RequestInit,
@@ -96,7 +131,7 @@ async function attemptOnce(
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(url, { ...init, signal: controller.signal });
-    const body = await response.text();
+    const body = await readCapped(response);
     return {
       status: response.status,
       contentType: response.headers.get("content-type") ?? "",
@@ -118,7 +153,15 @@ async function requestWithRetry(
   url: string,
   init: RequestInit,
   retries: number,
+  /**
+   * Ob die URL ins Log darf. Für GETs an öffentliche Status-Seiten ja —
+   * dort ist sie die nützlichste Diagnoseinformation. Für den Notifier-POST
+   * nein: die Webhook-URL trägt bei Logic Apps eine SAS-Signatur, und ein
+   * gedrosselter Webhook (429) ist genau der Fall, der dieses Log schreibt.
+   */
+  logUrl: boolean,
 ): Promise<HttpResponse> {
+  const loggableUrl = logUrl ? url : "[redacted]";
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     let retryAfterMs: number | undefined;
@@ -129,13 +172,13 @@ async function requestWithRetry(
       }
       retryAfterMs = serverDelay;
       logger.debug(
-        { url, status: response.status, attempt },
+        { url: loggableUrl, status: response.status, attempt },
         "HTTP request returned retryable status, backing off",
       );
     } catch (err) {
       lastError = err;
       if (attempt === retries) throw err;
-      logger.debug({ url, err, attempt }, "HTTP request failed, backing off");
+      logger.debug({ url: loggableUrl, err, attempt }, "HTTP request failed, backing off");
     }
     const backoff = Math.min(BACKOFF_BASE_MS * BACKOFF_FACTOR ** attempt, BACKOFF_CAP_MS);
     await sleep(retryAfterMs ?? backoff);
@@ -159,6 +202,7 @@ export async function httpGet(url: string, options?: HttpOptions): Promise<HttpR
       },
     },
     options?.retries ?? DEFAULT_RETRIES,
+    true,
   );
   logger.debug({ url, status: response.status }, "HTTP GET completed");
   return response;
@@ -184,5 +228,7 @@ export async function httpPost(
       body: JSON.stringify(payload),
     },
     options?.retries ?? DEFAULT_RETRIES,
+    // Webhook-URL: nie ins Log.
+    false,
   );
 }
