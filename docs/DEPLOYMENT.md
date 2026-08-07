@@ -227,6 +227,28 @@ Both live as environment variables. Never commit them. `.env` is in `.gitignore`
 3. `docker compose up -d` — Compose recreates the container with the new value.
 4. Update your LLM platform or any other client to use the new token.
 
+## Periodic reports via host cron
+
+The weekly, monthly and quarterly stability reports can be triggered either by the container itself
+or by the host. The Raptus deployment uses host cron, because the schedule is then visible and
+editable next to the other jobs on the machine.
+
+Set `REPORTS_SCHEDULER=external` in the compose environment to switch the built-in scheduler off,
+then add three entries to the operator's crontab:
+
+```cron
+15 8 * * 1        docker exec raptus-status-notifs node dist/src/main.js report weekly    >>$HOME/scripts/logs/status-reports.log 2>&1 || tail -n 30 $HOME/scripts/logs/status-reports.log >&2
+30 8 1 * *        docker exec raptus-status-notifs node dist/src/main.js report monthly   >>$HOME/scripts/logs/status-reports.log 2>&1 || tail -n 30 $HOME/scripts/logs/status-reports.log >&2
+45 8 1 1,4,7,10 * docker exec raptus-status-notifs node dist/src/main.js report quarterly >>$HOME/scripts/logs/status-reports.log 2>&1 || tail -n 30 $HOME/scripts/logs/status-reports.log >&2
+```
+
+Staggered by 15 minutes so a 1 January falling on a Monday does not fire three cards at once. The
+`|| tail` turns a failure into mail via the crontab's `MAILTO`.
+
+**Never run both schedulers** — every report would be sent twice. The trade-off of the cron route:
+cron has no memory, so a report missed while the host was down is missed for good rather than sent
+late. Add `--dry-run` to print a report without sending it.
+
 ## Self-monitoring
 
 - **Container restart policy**: `unless-stopped` — Docker restarts the container on crash.

@@ -1,7 +1,7 @@
 # Roadmap
 
-The service is live on `teth.rserver.ch`, currently polling 24 providers
-through 7 adapter implementations every 5 minutes. This file tracks ideas
+The service is live on `teth.rserver.ch`, currently polling 25 providers
+through 8 adapter implementations every 5 minutes. This file tracks ideas
 that are deliberately not yet built — pick from the top when capacity
 opens up.
 
@@ -18,8 +18,6 @@ opens up.
   planned maintenance from unexpected outages in the card layout.
 - **Slack notifier** — symmetric to the existing Teams / Google Chat
   notifiers.
-- **HTML-scraping adapter** — generic adapter implemented in PR #24;
-  works for CheckCentral. Sophos blocked, see next bullet.
 - **Sophos WAF workaround** — `status.sophos.com` sits behind a WAF
   that returns `HTTP 403 "Invalid request blocked (v1)"` for our
   standard User-Agent. Browser-UA impersonation is forbidden by our
@@ -46,6 +44,19 @@ opens up.
   tenant-targeted notices by 15–45 min; an empty RSS channel does not
   guarantee "healthy".
 
+## Shipped since this file was last revised
+
+- **Severity filter `minImpact`** (PR #66) — cuts the card volume of the
+  Statuspage providers from ~133 to ~33 incidents a month.
+- **Periodic stability reports** (PR #67, #68, #73) — weekly, monthly and
+  quarterly, listing every configured provider plus the sources that have
+  never reported anything. Triggered by host cron
+  (`REPORTS_SCHEDULER=external`).
+- **Group resolution in `componentFilter`** and **redirect-free brand
+  logos** (PR #65).
+- **HTML-scraping adapter** (PR #24) — works for CheckCentral; Sophos
+  remains blocked, see above.
+
 ## Known maintenance risks
 
 - **Stale `componentFilter` values silence a provider.** This has bitten
@@ -54,9 +65,12 @@ opens up.
   weeks. Mitigations now in place — the adapters validate a
   non-matching filter against the provider's component catalogue and log a
   warning every cycle, and a `halfDead` card follows after 7 days (see
-  `docs/ADAPTERS.md` → "Drift detection"). It still pays to re-check filter
-  substrings against `<baseUrl>/api/v2/components.json` when a provider
-  looks suspiciously quiet.
+  `docs/ADAPTERS.md` → "Drift detection"). Since then the filter also
+  resolves **group names**, which is what actually repaired `kaseya-itglue`
+  and `gravityzone-bitdefender` — their filters named groups, and a
+  Statuspage incident never references its group. Each periodic report
+  additionally lists sources that have never reported anything, alongside
+  what the provider's own page was carrying at the time.
 - **GravityZone cloud instances**: the current filter substrings
   (`cloudgz.gravityzone.bitdefender.com`,
   `cloud.gravityzone.bitdefender.com`) reflect today's instance URLs.
@@ -64,8 +78,11 @@ opens up.
   region), the `componentFilter` in `providers.yaml` must be updated or
   notifications go silent. Note that Bitdefender tags most incidents
   against product components ("Management Console", "Email Security")
-  rather than the instance components, so this filter is narrow by
-  design and legitimately matches very little.
+  rather than the instance components. Those product components exist
+  once per cloud instance and carry identical names, so the instance is
+  only addressable through its **group** — which is exactly what the
+  filter now resolves. Before group resolution this filter matched
+  nothing at all.
 - **Claude component names**: Anthropic occasionally renames products
   (the console is now officially "platform.claude.com (formerly
   console.anthropic.com)"). When in doubt, check the current component

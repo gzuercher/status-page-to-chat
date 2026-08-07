@@ -51,10 +51,16 @@ To minimise merge conflicts, the project is divided into **independent zones**:
 | Adapter: Google | `adapter-google` | `src/adapters/googleWorkspace.ts` + test |
 | Adapter: WEDOS | `adapter-wedos` | `src/adapters/wedosStatusOnline.ts` + test |
 | Adapter: GitHub | `adapter-github` | `src/adapters/githubIssues.ts` + test |
+| Adapter: feeds | `adapter-feeds` | `src/adapters/{betterstackFeed,hundAtom}.ts` + tests |
+| Adapter: Zendesk | `adapter-zendesk` | `src/adapters/zendeskSsp.ts` + test |
+| Adapter: HTML | `adapter-html` | `src/adapters/htmlScrape.ts` + test |
 | Notifier: Google Chat | `notifier-gchat` | `src/notifiers/googleChat.ts` + test |
 | Notifier: Teams | `notifier-teams` | `src/notifiers/teams.ts` + test |
+| Notifier: Teams JSON | `notifier-teamsjson` | `src/notifiers/teamsJson.ts` + test |
+| Health & reports | `observability` | `src/lib/healthTracker.ts`, `src/lib/report.ts` |
+| Presentation | `presentation` | `src/lib/i18n.ts`, `src/lib/logo.ts`, `src/lib/translator.ts` |
 | Orchestration | `orchestration` | `src/main.ts`, `src/cli/*` |
-| Management API | `api` | `src/api/server.ts`, `src/api/openapi.json` |
+| Management API | `api` | `src/api/server.ts`, `src/api/mcp.ts`, `src/api/openapi.json` |
 | Container / CI | `infra` | `Dockerfile`, `docker-compose.yml`, `.github/workflows/*` |
 | Docs | `docs` | `docs/*.md` |
 
@@ -98,7 +104,7 @@ pnpm install
 
 ```bash
 pnpm build         # tsc + copy api/openapi.json to dist/
-pnpm test          # vitest run (82 tests)
+pnpm test          # vitest run (265 tests)
 pnpm lint          # eslint + prettier check
 pnpm format        # prettier --write
 

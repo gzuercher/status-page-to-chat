@@ -1,106 +1,72 @@
-# Renderer erweitern: `report.*`-Zweig in der Logic App
+# Renderer: der `report.*`-Zweig in der Logic App
 
-**Muss ausgeführt werden, bevor der erste Stabilitätsbericht fällig wird.**
+**Status: erledigt und in Produktion.** Diese Datei hält nur noch fest, wie die Berichtskarte
+zustande kommt und woran man beim nächsten Umbau denken muss.
 
-Der `teamsJson`-Modus sendet ab sofort einen neuen Event-Typ `report.weekly` / `report.monthly` /
-`report.quarterly`. Die Logic App **`status-pages-feed`** (Resource Group `rg-teams-feeds`) verzweigt
-bisher nur mit
+Die Logic App **`status-pages-feed`** (Resource Group `rg-teams-feeds`) wird per Bicep aus
+`raptus-integration-router` deployt — `integrations/status-pages/main.bicep` lädt die Definition mit
+`loadJsonContent('workflow.json')`. **Nie direkt per `az rest` patchen:** der nächste Bicep-Deploy
+überschreibt das still, und gemerkt wird es erst, wenn eine Karte ausbleibt.
 
-```
-If  startsWith(triggerBody()?['event'], 'incident')   → Incident-Karte
-else                                                   → Adapter-Karte
-```
+## Wie die Karte gebaut wird
 
-Ein Report-Event fiele damit in den `else`-Zweig und würde als **Adapter-Karte mit leeren Feldern**
-gerendert. Deshalb braucht der Renderer einen eigenen Zweig.
-
-## Dringlichkeit
-
-Nicht akut, aber terminiert. Beim ersten Start nach dem Deployment ist **kein** Bericht fällig — der
-Scheduler merkt sich still die laufenden Perioden (siehe `dueReports()` in `src/lib/report.ts`). Der
-erste echte Bericht ist der **Wochenbericht am Montag**. Bis dahin muss der Patch stehen.
-
-## Was der Patch tut
-
-Rein additiv. Der bestehende Incident-Zweig bleibt unverändert; der Adapter-Zweig rutscht eine Ebene
-tiefer hinter einen neuen Test:
+Der Workflow verzweigt dreifach:
 
 ```
-If  startsWith(event, 'incident')       → Set_card_incident      (unverändert)
+If  startsWith(event, 'incident')   → Set_card_incident
 else
-    If  startsWith(event, 'report')     → Set_card_report        (neu)
-    else                                 → Set_card_adapter      (unverändert)
+    If  startsWith(event, 'report') → Set_card_report
+    else                             → Set_card_adapter
 ```
 
-Die Report-Karte liest ausschliesslich vorgerenderte Felder (`title`, `summary`, `rankingHeading`,
-`stillOpenNote`) plus das `providers`-Array. Das Ranking wird per `select(...)` in ein `FactSet`
-übersetzt — mit `setProperty` statt String-Verkettung, damit ein Anführungszeichen in einem
-Dienstnamen das JSON nicht zerlegen kann.
+Die Berichtskarte wird **vollständig im Renderer** aus den Rohdaten des Envelopes gebaut — Titel,
+Zusammenfassung, Ranglistenzeilen und die Liste stummer Quellen. Der Envelope (`schemaVersion: 3`,
+siehe [CONFIGURATION.md](CONFIGURATION.md)) liefert nur noch Zahlen; einzige Ausnahme ist
+`downtimeLabel`, weil die Ausdruckssprache der Logic Apps Millisekunden nicht formatieren kann.
 
-## Wo ausführen: im Integration Router, nicht hier
+## Drei Fallstricke, die je einen fehlgeschlagenen Lauf gekostet haben
 
-Die Logic App wird per Bicep aus `raptus-integration-router` deployt —
-`integrations/status-pages/main.bicep` lädt die Definition mit
-`loadJsonContent('workflow.json')`. Ein direkter `az rest`-Patch auf die laufende Instanz würde beim
-nächsten Bicep-Deploy **still überschrieben**; der Report-Zweig wäre weg und niemand merkte es bis
-zum folgenden Montag.
+1. **`select()` existiert in der Workflow Definition Language nicht** — das ist eine
+   Power-Automate-Funktion. WDL hat überhaupt keine map-Funktion. Listen entstehen über
+   `Initialize variable` → `Foreach` mit `runtimeConfiguration.concurrency.repetitions: 1` (sonst
+   ist die Sortierung dahin) → `Append to array variable`. Niemals JSON per String-Verkettung
+   bauen: ein Anführungszeichen in einem Dienstnamen zerlegt es.
+2. **`"@{expr}"` interpoliert zu einem String, `"@expr"` liefert den nativen Typ.** Für Arrays und
+   Zahlen immer die Form ohne geschweifte Klammern.
+3. **Logic Apps validieren Ausdrücke erst zur Laufzeit.** Ein `Succeeded` von
+   `az deployment group create` beweist nichts.
 
-Deshalb: `workflow.json` im Router ersetzen und normal deployen. Die Live-Definition wurde mit der
-Repo-Version verglichen und ist **inhaltlich identisch** (nur Schlüsselreihenfolge weicht ab), die
-fertige Datei kann also 1:1 übernommen werden:
+## Nach jedem Deploy prüfen
 
 ```bash
-cp /opt/stacks/raptus-status-notifs/logicapp-patch/workflow.json \
-   ~/git-work/raptus-integration-router/integrations/status-pages/workflow.json
+SUB=8d902705-1e79-4d3b-a08e-b20396bcd312
+BASE="https://management.azure.com/subscriptions/$SUB/resourceGroups/rg-teams-feeds/providers/Microsoft.Logic/workflows/status-pages-feed"
+
+az rest --method get --url "$BASE/runs?api-version=2016-06-01&\$top=1" \
+  --query 'value[0].{status:properties.status,error:properties.error.message}'
+
+# bei Failed die schuldige Aktion:
+RUN=$(az rest --method get --url "$BASE/runs?api-version=2016-06-01&\$top=1" --query 'value[0].name' -o tsv)
+az rest --method get --url "$BASE/runs/$RUN/actions?api-version=2016-06-01" \
+  --query 'value[?properties.status==`Failed`].{name:name,err:properties.error.message}'
 ```
 
-Der Incident-Zweig darin ist nachweislich unverändert.
-
-## Notfallvariante: direkt patchen
-
-Nur wenn es bis zum nächsten Router-Deploy nicht warten kann — und dann **muss** der Router
-trotzdem nachgezogen werden, sonst ist der Zweig beim nächsten Deploy wieder weg.
-
-Die fertigen Dateien liegen unter `/opt/stacks/raptus-status-notifs/logicapp-patch/`:
-
-| Datei | Inhalt |
-|---|---|
-| `logicapp-backup.json` | vollständiger Stand **vor** dem Patch (Rollback-Quelle) |
-| `logicapp-new-definition.json` | die neue `definition` |
-| `patch-body.json` | fertiger Request-Body (`{"properties":{"definition":…}}`) |
-| `workflow.json` | dieselbe Definition, fertig zum Kopieren ins Router-Repo |
+Eine echte Karte auslösen:
 
 ```bash
-ID=$(az logic workflow show -g rg-teams-feeds -n status-pages-feed --query id -o tsv)
-
-az rest --method patch \
-  --url "${ID}?api-version=2019-05-01" \
-  --headers Content-Type=application/json \
-  --body @/opt/stacks/raptus-status-notifs/logicapp-patch/patch-body.json
-```
-
-`PATCH` mit nur `properties.definition` lässt `properties.parameters` — und damit die
-Teams-Connection — unangetastet. Ein `PUT` bzw. `az logic workflow create` würde die Connection
-überschreiben; nicht verwenden.
-
-## Prüfen
-
-```bash
-# Struktur: der Incident-Zweig muss unverändert sein, der Report-Zweig neu
-az logic workflow show -g rg-teams-feeds -n status-pages-feed \
-  --query 'definition.actions.Route_by_event.else.actions' -o json
-
-# Testkarte senden (echte Daten der letzten Woche)
 docker exec raptus-status-notifs node dist/src/main.js report weekly
 ```
 
-Erwartete Karte: Kopfzeile „📊 STATUS-PAGES", Titel „Wochenbericht KW nn/jjjj", darunter die
-Zusammenfassung und ein Ranking der betroffenen Dienste.
+## Konventionen des Router-Repos
 
-## Rollback
+`card.json` (Design-/Testvorlage) und der WDL-Teil in `workflow.json` müssen synchron bleiben — die
+CI prüft beides, dazu das Kartenlayout gegen `docs/CONVENTIONS.md`. Der Kopf braucht genau ein
+ColumnSet aus drei Spalten; die Berichtskarte führt bewusst **keinen** Status-Chip, weil ein Bericht
+keinen Zustand hat.
 
-```bash
-python3 -c "import json;d=json.load(open('/opt/stacks/raptus-status-notifs/logicapp-patch/logicapp-backup.json'));json.dump({'properties':{'definition':d['definition']}},open('/tmp/rollback.json','w'))"
-az rest --method patch --url "${ID}?api-version=2019-05-01" \
-  --headers Content-Type=application/json --body @/tmp/rollback.json
-```
+## Offen
+
+Der Half-dead-Text im Renderer beschreibt noch die alte Semantik („kein gemeldeter Incident passte
+zum Filter"). Seit der Überarbeitung feuert die Karte nur, wenn der `componentFilter` auf keine
+publizierte Komponente mehr passt — `card.json` und `workflow.json` sollten den Wortlaut aus
+`src/lib/i18n.ts` übernehmen.
