@@ -48,7 +48,11 @@ export interface StatusProvider {
   /**
    * How many incidents the upstream page returned during the most recent
    * `fetchIncidents()`, *before* componentFilter or age caps were applied.
-   * Diagnostic only — surfaced in the poll log.
+   *
+   * Persisted per provider (`provider_health.last_upstream_count`) and used
+   * by the periodic report to tell real silence from a silent defect: a
+   * provider that never reports while its own page lists incidents has a
+   * broken filter or adapter. See lib/report.ts → SilentProvider.
    */
   readonly lastUpstreamCount?: number;
   /**

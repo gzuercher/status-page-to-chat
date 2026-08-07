@@ -31,8 +31,10 @@ export interface Messages {
   /** Health card: polling resumed after `duration` of downtime. */
   healthRecovered: (duration: string) => string;
   /**
-   * Health card: polled cleanly for `duration`, the upstream page reported
-   * incidents, but none of them survived our filter.
+   * Health card: polled cleanly for `duration`, and the componentFilter
+   * matches nothing the provider currently publishes — the names have
+   * changed, so the provider would stay silent forever. Fires only on that
+   * verdict, never on mere absence of incidents.
    */
   healthHalfDead: (duration: string) => string;
   /** Report card: headline naming the period, e.g. "Wochenbericht KW 31". */
@@ -81,7 +83,7 @@ const de: Messages = {
   healthDown: (duration, error) => `Polling seit ${duration} fehlgeschlagen. ${error}.`,
   healthRecovered: (duration) => `Polling wieder aktiv (war ${duration} ausgefallen).`,
   healthHalfDead: (duration) =>
-    `Seit ${duration} sauber gepollt, aber kein gemeldeter Incident passte zum Filter — componentFilter und URL prüfen.`,
+    `Seit ${duration} sauber gepollt, aber der componentFilter passt auf keine Komponente mehr, die der Anbieter publiziert — Namen prüfen.`,
   reportTitle: (period, label) => {
     if (period === "weekly")
       return `Wochenbericht ${label.replace(/^(\d{4})-W(\d+)$/, "KW $2/$1")}`;
@@ -122,7 +124,7 @@ const en: Messages = {
   healthDown: (duration, error) => `Unable to poll for the last ${duration}. ${error}.`,
   healthRecovered: (duration) => `Polling resumed (was down for ${duration}).`,
   healthHalfDead: (duration) =>
-    `Polled cleanly for ${duration}, but no reported incident matched the filter — check componentFilter and URL.`,
+    `Polled cleanly for ${duration}, but componentFilter no longer matches any component the provider publishes — check the names.`,
   reportTitle: (period, label) => {
     if (period === "weekly")
       return `Weekly report ${label.replace(/^(\d{4})-W(\d+)$/, "week $2/$1")}`;
