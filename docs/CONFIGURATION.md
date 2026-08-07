@@ -59,7 +59,7 @@ providers:
 ## Brand logos
 
 Cards carry the provider's brand icon. Without an explicit `logoUrl` it is derived from the host of
-`baseUrl`; providers without a `baseUrl` (e.g. `github-issues`) render without a logo.
+`baseUrl`; providers without a `baseUrl` (e.g. `github-issues`) render without a logo unless `logoUrl` is set explicitly.
 
 The icon is fetched **by the chat client**, not by this service, so the URL has to resolve in a
 single hop. We therefore address Google's `t0.gstatic.com/faviconV2` endpoint directly instead of
@@ -381,6 +381,7 @@ Everything that is not in `providers.yaml` lives as an environment variable on t
 | `CONFIG_PATH` | no | Absolute path to the providers config. Compose sets this to `/data/providers.yaml`. If unset, the image falls back to its baked-in `config/providers.yaml`. |
 | `STATE_DB_PATH` | no | Path to the SQLite file. Default in the container: `/data/state.sqlite`. |
 | `POLL_CRON` | no | Cron expression for the scheduler. Default: `*/5 * * * *`. |
+| `REPORTS_SCHEDULER` | no | `external` hands the periodic reports to an outside scheduler (host cron calling the `report` subcommand) and switches the built-in one off. Never run both — every report would be sent twice. |
 | `LOG_LEVEL` | no | pino log level (`debug`, `info`, `warn`, `error`). Default: `info`. |
 | `USER_AGENT` | no | Overrides the default User-Agent globally (rarely needed, e.g. for tests). |
 | `API_TOKEN` | no | Bearer token guarding the management REST API. Required unless `API_AUTH_DISABLED=true`. |

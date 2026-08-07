@@ -16,7 +16,7 @@ The task of each adapter: fetch raw data, extract open + recently closed inciden
 
 - **User-Agent**: All requests go through a central `httpClient` helper that sets the default User-Agent (see [CONFIGURATION.md](CONFIGURATION.md#http-user-agent)). Per provider it can be overridden via the optional `userAgent` field in `providers.yaml`.
 - **Timeout**: 10 s per request; abort counts as an adapter error (isolated).
-- **Retry**: No retry at adapter level — the next 5-minute cycle will pick it up.
+- **Retry**: Handled centrally in `lib/httpClient.ts` (429/5xx/network, exponential backoff, honours `Retry-After`) — not per adapter — the next 5-minute cycle will pick it up.
 - **Accept header**: Adapters set it specifically where needed (`application/json`, `application/rss+xml`).
 
 ---
@@ -102,7 +102,7 @@ Providers rename their components, and a filter that stops matching makes a prov
 - it resolves to at least one component → the filter is fine; the provider is merely quiet. **No alert.** A narrow-but-valid filter on a busy page (e.g. `IT Glue` on the Kaseya page) legitimately reports nothing for weeks.
 - the catalogue is unreachable → undecided, no alert. Filtering falls back to matching the component names the incidents carry themselves, so a transient failure degrades rather than silencing the provider.
 
-This costs one extra request per poll for providers that use a filter (5 of 24 in the Raptus deployment); providers without a filter are unaffected. Verify names against `{baseUrl}/api/v2/components.json` when configuring a filter — note that entries with `"group": true` are the group names.
+This costs one extra request per poll for providers that use a filter (5 of 25 in the Raptus deployment); providers without a filter are unaffected. Verify names against `{baseUrl}/api/v2/components.json` when configuring a filter — note that entries with `"group": true` are the group names.
 
 ### Configuration
 

@@ -28,6 +28,11 @@ Every authentication failure — missing header, malformed header, wrong token, 
 | `GET` | `/api/last-run` | Summary of the most recent poll cycle. 404 if none yet. |
 | `GET` | `/api/openapi.json` | OpenAPI 3.1 spec — point your LLM platform at this URL. |
 
+Besides REST, the same operations are available as **MCP tools** under `POST /mcp` (streamable HTTP
+transport, same bearer token): `list_providers`, `get_provider`, `add_provider`, `remove_provider`,
+`list_open_incidents`, `last_run`. Both surfaces validate against the same schema — pick whichever
+your platform speaks. See [LLM-INTEGRATION.md](LLM-INTEGRATION.md).
+
 ## Examples
 
 Replace `TOKEN` with the value of `API_TOKEN` and `HOST` with where your container is reachable (`localhost:8080` when running with the default compose).

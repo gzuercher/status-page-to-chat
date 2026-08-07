@@ -6,7 +6,7 @@
 
 A small self-hosted service that monitors the status pages of external providers and posts new incidents and their resolutions to **Google Chat** or **Microsoft Teams**.
 
-Designed to be cheap and forgettable: a single Docker container, SQLite for state, a webhook URL as the only required secret. Adapter types for Atlassian Statuspage, Google Workspace, WEDOS, GitHub Issues, BetterStack RSS, Hund.io Atom and Zendesk SSP cover dozens of services — you wire up the ones you care about after the container is running.
+Designed to be cheap and forgettable: a single Docker container, SQLite for state, a webhook URL as the only required secret. Adapter types for Atlassian Statuspage, Google Workspace, WEDOS, GitHub Issues, BetterStack RSS, Hund.io Atom, Zendesk SSP and a generic HTML scraper cover dozens of services — you wire up the ones you care about after the container is running.
 
 ---
 
@@ -85,6 +85,7 @@ Environment variables you can set:
 | `CONFIG_PATH` | `/data/providers.yaml` (in compose) | Path to the providers config |
 | `STATE_DB_PATH` | `/data/state.sqlite` | SQLite file location |
 | `POLL_CRON` | `*/5 * * * *` | When the poller runs |
+| `REPORTS_SCHEDULER` | _(unset)_ | Set to `external` when host cron triggers the periodic reports via the `report` subcommand. Leaving the built-in scheduler on as well sends every report twice. |
 | `LOG_LEVEL` | `info` | pino log level |
 | `USER_AGENT` | `status-page-to-chat/<version> (+<repo>)` | Override the outbound User-Agent (e.g. add a contact address) |
 | `HEALTH_MAX_AGE_SECONDS` | `900` | Healthcheck threshold — container is reported unhealthy if no poll completed within this window |
