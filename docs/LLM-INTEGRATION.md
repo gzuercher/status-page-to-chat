@@ -5,9 +5,15 @@ This guide is for the person who maintains the list of monitored status pages �
 The container exposes a small **REST API** described by an **OpenAPI 3.1** spec at `/api/openapi.json`. Any LLM platform that understands OpenAPI tools (sometimes also called "Actions", "Tools", "Custom Connectors", or "Skills") can drive it. Many modern LLM platforms support both **OpenAPI** and **MCP (Model Context Protocol)** as tool-integration mechanisms — for those, either route works against this service:
 
 - **OpenAPI directly** — paste `/api/openapi.json`, configure bearer auth, done. Simplest path.
-- **MCP via OpenAPI bridge** — if your platform only speaks MCP, run a generic OpenAPI-to-MCP bridge (community projects exist) in front of `/api/openapi.json`. The bridge auto-derives MCP tools from the spec.
+- **MCP natively** — the service ships an MCP server at **`/mcp`** (streamable HTTP transport), authenticated with the same bearer token. No bridge needed.
 
-This service does **not** ship a native MCP server. We chose OpenAPI because the API is a thin CRUD layer over a YAML file — the LLM provides the intelligence, the service has none. OpenAPI is easier to host, easier to test, and natively understood by most enterprise LLM platforms. Native MCP would buy nothing here, would add another listener to maintain, and any platform that wants MCP can use a bridge.
+Both surfaces expose the same operations and validate against the same schema, so the choice is purely which one your platform speaks. The MCP tools carry a longer descriptive prompt — including how to pick the right adapter from a URL — which tends to produce better first attempts from an LLM than the bare OpenAPI spec.
+
+| | OpenAPI | MCP |
+|---|---|---|
+| Endpoint | `/api/openapi.json` | `/mcp` |
+| Tools | 8 REST operations | `list_providers`, `get_provider`, `add_provider`, `remove_provider`, `list_open_incidents`, `last_run` |
+| Auth | `Authorization: Bearer <API_TOKEN>` | same |
 
 ## What the maintainer needs
 
@@ -57,7 +63,7 @@ Langdock is a German enterprise LLM platform. It supports **both OpenAPI and MCP
 4. Choose **Bearer token** authentication and paste the `API_TOKEN`.
 5. Save.
 
-If you prefer to register the tool as an MCP server in Langdock instead, run a generic OpenAPI-to-MCP bridge in front of `/api/openapi.json` and point Langdock's MCP-server config at the bridge.
+If you prefer to register the tool as an MCP server in Langdock instead, point Langdock's MCP-server config directly at `<base-url>/mcp` with the same bearer token — the service speaks MCP natively, no bridge required.
 
 ### ChatGPT (Custom GPT)
 

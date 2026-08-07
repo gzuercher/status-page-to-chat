@@ -34,7 +34,7 @@ export type McpSessions = Map<string, SessionEntry>;
 /** Idle timeout after which a session is force-closed. 30 minutes. */
 export const MCP_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 /** How often the sweeper runs in production. */
-export const MCP_SESSION_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+const MCP_SESSION_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
  * Registers all status-page-to-chat tools on a fresh McpServer instance.
@@ -113,6 +113,22 @@ function registerTools(server: McpServer, ctx: McpContext): void {
         "    `<project>/status` repo). Requires `owner` + `repo`, no baseUrl. Example:",
         "    owner='onetimesecret', repo='status'.",
         "",
+        "  betterstack-feed — BetterStack-hosted status pages, which publish an RSS feed",
+        "    at `<baseUrl>/feed.atom` (the name says Atom, the payload is RSS). Recognisable",
+        "    by a 'Powered by Better Stack' footer.",
+        "",
+        "  hund-atom — Status pages on the Hund.io platform, which publish an Atom feed at",
+        "    `<baseUrl>/feed.atom`. Used e.g. for Bitwarden.",
+        "",
+        "  zendesk-ssp — Zendesk's own status backend (status.zendesk.com), which serves",
+        "    `<baseUrl>/api/ssp/incidents.json`. Only correct for Zendesk itself, not for",
+        "    the Zendesk-hosted help centres of other vendors.",
+        "",
+        "  html-scrape — Last resort for pages with no JSON and no feed. Requires `selector`",
+        "    (CSS selector for the element carrying the status) and `healthyMatch` (the text",
+        "    or class meaning 'all good'); anything else becomes a synthetic open incident.",
+        "    Optional `titleTemplate` with a {matchedText} placeholder.",
+        "",
         "DECISION FLOW — when the user just gives a URL:",
         "  1. If the URL contains `github.com/<owner>/<repo>` and incidents live in Issues",
         "     → github-issues with that owner/repo.",
@@ -120,8 +136,15 @@ function registerTools(server: McpServer, ctx: McpContext): void {
         "     → google-workspace.",
         "  3. If the host is status.online.wedos.com or a sub-page of it",
         "     → wedos-status-online.",
-        "  4. Otherwise (any other public 'status.*' page, including ones with `.rss` or",
+        "  4. If the host is status.zendesk.com → zendesk-ssp.",
+        "  5. If the page says 'Powered by Better Stack' → betterstack-feed; if it runs on",
+        "     Hund.io → hund-atom. Both serve `<baseUrl>/feed.atom`, so fetching that and",
+        "     looking at the payload settles it: RSS (<rss><channel>) → betterstack-feed,",
+        "     Atom (<feed><entry>) → hund-atom.",
+        "  6. Otherwise (any other public 'status.*' page, including ones with `.rss` or",
         "     `/history` suffixes) → atlassian-statuspage with the site root as baseUrl.",
+        "     Only if that page serves no `/api/v2/summary.json` either, fall back to",
+        "     html-scrape with an explicit selector and healthyMatch.",
         "     If you are not certain, STATE THE GUESS and the assumption to the user before",
         "     calling this tool, so they can correct it in one step rather than after a",
         "     wrong write.",
@@ -153,10 +176,36 @@ function registerTools(server: McpServer, ctx: McpContext): void {
           "google-workspace",
           "wedos-status-online",
           "github-issues",
+          "betterstack-feed",
+          "hund-atom",
+          "zendesk-ssp",
+          "html-scrape",
         ]),
+        description: z
+          .string()
+          .min(1)
+          .max(280)
+          .optional()
+          .describe("One-line service blurb shown on the card, in the deployment's language."),
         baseUrl: z.string().url().optional(),
         owner: z.string().optional(),
         repo: z.string().optional(),
+        selector: z.string().min(1).optional().describe("CSS selector, html-scrape only."),
+        healthyMatch: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('Pattern meaning "no incident", html-scrape only.'),
+        titleTemplate: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Title override with a {matchedText} placeholder, html-scrape only."),
+        logoUrl: z
+          .string()
+          .url()
+          .optional()
+          .describe("Overrides the favicon derived from the baseUrl host."),
         componentFilter: z.union([z.string(), z.array(z.string())]).optional(),
         minImpact: z.enum(["none", "minor", "major", "critical"]).optional(),
         userAgent: z.string().optional(),

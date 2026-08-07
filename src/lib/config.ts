@@ -14,7 +14,7 @@ const YAML_PARSE_OPTIONS = { maxAliasCount: 100 } as const;
  * Statuspage severity levels, ordered from harmless to severe. Used by
  * `minImpact` to suppress low-severity noise.
  */
-export const impactSchema = z.enum(["none", "minor", "major", "critical"]);
+const impactSchema = z.enum(["none", "minor", "major", "critical"]);
 
 export type Impact = z.infer<typeof impactSchema>;
 

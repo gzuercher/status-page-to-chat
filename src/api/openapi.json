@@ -5,10 +5,17 @@
     "version": "1.0.0",
     "description": "Manage the providers monitored by status-page-to-chat and inspect runtime state. Designed for chat-based maintenance via Langdock or any OpenAPI-aware LLM tool."
   },
-  "servers": [{ "url": "/" }],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
   "components": {
     "securitySchemes": {
-      "bearerAuth": { "type": "http", "scheme": "bearer" }
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
     },
     "schemas": {
       "Provider": {
@@ -20,7 +27,10 @@
             "pattern": "^[a-z0-9-]+$",
             "description": "Unique identifier, lowercase ASCII letters, digits and hyphens only."
           },
-          "displayName": { "type": "string", "minLength": 1 },
+          "displayName": {
+            "type": "string",
+            "minLength": 1
+          },
           "description": {
             "type": "string",
             "minLength": 1,
@@ -33,18 +43,38 @@
               "atlassian-statuspage",
               "google-workspace",
               "wedos-status-online",
-              "github-issues"
+              "github-issues",
+              "betterstack-feed",
+              "hund-atom",
+              "zendesk-ssp",
+              "html-scrape"
             ]
           },
           "baseUrl": {
             "type": "string",
             "format": "uri",
-            "description": "Required for atlassian-statuspage and wedos-status-online."
+            "description": "Required for atlassian-statuspage, wedos-status-online, betterstack-feed, hund-atom, zendesk-ssp and html-scrape."
           },
-          "owner": { "type": "string", "description": "Required for github-issues." },
-          "repo": { "type": "string", "description": "Required for github-issues." },
+          "owner": {
+            "type": "string",
+            "description": "Required for github-issues."
+          },
+          "repo": {
+            "type": "string",
+            "description": "Required for github-issues."
+          },
           "componentFilter": {
-            "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ],
             "description": "Narrows the provider to specific components/services. Case-insensitive substring match, OR logic. A single comma-separated string is split on commas. Supported by atlassian-statuspage and zendesk-ssp. An entry may also name a component GROUP, which matches all of its members. A filter that stops matching (component renamed upstream) silences the provider — verify names against <baseUrl>/api/v2/components.json."
           },
           "minImpact": {
@@ -52,7 +82,26 @@
             "enum": ["none", "minor", "major", "critical"],
             "description": "Lowest incident severity that still produces a card; 'major' suppresses 'minor' and 'none'. atlassian-statuspage only — no other status page publishes a severity. Omit to inherit the deployment-wide default. Incidents with a missing or unrecognised impact are always reported."
           },
-          "userAgent": { "type": "string" }
+          "userAgent": {
+            "type": "string"
+          },
+          "selector": {
+            "type": "string",
+            "description": "CSS selector, required for html-scrape. Points at the element whose text (or class attribute, when the text is empty) reflects the overall status."
+          },
+          "healthyMatch": {
+            "type": "string",
+            "description": "Required for html-scrape. Pattern meaning \"no incident\"; a string in /pattern/flags form is treated as a regex, everything else as a case-insensitive substring match."
+          },
+          "titleTemplate": {
+            "type": "string",
+            "description": "Optional, html-scrape only. {matchedText} is replaced with the scraped status text. Defaults to \"Status page reports: {matchedText}\"."
+          },
+          "logoUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Optional brand logo for the card. Without it the favicon of the baseUrl host is used; providers without a baseUrl render without a logo unless this is set. Legacy www.google.com/s2/favicons values are upgraded automatically."
+          }
         }
       },
       "Incident": {
@@ -67,40 +116,86 @@
           "updatedAt"
         ],
         "properties": {
-          "providerKey": { "type": "string" },
-          "externalId": { "type": "string" },
-          "title": { "type": "string" },
-          "status": { "type": "string", "enum": ["open", "resolved"] },
-          "url": { "type": "string", "format": "uri" },
-          "startedAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" }
+          "providerKey": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["open", "resolved"]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "RunSummary": {
         "type": "object",
         "properties": {
-          "providersTotal": { "type": "integer" },
-          "providersSucceeded": { "type": "integer" },
-          "providersFailed": { "type": "integer" },
-          "incidentsOpen": { "type": "integer" },
-          "incidentsResolved": { "type": "integer" },
-          "notificationsSent": { "type": "integer" },
-          "notificationsFailed": { "type": "integer" },
-          "durationMs": { "type": "integer" },
-          "completedAt": { "type": "string", "format": "date-time" }
+          "providersTotal": {
+            "type": "integer"
+          },
+          "providersSucceeded": {
+            "type": "integer"
+          },
+          "providersFailed": {
+            "type": "integer"
+          },
+          "incidentsOpen": {
+            "type": "integer"
+          },
+          "incidentsResolved": {
+            "type": "integer"
+          },
+          "notificationsSent": {
+            "type": "integer"
+          },
+          "notificationsFailed": {
+            "type": "integer"
+          },
+          "durationMs": {
+            "type": "integer"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "Error": {
         "type": "object",
         "required": ["error"],
         "properties": {
-          "error": { "type": "string" },
-          "details": { "type": "object", "additionalProperties": true }
+          "error": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          }
         }
       }
     }
   },
-  "security": [{ "bearerAuth": [] }],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
   "paths": {
     "/api/health": {
       "get": {
@@ -114,8 +209,14 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": { "type": "string", "enum": ["ok"] },
-                    "lastRunAt": { "type": "string", "format": "date-time" }
+                    "status": {
+                      "type": "string",
+                      "enum": ["ok"]
+                    },
+                    "lastRunAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
                   }
                 }
               }
@@ -132,7 +233,12 @@
             "description": "Current provider list",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Provider" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Provider"
+                  }
+                }
               }
             }
           }
@@ -141,7 +247,14 @@
     },
     "/api/providers/{key}": {
       "parameters": [
-        { "name": "key", "in": "path", "required": true, "schema": { "type": "string" } }
+        {
+          "name": "key",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
       ],
       "get": {
         "summary": "Get a single provider",
@@ -149,10 +262,16 @@
           "200": {
             "description": "Provider entry",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Provider" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Provider"
+                }
+              }
             }
           },
-          "404": { "description": "Not found" }
+          "404": {
+            "description": "Not found"
+          }
         }
       },
       "put": {
@@ -161,26 +280,42 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/Provider" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Provider"
+              }
+            }
           }
         },
         "responses": {
           "200": {
             "description": "Provider updated",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Provider" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Provider"
+                }
+              }
             }
           },
           "201": {
             "description": "Provider created",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Provider" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Provider"
+                }
+              }
             }
           },
           "400": {
             "description": "Invalid payload",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
             }
           }
         }
@@ -188,8 +323,12 @@
       "delete": {
         "summary": "Remove a provider",
         "responses": {
-          "204": { "description": "Removed" },
-          "404": { "description": "Not found" }
+          "204": {
+            "description": "Removed"
+          },
+          "404": {
+            "description": "Not found"
+          }
         }
       }
     },
@@ -199,7 +338,11 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/Provider" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Provider"
+              }
+            }
           }
         },
         "responses": {
@@ -209,7 +352,12 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "ok": { "type": "boolean", "enum": [true] } }
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [true]
+                    }
+                  }
                 }
               }
             }
@@ -217,7 +365,11 @@
           "400": {
             "description": "Payload is invalid",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
             }
           }
         }
@@ -231,7 +383,12 @@
             "description": "Open incidents across all providers",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Incident" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Incident"
+                  }
+                }
               }
             }
           }
@@ -245,10 +402,16 @@
           "200": {
             "description": "Run summary",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/RunSummary" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSummary"
+                }
+              }
             }
           },
-          "404": { "description": "No poll has completed yet" }
+          "404": {
+            "description": "No poll has completed yet"
+          }
         }
       }
     },
@@ -256,7 +419,11 @@
       "get": {
         "summary": "This OpenAPI specification",
         "security": [],
-        "responses": { "200": { "description": "OpenAPI 3.1 document" } }
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 document"
+          }
+        }
       }
     }
   }
