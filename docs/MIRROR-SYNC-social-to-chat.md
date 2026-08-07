@@ -111,7 +111,22 @@ pnpm build && pnpm lint && pnpm test
 
 Erwartung: grün, mit den zwei angepassten `formatDuration`-Assertions.
 
+## Ebenfalls nachzuziehen: `lib/httpClient.ts`
+
+Zwei Härtungen aus dem Security-Review vor v0.4.0:
+
+1. **Antwortgrösse begrenzen.** `attemptOnce` liest den Body neu über `readCapped()` statt
+   `response.text()`; über `MAX_RESPONSE_BYTES` (5 MB) bricht es mit
+   `Response exceeds N bytes` ab. Ohne Obergrenze bestimmt die Gegenstelle, wie viel Speicher wir
+   belegen.
+2. **Webhook-URL nicht ins Log.** `requestWithRetry` bekommt einen Parameter `logUrl: boolean`;
+   `httpGet` übergibt `true` (dort ist die URL die nützlichste Diagnose), `httpPost` `false`,
+   weil die Webhook-URL eine SAS-Signatur tragen kann — und ein gedrosselter Webhook (429) ist
+   genau der Fall, der diese Zeile schreibt. Im Log steht dann `[redacted]`.
+
+Beides ist in `social-to-chat` genauso anwendbar; die Datei unterscheidet sich dort nur in der
+`REPO_URL`-Konstante.
+
 ## Nicht betroffen
 
-`src/lib/errorCategory.ts` und `src/lib/httpClient.ts` — die beiden anderen gespiegelten Module —
-wurden in PR #65 nicht angefasst.
+`src/lib/errorCategory.ts` wurde nicht angefasst.

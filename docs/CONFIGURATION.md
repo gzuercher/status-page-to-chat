@@ -34,6 +34,8 @@ providers:
     # adapter-specific fields:
     baseUrl: <url>             # required for atlassian-statuspage, wedos-status-online,
                                # betterstack-feed, hund-atom, zendesk-ssp, html-scrape
+                               # Must be a public host — private, loopback and
+                               # link-local addresses are rejected (see Security).
     owner: <string>            # required for github-issues
     repo: <string>             # required for github-issues
     selector: <css-selector>   # required for html-scrape

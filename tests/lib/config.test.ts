@@ -173,3 +173,40 @@ describe("minImpact", () => {
     expect(withDefaults(config.providers[0], config)).toBe(config.providers[0]);
   });
 });
+
+describe("baseUrl must not point inward", () => {
+  function parse(baseUrl: string) {
+    return parseConfigFromString(
+      [
+        "chatTarget: teamsJson",
+        "providers:",
+        "  - key: probe",
+        "    displayName: Probe",
+        "    adapter: atlassian-statuspage",
+        `    baseUrl: ${baseUrl}`,
+      ].join("\n"),
+    );
+  }
+
+  // The management API is meant to be driven by a chat assistant: someone
+  // types a URL, the model writes it. Without this the poller could be
+  // aimed at cloud metadata or host-network services every five minutes.
+  it.each([
+    "http://169.254.169.254/",
+    "http://localhost:8080",
+    "http://127.0.0.1/status",
+    "http://10.1.2.3/",
+    "http://192.168.1.10/",
+    "http://172.16.0.5/",
+    "http://[::1]/",
+  ])("rejects %s", (url) => {
+    expect(parse(url).ok).toBe(false);
+  });
+
+  it.each(["https://status.example.com", "https://www.githubstatus.com", "http://172.32.0.1/"])(
+    "accepts %s",
+    (url) => {
+      expect(parse(url).ok).toBe(true);
+    },
+  );
+});
