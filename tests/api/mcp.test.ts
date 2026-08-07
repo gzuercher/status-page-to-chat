@@ -12,7 +12,7 @@ import {
   MCP_SESSION_IDLE_TIMEOUT_MS,
 } from "../../src/api/mcp.js";
 
-const STARTER_YAML = `chatTarget: googleChat
+const STARTER_YAML = `chatTarget: teamsJson
 providers:
   - key: bitbucket
     displayName: Bitbucket

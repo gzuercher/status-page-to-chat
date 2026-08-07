@@ -103,5 +103,5 @@ For scripts and small integrations, the OpenAPI spec doubles as TypeScript/Pytho
 ## Limits
 
 - Only the people who have the URL and the token can talk to the API. Don't share either in shared channels.
-- The assistant manages **which** status pages are watched. It does **not** manage the chat target (Google Chat vs. Teams) or the webhook URL — those are set when the container is deployed.
+- The assistant manages **which** status pages are watched. It does **not** manage the webhook URL — that is set when the container is deployed.
 - For complex operations (rolling back to a previous state, changing multiple providers atomically) talk to your administrator. The API is intentionally one-provider-at-a-time.

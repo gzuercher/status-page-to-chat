@@ -7,7 +7,7 @@ import Database from "better-sqlite3";
 
 const MAIN_JS = resolve(__dirname, "../../dist/src/main.js");
 
-const VALID_YAML = `chatTarget: googleChat
+const VALID_YAML = `chatTarget: teamsJson
 providers:
   - key: bitbucket
     displayName: Bitbucket
@@ -19,7 +19,7 @@ const INVALID_YAML = `chatTarget: schmiddel
 providers: []
 `;
 
-const BROKEN_YAML = `chatTarget: googleChat
+const BROKEN_YAML = `chatTarget: teamsJson
 providers:
   -- invalid yaml here
 `;
@@ -64,7 +64,7 @@ describe("CLI subcommands", () => {
 
     it("accepts an empty providers list as valid (zero-config startup)", () => {
       const configPath = join(dir, "providers.yaml");
-      writeFileSync(configPath, "chatTarget: googleChat\nproviders: []\n", "utf-8");
+      writeFileSync(configPath, "chatTarget: teamsJson\nproviders: []\n", "utf-8");
       const r = runCli(["validate"], { CONFIG_PATH: configPath });
       expect(r.code).toBe(0);
       expect(r.stdout).toMatch(/0 provider/);

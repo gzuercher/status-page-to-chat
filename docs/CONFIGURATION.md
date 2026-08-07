@@ -11,7 +11,7 @@ The repository also ships `config/providers.yaml` baked into the image, but that
 
 ```yaml
 # Required fields
-chatTarget: googleChat         # "googleChat" | "teams" | "teamsJson"
+chatTarget: teamsJson         # the only supported value
 
 # Optional: UI language for the chat cards and the target language for
 # machine-translated incident titles. "de" (default) | "en".
@@ -78,8 +78,6 @@ for instance, serves the status platform's green checkmark rather than the WEDOS
 
 Both targets POST to the same kind of webhook (`WEBHOOK_URL`), but differ in the payload:
 
-- **`teams`** — this service builds the finished **Adaptive Card** and posts it. Self-contained; what
-  you see is what Teams renders. Titles are machine-translated (see below).
 - **`teamsJson`** — this service posts the **raw normalized event as JSON**; a downstream renderer
   (e.g. an Azure Logic App) builds the card from a central template. Use this when card layout is owned
   centrally across several feeds. No translation happens here — the raw source-language `title` is sent,
@@ -253,7 +251,6 @@ The Teams Adaptive Card is fully localised and defaults to **German**.
 - **Incident titles** are provider-supplied and usually English. They are machine-translated into `language` via the **Claude API (Haiku)** when `ANTHROPIC_API_KEY` is set. Translations are cached in SQLite keyed by source text, so repeated titles (a given incident's *opened* and *resolved* cards share one title) cost a single API call. If no key is set, or a call fails, the **original title is shown** — translation never blocks a notification.
 - **Service descriptions** (`description` per provider) are shown verbatim — author them in your target language.
 
-> Google Chat cards are not localised yet — they remain English regardless of `language`.
 
 ### Teams webhook format
 
@@ -282,7 +279,7 @@ This follows the common practice for well-behaved pollers, respects the logs of 
 
 The file is validated with **`zod`** on container startup. Errors are logged and prevent startup. Minimum requirements:
 
-- `chatTarget` ∈ `{googleChat, teams, teamsJson}`
+- `chatTarget` must be `teamsJson`
 - `language` ∈ `{de, en}` (optional, defaults to `de`)
 - at least one entry in `providers`
 - `key` is unique
@@ -291,7 +288,7 @@ The file is validated with **`zod`** on container startup. Errors are logged and
 ## Example (complete)
 
 ```yaml
-chatTarget: googleChat
+chatTarget: teamsJson
 
 providers:
   # --- Atlassian Statuspage ---
@@ -374,7 +371,7 @@ Everything that is not in `providers.yaml` lives as an environment variable on t
 
 | Variable | Required | Description |
 |---|---|---|
-| `WEBHOOK_URL` | yes | Google Chat Incoming Webhook, Teams (Workflows) webhook, or (for `teamsJson`) the JSON-consuming endpoint (e.g. a Logic App HTTP trigger) — matches `chatTarget` |
+| `WEBHOOK_URL` | yes | The endpoint that consumes the JSON envelope and renders the card — an Azure Logic App HTTP trigger in the Raptus deployment, or any Teams (Workflows) webhook fronted by something that builds the card. |
 | `ANTHROPIC_API_KEY` | no | Claude API key. When set, Teams incident titles are machine-translated into `language`. Unset → titles shown untranslated. |
 | `LANGUAGE` | no | Overrides the `language` field from `providers.yaml` (`de` \| `en`). Default: `de`. |
 | `TRANSLATE_MODEL` | no | Claude model id used for translation. Default: `claude-haiku-4-5-20251001`. |

@@ -7,7 +7,7 @@ import type { Server } from "node:http";
 import { startApiServer, type LastRunRef } from "../../src/api/server.js";
 import { createStore, closeStore, type Store } from "../../src/state/store.js";
 
-const STARTER_YAML = `chatTarget: googleChat
+const STARTER_YAML = `chatTarget: teamsJson
 providers:
   - key: bitbucket
     displayName: Bitbucket
