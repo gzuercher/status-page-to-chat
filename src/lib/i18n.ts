@@ -94,8 +94,11 @@ const de: Messages = {
       : `${incidents} Ausfälle bei ${affected} von ${total} Diensten.`,
   reportNoIncidents: "Keine Ausfälle — alle überwachten Dienste liefen durchgehend.",
   reportRankingHeading: "Am häufigsten betroffen",
-  reportProviderLine: (incidents, downtime) =>
-    `${incidents === 1 ? "1 Ausfall" : `${incidents} Ausfälle`}${downtime === "-" ? "" : ` · ${downtime} gesamt`}`,
+  reportProviderLine: (incidents, downtime) => {
+    if (incidents === 0) return "ohne Ausfall";
+    const count = incidents === 1 ? "1 Ausfall" : `${incidents} Ausfälle`;
+    return downtime === "-" ? count : `${count} · ${downtime} gesamt`;
+  },
   reportStillOpen: (count) =>
     count === 1 ? "1 Ausfall ist noch offen." : `${count} Ausfälle sind noch offen.`,
   reportMoreProviders: (count) =>
@@ -132,8 +135,11 @@ const en: Messages = {
       : `${incidents} outages across ${affected} of ${total} services.`,
   reportNoIncidents: "No outages — every monitored service stayed up.",
   reportRankingHeading: "Most affected",
-  reportProviderLine: (incidents, downtime) =>
-    `${incidents === 1 ? "1 outage" : `${incidents} outages`}${downtime === "-" ? "" : ` · ${downtime} total`}`,
+  reportProviderLine: (incidents, downtime) => {
+    if (incidents === 0) return "no outage";
+    const count = incidents === 1 ? "1 outage" : `${incidents} outages`;
+    return downtime === "-" ? count : `${count} · ${downtime} total`;
+  },
   reportStillOpen: (count) =>
     count === 1 ? "1 outage is still open." : `${count} outages are still open.`,
   reportMoreProviders: (count) =>

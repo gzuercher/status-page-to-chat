@@ -49,7 +49,7 @@ That's it. No cloud account, no fork, no infrastructure setup. Adding providers 
 4. On state change, a message is posted via webhook. Three output formats (`chatTarget`):
    - **`teams`** — a finished, localised Adaptive Card (colour-coded red/green, status badge, optional service description; incident titles machine-translated via the Claude API when `ANTHROPIC_API_KEY` is set).
    - **`googleChat`** — a Google Chat Card v2 (English).
-   - **`teamsJson`** — the raw normalized event as JSON (stable schema, `schemaVersion: 2`); a downstream renderer such as an Azure Logic App builds the card centrally. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+   - **`teamsJson`** — the raw normalized event as JSON (stable schema, `schemaVersion: 3`); a downstream renderer such as an Azure Logic App builds the card centrally. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## Configuration
 

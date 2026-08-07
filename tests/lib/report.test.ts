@@ -150,7 +150,43 @@ describe("buildReport", () => {
     const report = buildReport(store, PROVIDERS, "weekly", now);
     expect(report.label).toBe("2026-W31");
     expect(report.totalIncidents).toBe(3);
-    expect(report.byProvider.map((p) => p.providerKey)).toEqual(["vercel", "figma"]);
+    expect(report.providersAffected).toBe(2);
+  });
+
+  it("lists every configured provider, quiet ones included", () => {
+    // The report answers "which service is reliable" — that needs the
+    // quiet ones named, not just the affected.
+    const report = buildReport(store, PROVIDERS, "weekly", now);
+    expect(report.byProvider.map((p) => p.providerKey)).toEqual(["vercel", "figma", "bexio"]);
+    const bexio = report.byProvider[2];
+    expect(bexio).toMatchObject({ incidentCount: 0, openCount: 0, downtimeMs: null });
+  });
+
+  it("sorts quiet providers alphabetically after the affected ones", () => {
+    const many = [
+      ...PROVIDERS,
+      {
+        key: "aaa",
+        displayName: "Aaa",
+        adapter: "atlassian-statuspage",
+        baseUrl: "https://a.example.com",
+      },
+      {
+        key: "zzz",
+        displayName: "Zzz",
+        adapter: "atlassian-statuspage",
+        baseUrl: "https://z.example.com",
+      },
+    ] as ProviderConfig[];
+    const report = buildReport(store, many, "weekly", now);
+    // vercel (2) and figma (1) lead; the zero-incident ones follow by name.
+    expect(report.byProvider.map((p) => p.displayName)).toEqual([
+      "Vercel",
+      "Figma",
+      "Aaa",
+      "Bexio",
+      "Zzz",
+    ]);
   });
 
   it("ranks by incident count, then by downtime", () => {
@@ -188,8 +224,10 @@ describe("buildReport", () => {
   it("reports zeroes for a period with no incidents at all", () => {
     const report = buildReport(store, PROVIDERS, "weekly", new Date("2026-09-16T09:00:00Z"));
     expect(report.totalIncidents).toBe(0);
-    expect(report.byProvider).toEqual([]);
     expect(report.providersAffected).toBe(0);
+    // Still lists everyone — all with a clean sheet.
+    expect(report.byProvider).toHaveLength(3);
+    expect(report.byProvider.every((p) => p.incidentCount === 0)).toBe(true);
   });
 
   it("ignores inverted timestamps instead of producing NaN", async () => {

@@ -180,10 +180,11 @@ function previousPeriodDate(period: ReportPeriod, date: Date): Date {
 /**
  * Builds the report for the period that has just ended.
  *
- * Providers without any incident are deliberately omitted from
- * `byProvider` but still counted in `providersTotal` — "18 of 24 services
- * had no outage at all" is the more useful sentence, and listing two dozen
- * zeroes would bury it.
+ * `byProvider` lists **every configured provider**, including those with
+ * no incident at all. The question the report exists to answer — "which of
+ * our services is actually reliable" — is only answerable when the quiet
+ * ones are named too; a ranking of the affected alone shows the problems
+ * but never the track record.
  */
 export function buildReport(
   store: Store,
@@ -229,8 +230,24 @@ export function buildReport(
     }
   }
 
+  // Configured providers that had no incident still belong in the report.
+  for (const provider of providers) {
+    if (stats.has(provider.key)) continue;
+    stats.set(provider.key, {
+      providerKey: provider.key,
+      displayName: provider.displayName,
+      incidentCount: 0,
+      openCount: 0,
+      downtimeMs: null,
+    });
+  }
+
   const byProvider = [...stats.values()].sort(
-    (a, b) => b.incidentCount - a.incidentCount || (b.downtimeMs ?? 0) - (a.downtimeMs ?? 0),
+    (a, b) =>
+      b.incidentCount - a.incidentCount ||
+      (b.downtimeMs ?? 0) - (a.downtimeMs ?? 0) ||
+      // Stable, readable order among the many zero-incident providers.
+      a.displayName.localeCompare(b.displayName, "de"),
   );
 
   return {
@@ -240,7 +257,9 @@ export function buildReport(
     to,
     totalIncidents: rows.length,
     providersTotal: providers.length,
-    providersAffected: byProvider.length,
+    // Counts only those that actually had something — byProvider now holds
+    // every configured provider, including the quiet ones.
+    providersAffected: byProvider.filter((p) => p.incidentCount > 0).length,
     byProvider,
     silent: findSilentProviders(store, providers, now),
   };

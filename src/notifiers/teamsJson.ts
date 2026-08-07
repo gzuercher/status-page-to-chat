@@ -1,7 +1,8 @@
 import { httpPost } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
-import { getMessages, type Locale } from "../lib/i18n.js";
-import { renderReport, type StatusReport } from "../lib/report.js";
+import type { Locale } from "../lib/i18n.js";
+import { formatDuration } from "../lib/healthTracker.js";
+import type { StatusReport } from "../lib/report.js";
 import type { AdapterHealthAlert, Notifier, NormalizedIncident } from "../lib/types.js";
 
 /**
@@ -12,8 +13,12 @@ import type { AdapterHealthAlert, Notifier, NormalizedIncident } from "../lib/ty
  * v2: stable schema — every optional field is ALWAYS present (`null` when
  *     unset) so the consumer sees the same keys across all variants; added
  *     `severity` and `language`.
+ * v3: reports carry data only. The pre-rendered strings (`title`,
+ *     `summary`, the headings, `line`, `facts`, `silentFacts`) are gone —
+ *     the renderer builds its own wording from the numbers. `downtimeLabel`
+ *     stays: WDL cannot turn milliseconds into "9h 50min".
  */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /** Coarse severity so the renderer can pick colour/emoji without re-deriving from `event`. */
 type Severity = "problem" | "ok";
@@ -71,13 +76,16 @@ type AdapterEvent = {
 };
 
 /**
- * Periodic stability report on the wire.
+ * Periodic stability report on the wire — **data only**.
  *
- * Unlike incidents, the display strings are pre-rendered here rather than
- * left to the renderer: the wording depends on the numbers (singular vs
- * plural, and the "nothing happened" case is a sentence, not an empty
- * list). The structured values are included alongside so a renderer can
- * lay them out differently — e.g. as a table — without re-deriving them.
+ * Earlier versions shipped ready-made sentences alongside the numbers.
+ * That made sense while the renderer was a thin template, but it split the
+ * wording across two repositories: a plural rule lived here, the layout
+ * there. The renderer now derives every string from these fields, so this
+ * type carries facts and nothing else.
+ *
+ * The single exception is `downtimeLabel`. Formatting a duration is the one
+ * transformation the Logic App's expression language genuinely cannot do.
  */
 type JsonReport = {
   period: "weekly" | "monthly" | "quarterly";
@@ -86,65 +94,36 @@ type JsonReport = {
   /** Window covered; `from` inclusive, `to` exclusive. */
   from: string;
   to: string;
-  /** Pre-rendered headline, e.g. "Wochenbericht KW 31/2026". */
-  title: string;
-  /** Pre-rendered one-liner, e.g. "13 Ausfälle bei 6 von 24 Diensten." */
-  summary: string;
-  /** Heading above the ranking; null when there is nothing to rank. */
-  rankingHeading: string | null;
-  /** Note about unresolved outages; null when everything is closed. */
-  stillOpenNote: string | null;
   totalIncidents: number;
   providersTotal: number;
+  /** Of `providersTotal`, how many had at least one incident. */
   providersAffected: number;
   /**
-   * The ranking as ready-to-use Adaptive-Card `FactSet` facts.
-   *
-   * Duplicates `providers` in the shape a renderer actually needs. The
-   * Logic App's Workflow Definition Language has no map/select function —
-   * `select()` is Power Automate, not WDL — so it cannot turn an array of
-   * objects into `{title, value}` pairs itself, and building them by string
-   * concatenation would break on a quote in a provider name. Emitting them
-   * here keeps the renderer a single unconditional reference.
+   * **Every** configured provider, worst first, quiet ones included with
+   * `incidentCount: 0`. Naming the quiet ones is what turns the card from
+   * a problem list into a reliability record.
    */
-  facts: Array<{ title: string; value: string }>;
-  /** Same, for the silent-source list. */
-  silentFacts: Array<{ title: string; value: string }>;
-  /** Heading above the silent-source list; null when every source reported. */
-  silentHeading: string | null;
-  /**
-   * Sources that have never reported anything since we started watching.
-   * Not an alert — a list to read. See lib/report.ts → SilentProvider.
-   */
-  silentProviders: Array<{
-    providerKey: string;
-    displayName: string;
-    /** Days under observation — the basis for "watched for 40 days". */
-    observedDays: number;
-    /**
-     * Incidents the provider's own page listed at the last poll, before our
-     * filters. `0` means the silence is real, `> 0` means nothing reaches
-     * us, `null` means the adapter cannot tell.
-     */
-    upstreamCount: number | null;
-    line: string;
-  }>;
-  /** Worst first. Empty when the period had no incident at all. */
   providers: Array<{
     providerKey: string;
     displayName: string;
     incidentCount: number;
     openCount: number;
-    /**
-     * Summed outage time of the resolved incidents, in milliseconds, or
-     * null when nothing measurable closed. The raw value, so a renderer
-     * can format or aggregate it itself.
-     */
+    /** Summed outage time of the resolved incidents, or null if none closed. */
     downtimeMs: number | null;
-    /** Human duration, e.g. "3h 20min"; "-" when not measurable. */
+    /** Same value formatted, e.g. "3h 20min"; "-" when not measurable. */
     downtimeLabel: string;
-    /** Ready-to-print detail line, e.g. "4 Ausfälle · 3h 20min". */
-    line: string;
+  }>;
+  /**
+   * Sources that have never reported anything since we started watching.
+   * `upstreamCount` is what separates real silence from a silent defect:
+   * `0` = the page reports nothing either, `> 0` = nothing reaches us,
+   * `null` = the adapter cannot tell. See lib/report.ts → SilentProvider.
+   */
+  silentProviders: Array<{
+    providerKey: string;
+    displayName: string;
+    observedDays: number;
+    upstreamCount: number | null;
   }>;
 };
 
@@ -259,7 +238,6 @@ export class TeamsJsonNotifier implements Notifier {
   }
 
   async notifyReport(report: StatusReport): Promise<void> {
-    const rendered = renderReport(report, getMessages(this.language));
     const payload: ReportEvent = {
       schemaVersion: SCHEMA_VERSION,
       source: "status-page-to-chat",
@@ -273,29 +251,22 @@ export class TeamsJsonNotifier implements Notifier {
         label: report.label,
         from: report.from,
         to: report.to,
-        title: rendered.title,
-        summary: rendered.summary,
-        rankingHeading: rendered.rankingHeading,
-        stillOpenNote: rendered.stillOpenNote,
         totalIncidents: report.totalIncidents,
         providersTotal: report.providersTotal,
         providersAffected: report.providersAffected,
-        silentHeading: rendered.silentHeading,
-        silentProviders: report.silent.map((p, i) => ({
+        providers: report.byProvider.map((p) => ({
+          providerKey: p.providerKey,
+          displayName: p.displayName,
+          incidentCount: p.incidentCount,
+          openCount: p.openCount,
+          downtimeMs: p.downtimeMs,
+          downtimeLabel: p.downtimeMs && p.downtimeMs > 0 ? formatDuration(p.downtimeMs) : "-",
+        })),
+        silentProviders: report.silent.map((p) => ({
           providerKey: p.providerKey,
           displayName: p.displayName,
           observedDays: p.observedDays,
           upstreamCount: p.upstreamCount,
-          line: rendered.silentRows[i].line,
-        })),
-        facts: rendered.rows.map((row) => ({ title: row.displayName, value: row.line })),
-        silentFacts: rendered.silentRows.map((row) => ({
-          title: row.displayName,
-          value: row.line,
-        })),
-        providers: rendered.rows.map((row, i) => ({
-          ...row,
-          downtimeMs: report.byProvider[i].downtimeMs,
         })),
       },
     };
