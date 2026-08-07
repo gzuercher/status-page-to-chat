@@ -1,7 +1,7 @@
 {
   "name": "status-page-to-chat",
   "version": "0.3.1",
-  "description": "Self-hosted poller that watches external status pages and posts incidents to Google Chat or Microsoft Teams",
+  "description": "Self-hosted poller that watches external status pages and posts incidents to Microsoft Teams",
   "main": "dist/src/main.js",
   "scripts": {
     "build": "tsc && node -e \"require('node:fs').mkdirSync('dist/src/api', {recursive: true}); require('node:fs').copyFileSync('src/api/openapi.json', 'dist/src/api/openapi.json')\"",
@@ -35,7 +35,6 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^26.1.1",
-    "adaptivecards": "^3.0.6",
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.0.0",
     "prettier": "^3.9.5",

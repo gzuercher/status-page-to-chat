@@ -6,7 +6,7 @@
 #
 # Schema and adapter docs: docs/CONFIGURATION.md, docs/ADAPTERS.md.
 
-chatTarget: googleChat
+chatTarget: teamsJson
 
 providers:
   # --- Atlassian Statuspage ---

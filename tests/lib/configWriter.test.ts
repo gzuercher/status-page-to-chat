@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { upsertProviderInYaml, removeProviderFromYaml } from "../../src/lib/configWriter.js";
 
 const STARTER_YAML = `# Header comment that must survive every edit.
-chatTarget: googleChat
+chatTarget: teamsJson
 
 providers:
   # Bitbucket: Atlassian Statuspage
@@ -80,7 +80,7 @@ describe("configWriter", () => {
     const oneEntry = join(dir, "single.yaml");
     writeFileSync(
       oneEntry,
-      `chatTarget: googleChat
+      `chatTarget: teamsJson
 providers:
   - key: only
     displayName: Only
@@ -98,7 +98,7 @@ providers:
   });
 
   it("preserves YAML anchors used in unaffected entries", () => {
-    const yamlWithAnchors = `chatTarget: googleChat
+    const yamlWithAnchors = `chatTarget: teamsJson
 providers:
   - &shared-ua
     key: bitbucket

@@ -13,7 +13,7 @@
 #
 # Schema and adapter docs: docs/CONFIGURATION.md, docs/ADAPTERS.md.
 
-chatTarget: googleChat        # "teams" (renders the card) or "teamsJson" (posts raw JSON)
+chatTarget: teamsJson        # "teams" (renders the card) or "teamsJson" (posts raw JSON)
 
 # UI language for the chat cards and target language for machine-translated
 # incident titles (Teams). "de" (default) | "en". Title translation also

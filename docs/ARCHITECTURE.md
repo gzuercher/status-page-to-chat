@@ -43,7 +43,7 @@ adapter itself breaks.
      └───────────┬────────────┘
                  ▼
      ┌────────────────────────┐
-     │ Notifier               │ ──► webhook (Teams · Google Chat)
+     │ Notifier               │ ──► webhook (renderer builds the card)
      └────────────────────────┘
 ```
 
@@ -56,13 +56,13 @@ adapter itself breaks.
 | Adapter registry | `src/adapters/index.ts` | Maps adapter key → implementation |
 | Adapters | `src/adapters/*.ts` | One `StatusProvider` implementation per status-page type (8) |
 | Notifier registry | `src/notifiers/index.ts` | Selects the notifier from `chatTarget` |
-| Notifiers | `src/notifiers/{teams,teamsJson,googleChat}.ts` | Builds the card, or emits the raw event as JSON |
+| Notifier | `src/notifiers/teamsJson.ts` | Emits the raw event as JSON; the renderer builds the card |
 | State store | `src/state/store.ts` | SQLite persistence: incidents, observation bookkeeping, metadata, translation cache |
 | Health tracker | `src/lib/healthTracker.ts` | Detects adapters that are down, recovered, or half-dead |
 | Reports | `src/lib/report.ts` | Periodic stability reports and silent-source detection |
 | Logos | `src/lib/logo.ts` | Resolves the brand icon shown on a card |
-| Localisation | `src/lib/i18n.ts` | German/English strings the service authors itself |
-| Translator | `src/lib/translator.ts` | Machine-translates incident titles (Teams target only) |
+| Localisation | `src/lib/i18n.ts` | Wording of the periodic reports |
+| Translator | `src/lib/translator.ts` | Machine-translates incident titles, cached in SQLite |
 | HTTP client | `src/lib/httpClient.ts` | Shared client with User-Agent, timeout, retry and backoff |
 | Error categories | `src/lib/errorCategory.ts` | Maps a thrown error onto a short, stable category |
 | API server | `src/api/server.ts`, `configWriter.ts` | REST management API over the YAML file |

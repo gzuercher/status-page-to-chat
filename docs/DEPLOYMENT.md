@@ -15,7 +15,7 @@ A single Docker container, image pulled from GHCR. The container has two importa
 | Container | `status-page-to-chat` | Long-lived Node.js process |
 | State | Named Docker volume `state` (compose-managed) | Holds `state.sqlite` |
 | Config | `providers.yaml` on the host (mounted) | List of monitored status pages — editable live |
-| `WEBHOOK_URL` | env var | Google Chat or Teams webhook URL |
+| `WEBHOOK_URL` | env var | Webhook of the renderer (Teams workflow or Azure Logic App) |
 | `API_TOKEN` | env var | Bearer token guarding the management API |
 | Logs | Docker `json-file` driver (5×10 MB rotation) | `docker compose logs -f` |
 | Healthcheck | `node main.js health` (built into the image) | `docker inspect` shows `healthy` / `unhealthy` |
@@ -23,7 +23,7 @@ A single Docker container, image pulled from GHCR. The container has two importa
 ## Prerequisites
 
 - A host that runs Docker (24+) with `docker compose`
-- A webhook URL for Google Chat **or** Microsoft Teams (see CONFIGURATION.md for the Teams workflow setup)
+- A webhook URL for the renderer (see CONFIGURATION.md for the Teams workflow setup)
 - Outbound HTTPS access from the host to the status-page endpoints and your chat webhook
 
 The image is public — no GHCR credentials needed.

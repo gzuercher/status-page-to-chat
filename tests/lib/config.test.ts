@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { parseConfigFromString, withDefaults } from "../../src/lib/config.js";
 
 const SAMPLE = `
-chatTarget: googleChat
+chatTarget: teamsJson
 providers: []
 `.trim();
 
@@ -14,14 +14,23 @@ describe("parseConfigFromString — CHAT_TARGET env override", () => {
   it("returns YAML chatTarget when override is unset", () => {
     const result = parseConfigFromString(SAMPLE);
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.config.chatTarget).toBe("googleChat");
+    if (result.ok) expect(result.config.chatTarget).toBe("teamsJson");
   });
 
-  it("overrides chatTarget when env var is set to a valid value", () => {
-    process.env.CHAT_TARGET = "teams";
+  it("accepts the one valid value", () => {
+    process.env.CHAT_TARGET = "teamsJson";
     const result = parseConfigFromString(SAMPLE);
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.config.chatTarget).toBe("teams");
+    if (result.ok) expect(result.config.chatTarget).toBe("teamsJson");
+  });
+
+  it("rejects the removed targets instead of silently ignoring them", () => {
+    // A deployment still carrying chatTarget: teams must fail loudly rather
+    // than quietly posting a format nobody renders any more.
+    for (const removed of ["teams", "googleChat"]) {
+      process.env.CHAT_TARGET = removed;
+      expect(parseConfigFromString(SAMPLE).ok).toBe(false);
+    }
   });
 
   it("rejects an invalid CHAT_TARGET override", () => {
@@ -35,7 +44,7 @@ describe("parseConfigFromString — CHAT_TARGET env override", () => {
     process.env.CHAT_TARGET = "";
     const result = parseConfigFromString(SAMPLE);
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.config.chatTarget).toBe("googleChat");
+    if (result.ok) expect(result.config.chatTarget).toBe("teamsJson");
   });
 });
 
@@ -49,7 +58,7 @@ describe("parseConfigFromString — componentFilter normalisation", () => {
 
   function providerYaml(filterLine: string): string {
     return [
-      "chatTarget: googleChat",
+      "chatTarget: teamsJson",
       "providers:",
       "  - key: claude",
       "    displayName: Claude",
@@ -74,7 +83,7 @@ describe("parseConfigFromString — componentFilter normalisation", () => {
 
   it("passes a YAML list through, trimming entries", () => {
     const yaml = [
-      "chatTarget: googleChat",
+      "chatTarget: teamsJson",
       "providers:",
       "  - key: claude",
       "    displayName: Claude",
@@ -114,7 +123,7 @@ describe("minImpact", () => {
   it("accepts the four Statuspage severity levels", () => {
     for (const level of ["none", "minor", "major", "critical"]) {
       const config = parse(
-        ["chatTarget: googleChat", `minImpact: ${level}`, "providers:", ...provider].join("\n"),
+        ["chatTarget: teamsJson", `minImpact: ${level}`, "providers:", ...provider].join("\n"),
       );
       expect(config.minImpact).toBe(level);
     }
@@ -122,20 +131,20 @@ describe("minImpact", () => {
 
   it("rejects an unknown severity level", () => {
     const result = parseConfigFromString(
-      ["chatTarget: googleChat", "minImpact: catastrophic", "providers: []"].join("\n"),
+      ["chatTarget: teamsJson", "minImpact: catastrophic", "providers: []"].join("\n"),
     );
     expect(result.ok).toBe(false);
   });
 
   it("stays undefined when unset, so nothing is suppressed", () => {
-    const config = parse(["chatTarget: googleChat", "providers:", ...provider].join("\n"));
+    const config = parse(["chatTarget: teamsJson", "providers:", ...provider].join("\n"));
     expect(config.minImpact).toBeUndefined();
     expect(config.providers[0].minImpact).toBeUndefined();
   });
 
   it("applies the global floor to a provider that has none", () => {
     const config = parse(
-      ["chatTarget: googleChat", "minImpact: major", "providers:", ...provider].join("\n"),
+      ["chatTarget: teamsJson", "minImpact: major", "providers:", ...provider].join("\n"),
     );
     expect(withDefaults(config.providers[0], config).minImpact).toBe("major");
   });
@@ -143,7 +152,7 @@ describe("minImpact", () => {
   it("lets a provider override the global floor in both directions", () => {
     const config = parse(
       [
-        "chatTarget: googleChat",
+        "chatTarget: teamsJson",
         "minImpact: major",
         "providers:",
         ...provider,
@@ -160,7 +169,7 @@ describe("minImpact", () => {
   });
 
   it("leaves the provider untouched when no global floor is set", () => {
-    const config = parse(["chatTarget: googleChat", "providers:", ...provider].join("\n"));
+    const config = parse(["chatTarget: teamsJson", "providers:", ...provider].join("\n"));
     expect(withDefaults(config.providers[0], config)).toBe(config.providers[0]);
   });
 });

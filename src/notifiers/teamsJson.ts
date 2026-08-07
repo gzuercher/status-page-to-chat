@@ -3,6 +3,7 @@ import { logger } from "../lib/logger.js";
 import type { Locale } from "../lib/i18n.js";
 import { formatDuration } from "../lib/healthTracker.js";
 import type { StatusReport } from "../lib/report.js";
+import type { Translator } from "../lib/translator.js";
 import type { AdapterHealthAlert, Notifier, NormalizedIncident } from "../lib/types.js";
 
 /**
@@ -32,8 +33,15 @@ type JsonIncident = {
   externalId: string;
   providerKey: string;
   displayName: string;
-  /** Provider-supplied title, verbatim (source language). Translation is the renderer's job. */
+  /**
+   * Incident title, machine-translated into `language` (see translator.ts).
+   * Falls back to the provider's wording whenever translation is
+   * unavailable — no API key, an API failure, or a timeout — so a card is
+   * never blocked by a translation problem.
+   */
   title: string;
+  /** The provider's own wording, always, for traceability against the source. */
+  titleOriginal: string;
   /** One-line service description, or null when the provider has none configured. */
   description: string | null;
   status: "open" | "resolved";
@@ -136,12 +144,16 @@ type ReportEvent = {
   report: JsonReport;
 };
 
-function toJsonIncident(incident: NormalizedIncident): JsonIncident {
+async function toJsonIncident(
+  incident: NormalizedIncident,
+  translator: Translator,
+): Promise<JsonIncident> {
   return {
     externalId: incident.externalId,
     providerKey: incident.providerKey,
     displayName: incident.displayName,
-    title: incident.title,
+    title: await translator.translate(incident.title),
+    titleOriginal: incident.title,
     description: incident.description ?? null,
     status: incident.status,
     url: incident.url,
@@ -177,17 +189,23 @@ function alertSeverity(kind: AdapterHealthAlert["kind"]): Severity {
  * The envelope is deliberately COMPLETE and STABLE: every field a card can
  * show is present, optional fields are `null` (never omitted) so the key set
  * is identical across all variants, and `severity`/`language` are included so
- * the renderer needs no knowledge of our internal derivation rules. The
- * incident `title` is emitted verbatim (source language) — translation, like
- * all presentation, belongs to the central renderer.
+ * the renderer needs no knowledge of our internal derivation rules.
+ *
+ * Incident titles ARE translated here. Layout belongs to the renderer, but
+ * translation needs an API key and a cache, and pushing that into every
+ * consumer would mean each of them holding the key and paying for the same
+ * lookups. `titleOriginal` travels alongside so the source wording stays
+ * traceable.
  */
 export class TeamsJsonNotifier implements Notifier {
   private readonly webhookUrl: string;
   private readonly language: Locale;
+  private readonly translator: Translator;
 
-  constructor(webhookUrl: string, language: Locale) {
+  constructor(webhookUrl: string, language: Locale, translator: Translator) {
     this.webhookUrl = webhookUrl;
     this.language = language;
+    this.translator = translator;
   }
 
   async notifyOpened(incident: NormalizedIncident): Promise<void> {
@@ -197,7 +215,7 @@ export class TeamsJsonNotifier implements Notifier {
       event: "incident.opened",
       severity: "problem",
       language: this.language,
-      incident: toJsonIncident(incident),
+      incident: await toJsonIncident(incident, this.translator),
     };
     await this.send(payload, {
       provider: incident.providerKey,
@@ -213,7 +231,7 @@ export class TeamsJsonNotifier implements Notifier {
       event: "incident.resolved",
       severity: "ok",
       language: this.language,
-      incident: toJsonIncident(incident),
+      incident: await toJsonIncident(incident, this.translator),
     };
     await this.send(payload, {
       provider: incident.providerKey,

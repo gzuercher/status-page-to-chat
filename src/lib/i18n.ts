@@ -1,10 +1,16 @@
 /**
- * Static UI localisation for chat cards.
+ * Localised wording for the periodic stability reports.
  *
- * This dictionary covers everything status-page-to-chat *authors itself*:
- * status badges, button labels, field labels, adapter-health sentences and
- * error categories. Provider-supplied incident titles are NOT covered here
- * — those are machine-translated at render time (see translator.ts).
+ * This used to cover every string on a chat card — badges, buttons, field
+ * labels, health sentences. Those all went with the card-rendering
+ * notifiers: the Logic App builds its own wording from the raw event now.
+ * What remains is the report, because its phrasing depends on the numbers
+ * (singular vs plural, "nothing happened" as a sentence) and that belongs
+ * with the calculation. It is rendered for the `report` CLI subcommand;
+ * the chat card is assembled downstream from the same figures.
+ *
+ * Incident titles are not covered here — they are machine-translated
+ * (see translator.ts).
  *
  * Adding a language: add a `Messages` object and register it in `MESSAGES`.
  * The config `language` enum (config.ts) and this map must stay in sync.
@@ -18,25 +24,6 @@ export type Locale = "de" | "en";
 export const DEFAULT_LOCALE: Locale = "de";
 
 export interface Messages {
-  /** Badge text for a freshly reported incident. */
-  statusOpened: string;
-  /** Badge text for a resolved incident. */
-  statusResolved: string;
-  /** Open-URL action label on incident cards. */
-  viewDetails: string;
-  /** Field label for the incident start timestamp. */
-  since: string;
-  /** Health card: provider could not be polled for `duration`; `error` is a (localised) category. */
-  healthDown: (duration: string, error: string) => string;
-  /** Health card: polling resumed after `duration` of downtime. */
-  healthRecovered: (duration: string) => string;
-  /**
-   * Health card: polled cleanly for `duration`, and the componentFilter
-   * matches nothing the provider currently publishes — the names have
-   * changed, so the provider would stay silent forever. Fires only on that
-   * verdict, never on mere absence of incidents.
-   */
-  healthHalfDead: (duration: string) => string;
   /** Report card: headline naming the period, e.g. "Wochenbericht KW 31". */
   reportTitle: (period: ReportPeriod, label: string) => string;
   /** Report card: one-line summary of incident count and affected services. */
@@ -49,8 +36,6 @@ export interface Messages {
   reportProviderLine: (incidents: number, downtime: string) => string;
   /** Report card: note that some incidents are still open. */
   reportStillOpen: (count: number) => string;
-  /** Report card: note that the ranking was truncated. */
-  reportMoreProviders: (count: number) => string;
   /** Report card: heading above the list of sources that never reported. */
   reportSilentHeading: string;
   /**
@@ -58,32 +43,9 @@ export interface Messages {
    * provider's own page returned before our filters — null when unknown.
    */
   reportSilentLine: (observedDays: number, upstreamCount: number | null) => string;
-  /**
-   * Localises an error category string from errorCategory.ts. Pass-through
-   * for anything not in the map (e.g. "HTTP 404", which is language-neutral).
-   */
-  errorCategory: (category: string) => string;
 }
 
-const ERROR_CATEGORIES_DE: Record<string, string> = {
-  "Authentication failed": "Authentifizierung fehlgeschlagen",
-  Timeout: "Zeitüberschreitung",
-  "DNS lookup failed": "DNS-Auflösung fehlgeschlagen",
-  "Connection refused": "Verbindung abgelehnt",
-  "TLS certificate error": "TLS-Zertifikatsfehler",
-  "Invalid response format": "Ungültiges Antwortformat",
-  "Unknown error": "Unbekannter Fehler",
-};
-
 const de: Messages = {
-  statusOpened: "Störung gemeldet",
-  statusResolved: "Behoben",
-  viewDetails: "Details ansehen",
-  since: "Seit",
-  healthDown: (duration, error) => `Polling seit ${duration} fehlgeschlagen. ${error}.`,
-  healthRecovered: (duration) => `Polling wieder aktiv (war ${duration} ausgefallen).`,
-  healthHalfDead: (duration) =>
-    `Seit ${duration} sauber gepollt, aber der componentFilter passt auf keine Komponente mehr, die der Anbieter publiziert — Namen prüfen.`,
   reportTitle: (period, label) => {
     if (period === "weekly")
       return `Wochenbericht ${label.replace(/^(\d{4})-W(\d+)$/, "KW $2/$1")}`;
@@ -103,8 +65,6 @@ const de: Messages = {
   },
   reportStillOpen: (count) =>
     count === 1 ? "1 Ausfall ist noch offen." : `${count} Ausfälle sind noch offen.`,
-  reportMoreProviders: (count) =>
-    count === 1 ? "und 1 weiterer Dienst" : `und ${count} weitere Dienste`,
   reportSilentHeading: "Ohne jede Meldung",
   reportSilentLine: (observedDays, upstreamCount) => {
     const seit = `seit ${observedDays} Tagen überwacht, nie eine Meldung`;
@@ -113,18 +73,9 @@ const de: Messages = {
       ? `${seit} — Statusseite listet ${upstreamCount} Vorfälle: Filter oder Adapter prüfen`
       : `${seit} — Statusseite meldet ebenfalls nichts`;
   },
-  errorCategory: (category) => ERROR_CATEGORIES_DE[category] ?? category,
 };
 
 const en: Messages = {
-  statusOpened: "Incident reported",
-  statusResolved: "Resolved",
-  viewDetails: "View details",
-  since: "Since",
-  healthDown: (duration, error) => `Unable to poll for the last ${duration}. ${error}.`,
-  healthRecovered: (duration) => `Polling resumed (was down for ${duration}).`,
-  healthHalfDead: (duration) =>
-    `Polled cleanly for ${duration}, but componentFilter no longer matches any component the provider publishes — check the names.`,
   reportTitle: (period, label) => {
     if (period === "weekly")
       return `Weekly report ${label.replace(/^(\d{4})-W(\d+)$/, "week $2/$1")}`;
@@ -144,8 +95,6 @@ const en: Messages = {
   },
   reportStillOpen: (count) =>
     count === 1 ? "1 outage is still open." : `${count} outages are still open.`,
-  reportMoreProviders: (count) =>
-    count === 1 ? "and 1 more service" : `and ${count} more services`,
   reportSilentHeading: "Never reported anything",
   reportSilentLine: (observedDays, upstreamCount) => {
     const seen = `watched for ${observedDays} days, never reported`;
@@ -154,7 +103,6 @@ const en: Messages = {
       ? `${seen} — its status page lists ${upstreamCount} incidents: check the filter or adapter`
       : `${seen} — its status page reports nothing either`;
   },
-  errorCategory: (category) => category,
 };
 
 const MESSAGES: Record<Locale, Messages> = { de, en };

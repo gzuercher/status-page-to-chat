@@ -158,11 +158,19 @@ export const providerSchema = z
  * zod schema for the entire providers.yaml.
  */
 /**
- * Supported chat targets. `teams` renders a finished Adaptive Card;
- * `teamsJson` POSTs the raw normalized event as JSON so a downstream
- * renderer (e.g. an Azure Logic App) builds the card centrally.
+ * Supported chat targets.
+ *
+ * Only `teamsJson` remains: it POSTs the raw normalized event as JSON so a
+ * downstream renderer (an Azure Logic App) builds the card centrally. The
+ * earlier `teams` and `googleChat` targets, which rendered cards
+ * themselves, were removed once that renderer took over — three card
+ * layouts to keep in sync, none of them in use.
+ *
+ * Kept as an enum rather than dropped entirely: `chatTarget` is a
+ * documented config field, and a one-value enum still rejects typos with a
+ * clear message instead of silently ignoring them.
  */
-export const chatTargetSchema = z.enum(["googleChat", "teams", "teamsJson"]);
+export const chatTargetSchema = z.enum(["teamsJson"]);
 
 export const configSchema = z
   .object({
@@ -270,9 +278,10 @@ export function parseConfigFromString(raw: string, filePath = "<in-memory>"): Co
     };
   }
 
-  // Optional env-level override of chatTarget. Lets the seed-from-template
-  // mechanism ship a generic default (googleChat) while a deployment can
-  // pin a different target via env without rewriting the YAML.
+  // Optional env-level override of chatTarget. With a single valid value
+  // this mostly guards against a stale YAML: a deployment still carrying a
+  // removed target fails loudly here instead of posting a format nobody
+  // renders any more.
   const override = process.env.CHAT_TARGET;
   if (override) {
     const validTargets = chatTargetSchema.options;

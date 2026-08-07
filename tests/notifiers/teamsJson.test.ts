@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TeamsJsonNotifier } from "../../src/notifiers/teamsJson.js";
 import type { NormalizedIncident } from "../../src/lib/types.js";
 import type { StatusReport } from "../../src/lib/report.js";
+import type { Translator } from "../../src/lib/translator.js";
 
 vi.mock("../../src/lib/httpClient.js", () => ({
   httpPost: vi.fn(),
@@ -33,8 +34,13 @@ function lastPayload(): Record<string, unknown> {
   return payload as Record<string, unknown>;
 }
 
-function newNotifier(): TeamsJsonNotifier {
-  return new TeamsJsonNotifier("https://logic-app.example/trigger", "de");
+/** Translator stub: marks its input so translation is visible in assertions. */
+const fakeTranslator: Translator = {
+  translate: async (text: string) => `[de] ${text}`,
+};
+
+function newNotifier(translator: Translator = fakeTranslator): TeamsJsonNotifier {
+  return new TeamsJsonNotifier("https://logic-app.example/trigger", "de", translator);
 }
 
 describe("TeamsJsonNotifier", () => {
@@ -62,8 +68,13 @@ describe("TeamsJsonNotifier", () => {
       severity: "problem",
       language: "de",
     });
-    // Every incident field is present verbatim (title untranslated).
-    expect(p.incident).toMatchObject({ ...testIncident });
+    // Every incident field survives; the title arrives translated, with
+    // the provider's own wording alongside it.
+    expect(p.incident).toMatchObject({
+      ...testIncident,
+      title: "[de] CDN Degradation",
+      titleOriginal: "CDN Degradation",
+    });
   });
 
   it("always includes optional fields as null so the key set is stable across variants", async () => {
@@ -103,13 +114,27 @@ describe("TeamsJsonNotifier", () => {
     expect((lastPayload().alert as Record<string, unknown>).errorCategory).toBe("HTTP 503");
   });
 
-  it("emits the incident title verbatim (no translation in JSON mode)", async () => {
+  it("translates the incident title and keeps the original alongside", async () => {
     mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
 
     await newNotifier().notifyOpened(testIncident);
 
-    const incident = lastPayload().incident as NormalizedIncident;
+    const incident = lastPayload().incident as Record<string, unknown>;
+    expect(incident.title).toBe("[de] CDN Degradation");
+    expect(incident.titleOriginal).toBe("CDN Degradation");
+  });
+
+  it("falls back to the provider's wording when translation fails", async () => {
+    // translator.ts swallows its own errors, but a notifier must not depend
+    // on that: a card is never worth losing over a translation problem.
+    mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
+    const passthrough: Translator = { translate: async (text: string) => text };
+
+    await newNotifier(passthrough).notifyOpened(testIncident);
+
+    const incident = lastPayload().incident as Record<string, unknown>;
     expect(incident.title).toBe("CDN Degradation");
+    expect(incident.titleOriginal).toBe("CDN Degradation");
   });
 
   it("uses the incident.resolved event for a resolved incident", async () => {

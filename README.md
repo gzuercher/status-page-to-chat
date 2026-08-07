@@ -4,7 +4,7 @@
 
 # status-page-to-chat
 
-A small self-hosted service that monitors the status pages of external providers and posts new incidents and their resolutions to **Google Chat** or **Microsoft Teams**.
+A small self-hosted service that monitors the status pages of external providers and posts new incidents and their resolutions to **Microsoft Teams**.
 
 Designed to be cheap and forgettable: a single Docker container, SQLite for state, a webhook URL as the only required secret. Adapter types for Atlassian Statuspage, Google Workspace, WEDOS, GitHub Issues, BetterStack RSS, Hund.io Atom, Zendesk SSP and a generic HTML scraper cover dozens of services — you wire up the ones you care about after the container is running.
 
@@ -14,7 +14,7 @@ Designed to be cheap and forgettable: a single Docker container, SQLite for stat
 
 You need a Docker host. Anywhere will do — a Synology, a Raspberry Pi, a small VM, your laptop while you try it out.
 
-1. **Get a webhook URL** for your chat target (Google Chat: channel `⋮` → Apps & integrations → Webhooks; Teams: channel `…` → Workflows → "Post to a channel when a webhook request is received"). Copy the URL.
+1. **Get a webhook URL** for the target that renders the cards — either a Teams workflow (channel `…` → Workflows → "Post to a channel when a webhook request is received") or, as in the Raptus deployment, an Azure Logic App that builds the card centrally. Copy the URL.
 2. **Deploy with zero providers configured**:
 
    ```bash
@@ -47,8 +47,6 @@ That's it. No cloud account, no fork, no infrastructure setup. Adding providers 
 2. For each configured service, the status page is queried via the appropriate **adapter** (see [docs/ADAPTERS.md](docs/ADAPTERS.md) for the full list).
 3. New or newly resolved incidents are compared against the last known state (SQLite).
 4. On state change, a message is posted via webhook. Three output formats (`chatTarget`):
-   - **`teams`** — a finished, localised Adaptive Card (colour-coded red/green, status badge, optional service description; incident titles machine-translated via the Claude API when `ANTHROPIC_API_KEY` is set).
-   - **`googleChat`** — a Google Chat Card v2 (English).
    - **`teamsJson`** — the raw normalized event as JSON (stable schema, `schemaVersion: 3`); a downstream renderer such as an Azure Logic App builds the card centrally. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## Configuration
@@ -74,8 +72,8 @@ Environment variables you can set:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `WEBHOOK_URL` | required | Google Chat webhook, Teams (Workflows) webhook, or — for `teamsJson` — the JSON-consuming endpoint (e.g. a Logic App HTTP trigger) |
-| `CHAT_TARGET` | from `providers.yaml` | Overrides the configured chat target (`googleChat` \| `teams` \| `teamsJson`) |
+| `WEBHOOK_URL` | required | Endpoint that consumes the JSON envelope and renders the card (e.g. an Azure Logic App HTTP trigger) |
+| `CHAT_TARGET` | from `providers.yaml` | Overrides the configured chat target; `teamsJson` is the only valid value |
 | `LANGUAGE` | `de` | UI language of the Teams cards (`de` \| `en`) |
 | `ANTHROPIC_API_KEY` | — | Claude API key; when set, Teams incident titles are machine-translated |
 | `TRANSLATE_MODEL` | `claude-haiku-4-5-20251001` | Claude model used for translation |

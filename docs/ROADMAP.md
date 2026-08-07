@@ -16,8 +16,9 @@ opens up.
   provider (e.g. DevOps room vs. support room).
 - **Scheduled maintenance as a separate message type** — distinguish
   planned maintenance from unexpected outages in the card layout.
-- **Slack notifier** — symmetric to the existing Teams / Google Chat
-  notifiers.
+- **Slack notifier** — would mean reintroducing card rendering in this
+  service, which was deliberately removed. More likely: a second consumer
+  of the JSON envelope, alongside the Logic App.
 - **Sophos WAF workaround** — `status.sophos.com` sits behind a WAF
   that returns `HTTP 403 "Invalid request blocked (v1)"` for our
   standard User-Agent. Browser-UA impersonation is forbidden by our

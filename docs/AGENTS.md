@@ -54,9 +54,7 @@ To minimise merge conflicts, the project is divided into **independent zones**:
 | Adapter: feeds | `adapter-feeds` | `src/adapters/{betterstackFeed,hundAtom}.ts` + tests |
 | Adapter: Zendesk | `adapter-zendesk` | `src/adapters/zendeskSsp.ts` + test |
 | Adapter: HTML | `adapter-html` | `src/adapters/htmlScrape.ts` + test |
-| Notifier: Google Chat | `notifier-gchat` | `src/notifiers/googleChat.ts` + test |
-| Notifier: Teams | `notifier-teams` | `src/notifiers/teams.ts` + test |
-| Notifier: Teams JSON | `notifier-teamsjson` | `src/notifiers/teamsJson.ts` + test |
+| Notifier | `notifier` | `src/notifiers/teamsJson.ts` + test |
 | Health & reports | `observability` | `src/lib/healthTracker.ts`, `src/lib/report.ts` |
 | Presentation | `presentation` | `src/lib/i18n.ts`, `src/lib/logo.ts`, `src/lib/translator.ts` |
 | Orchestration | `orchestration` | `src/main.ts`, `src/cli/*` |
