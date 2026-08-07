@@ -85,10 +85,10 @@ Both targets POST to the same kind of webhook (`WEBHOOK_URL`), but differ in the
   centrally across several feeds. No translation happens here — the raw source-language `title` is sent,
   and any translation/presentation belongs to the central renderer.
 
-The JSON envelope (`teamsJson`, `schemaVersion: 2`). The key set is **stable across all variants**: every optional field is always present as `null` when unset (never omitted), so a template engine like Logic Apps can reference every field unconditionally. `severity` and `language` are included so the renderer needs no knowledge of our internal derivation rules; `title` is verbatim (source language) — translation belongs to the renderer.
+The JSON envelope (`teamsJson`, `schemaVersion: 3`). The key set is **stable across all variants**: every optional field is always present as `null` when unset (never omitted), so a template engine like Logic Apps can reference every field unconditionally. `severity` and `language` are included so the renderer needs no knowledge of our internal derivation rules; `title` is verbatim (source language) — translation belongs to the renderer.
 
 ```json
-{ "schemaVersion": 2, "source": "status-page-to-chat",
+{ "schemaVersion": 3, "source": "status-page-to-chat",
   "event": "incident.opened",           // incident.opened | incident.resolved
   "severity": "problem",                // problem (opened) | ok (resolved)
   "language": "de",                     // configured target UI language
@@ -103,7 +103,7 @@ The JSON envelope (`teamsJson`, `schemaVersion: 2`). The key set is **stable acr
 ```
 
 ```json
-{ "schemaVersion": 2, "source": "status-page-to-chat",
+{ "schemaVersion": 3, "source": "status-page-to-chat",
   "event": "adapter.down",              // adapter.down | adapter.recovered | adapter.halfDead
   "severity": "problem",                // problem (down, halfDead) | ok (recovered)
   "language": "de",
@@ -118,51 +118,46 @@ The JSON envelope (`teamsJson`, `schemaVersion: 2`). The key set is **stable acr
 ```
 
 ```json
-{ "schemaVersion": 2, "source": "status-page-to-chat",
+{ "schemaVersion": 3, "source": "status-page-to-chat",
   "event": "report.weekly",             // report.weekly | report.monthly | report.quarterly
   "severity": "ok",                     // always ok — a report summarises the past
   "language": "de",
   "report": {
     "period": "weekly", "label": "2026-W31",
     "from": "…", "to": "…",             // window; from inclusive, to exclusive
-    "title": "Wochenbericht KW 31/2026",           // pre-rendered, localised
-    "summary": "9 Ausfälle bei 7 von 24 Diensten.",// pre-rendered, localised
-    "rankingHeading": "Am häufigsten betroffen",   // string | null (null = no incidents)
-    "silentHeading": "Ohne jede Meldung",          // string | null (null = none silent)
-    "facts": [                                     // ranking as Adaptive-Card FactSet pairs
-      { "title": "Retool", "value": "2 Ausfälle · 9h 50min gesamt" }
-    ],
-    "silentFacts": [                               // same, for the silent-source list
-      { "title": "WEDOS", "value": "seit 40 Tagen überwacht, nie eine Meldung — …" }
-    ],
-    "silentProviders": [                           // sources that never reported; may be empty
-      { "providerKey": "wedos", "displayName": "WEDOS",
-        "observedDays": 40,             // raw
-        "upstreamCount": 0,             // number | null — 0 = silence is real, >0 = nothing reaches us
-        "line": "seit 40 Tagen überwacht, nie eine Meldung — Statusseite meldet ebenfalls nichts" }
-    ],
-    "stillOpenNote": "1 Ausfall ist noch offen.",  // string | null
-    "totalIncidents": 9, "providersTotal": 24, "providersAffected": 7,
-    "providers": [                      // worst first; empty when nothing happened
+    "totalIncidents": 9,
+    "providersTotal": 25,
+    "providersAffected": 7,             // of providersTotal, how many had something
+    "providers": [                      // EVERY configured provider, worst first
       { "providerKey": "retool", "displayName": "Retool",
         "incidentCount": 2, "openCount": 0,
-        "downtimeMs": 35400000,         // number | null — raw, for own formatting
-        "downtimeLabel": "9h 50min",    // "-" when nothing measurable closed
-        "line": "2 Ausfälle · 9h 50min gesamt" }   // pre-rendered detail line
+        "downtimeMs": 35400000,         // number | null — resolved incidents only
+        "downtimeLabel": "9h 50min" },  // "-" when nothing measurable closed
+      { "providerKey": "bexio", "displayName": "Bexio",
+        "incidentCount": 0, "openCount": 0,
+        "downtimeMs": null, "downtimeLabel": "-" }
+    ],
+    "silentProviders": [                // never reported anything; may be empty
+      { "providerKey": "wedos", "displayName": "WEDOS",
+        "observedDays": 40,
+        "upstreamCount": 0 }            // number | null — 0 = silence is real, >0 = nothing reaches us
     ] } }
 ```
 
-`facts` / `silentFacts` duplicate `providers` / `silentProviders` in the exact shape an Adaptive-Card
-`FactSet` expects. The Logic App's Workflow Definition Language has **no map/select function** —
-`select()` is Power Automate, not WDL — so the renderer cannot turn an array of objects into
-`{title, value}` pairs itself, and building them by string concatenation would break on a quote in a
-provider name. Emitting both keeps the renderer a single unconditional reference.
+**Version 3 carries data only.** Earlier versions shipped ready-made sentences (`title`, `summary`,
+the headings, per-provider `line`, and `facts`/`silentFacts` as Adaptive-Card pairs) alongside the
+numbers. That made sense while the renderer was a thin template, but it split the wording across two
+repositories — a plural rule lived here, the layout there. The renderer now derives every string
+from the fields above.
 
-Reports are the one variant whose display strings are **pre-rendered here** rather than left to the
-renderer. The wording depends on the numbers — singular vs plural, and "nothing happened" reads as a
-sentence rather than an empty list — so it belongs with the calculation. The structured values are
-included alongside, so a renderer is free to lay them out differently (a table, say) without
-re-deriving anything.
+The one exception is `downtimeLabel`: formatting a duration is the single transformation the Logic
+App's expression language genuinely cannot do.
+
+A renderer that has to build a list from `providers` should know that the Workflow Definition
+Language has **no map function** (`select()` is Power Automate, not WDL). The way to do it is
+`Initialize variable` → `Foreach` with `runtimeConfiguration.concurrency.repetitions: 1`, so the
+ranking order survives → `Append to array variable`. Never build JSON by string concatenation — a
+quote in a provider name breaks it.
 
 ## Periodic stability reports
 
@@ -183,6 +178,10 @@ and never sends the same one twice.
 On first start nothing is due — the current labels are recorded silently, so the first real report
 covers a period that was observed in full. Without that, a fresh container would immediately emit
 three reports about windows it has no data for.
+
+The ranking names **every configured provider**, including those with no incident at all. A list of
+only the affected shows the problems but never the track record — and "which of our services is
+actually reliable" is the question the report exists to answer.
 
 Reports count **what was actually notified**: anything suppressed by `componentFilter` or
 `minImpact`, and anything already resolved when first seen, never enters the state store and

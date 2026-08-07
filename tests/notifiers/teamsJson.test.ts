@@ -56,7 +56,7 @@ describe("TeamsJsonNotifier", () => {
     expect(p.type).toBeUndefined();
     expect(p.body).toBeUndefined();
     expect(p).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       source: "status-page-to-chat",
       event: "incident.opened",
       severity: "problem",
@@ -134,7 +134,7 @@ describe("TeamsJsonNotifier", () => {
 
     const p = lastPayload();
     expect(p).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       source: "status-page-to-chat",
       event: "adapter.down",
       severity: "problem",
@@ -188,31 +188,36 @@ describe("TeamsJsonNotifier — report envelope", () => {
     const payload = lastPayload();
     expect(payload.event).toBe("report.weekly");
     expect(payload.severity).toBe("ok");
-    expect(payload.schemaVersion).toBe(2);
+    expect(payload.schemaVersion).toBe(3);
   });
 
-  it("emits FactSet-ready pairs the renderer can reference directly", async () => {
-    // The Logic App's WDL has no map/select, so it cannot build these itself.
+  it("carries data only — no pre-rendered wording", async () => {
+    // v3: the renderer builds its own sentences from the numbers.
     await newNotifier().notifyReport(report);
     const r = lastPayload().report as Record<string, unknown>;
-    expect(r.facts).toEqual([
-      { title: "Retool", value: "2 Ausfälle · 1h 30min gesamt" },
-      { title: 'Figma "EU"', value: "1 Ausfall" },
-    ]);
-    expect(r.silentFacts).toEqual([
-      {
-        title: "WEDOS",
-        value: "seit 40 Tagen überwacht, nie eine Meldung — Statusseite meldet ebenfalls nichts",
-      },
-    ]);
+    for (const gone of [
+      "title",
+      "summary",
+      "rankingHeading",
+      "silentHeading",
+      "stillOpenNote",
+      "facts",
+      "silentFacts",
+    ]) {
+      expect(r).not.toHaveProperty(gone);
+    }
+    expect(r).not.toHaveProperty("providers.0.line");
+    expect((r.providers as Array<Record<string, unknown>>)[0]).not.toHaveProperty("line");
   });
 
-  it("keeps the structured arrays alongside the rendered pairs", async () => {
+  it("keeps the formatted duration, the one thing WDL cannot derive", async () => {
     await newNotifier().notifyReport(report);
-    const r = lastPayload().report as Record<string, unknown>;
-    expect((r.providers as unknown[]).length).toBe(2);
-    expect((r.silentProviders as unknown[]).length).toBe(1);
-    expect(r.title).toBe("Wochenbericht KW 31/2026");
+    const providers = (lastPayload().report as Record<string, unknown>).providers as Array<
+      Record<string, unknown>
+    >;
+    expect(providers[0].downtimeLabel).toBe("1h 30min");
+    // Nothing measurable closed — label degrades, raw value stays null.
+    expect(providers[1]).toMatchObject({ downtimeMs: null, downtimeLabel: "-" });
   });
 
   it("carries the raw values a renderer needs to format things itself", async () => {
@@ -234,7 +239,7 @@ describe("TeamsJsonNotifier — report envelope", () => {
     });
   });
 
-  it("sends empty fact arrays rather than omitting them when nothing happened", async () => {
+  it("sends empty arrays rather than omitting them when nothing happened", async () => {
     // A stable key set is what lets the renderer reference fields unconditionally.
     await newNotifier().notifyReport({
       ...report,
@@ -244,9 +249,8 @@ describe("TeamsJsonNotifier — report envelope", () => {
       silent: [],
     });
     const r = lastPayload().report as Record<string, unknown>;
-    expect(r.facts).toEqual([]);
-    expect(r.silentFacts).toEqual([]);
-    expect(r.rankingHeading).toBeNull();
-    expect(r.silentHeading).toBeNull();
+    expect(r.providers).toEqual([]);
+    expect(r.silentProviders).toEqual([]);
+    expect(r.totalIncidents).toBe(0);
   });
 });
