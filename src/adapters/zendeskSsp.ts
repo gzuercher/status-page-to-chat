@@ -1,7 +1,7 @@
 import { httpGet } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
 import { resolveProviderLogoUrl } from "../lib/logo.js";
-import type { NormalizedIncident, StatusProvider } from "../lib/types.js";
+import type { FetchContext, NormalizedIncident, StatusProvider } from "../lib/types.js";
 import type { ProviderConfig } from "../lib/config.js";
 
 /**
@@ -78,7 +78,7 @@ export class ZendeskSspAdapter implements StatusProvider {
     });
   }
 
-  async fetchIncidents(): Promise<NormalizedIncident[]> {
+  async fetchIncidents(context?: FetchContext): Promise<NormalizedIncident[]> {
     const incidentsUrl = `${this.baseUrl}${INCIDENTS_PATH}`;
     const incidentsResponse = await httpGet(incidentsUrl, {
       accept: "application/json",
@@ -107,7 +107,11 @@ export class ZendeskSspAdapter implements StatusProvider {
     const normalized: NormalizedIncident[] = [];
 
     for (const inc of incidentsData.data) {
-      if (!this.matchesFilter(inc, serviceNameByRefId)) continue;
+      // Already-reported incidents bypass the filter so their resolution
+      // still reaches us after a filter edit. See FetchContext.
+      if (!this.matchesFilter(inc, serviceNameByRefId) && !context?.trackedOpenIds.has(inc.id)) {
+        continue;
+      }
 
       const isResolved = inc.attributes.status === "resolved" || !!inc.attributes.resolvedAt;
       normalized.push({

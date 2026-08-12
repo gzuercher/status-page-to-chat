@@ -320,6 +320,103 @@ describe("AtlassianStatuspageAdapter", () => {
 
       expect(await adapter.fetchIncidents()).toHaveLength(2);
     });
+  });
+
+  /**
+   * Regression: a reported incident must reach its resolution card.
+   *
+   * Filters gate entry, not exit. Statuspage downgrades `major` to `minor`
+   * once an incident reaches monitoring, and editing `minImpact` or
+   * `componentFilter` strands whatever is in flight — in both cases the
+   * incident silently leaves the watched set and the all-clear never fires,
+   * leaving readers to believe an outage is ongoing.
+   */
+  describe("trackedOpenIds", () => {
+    const downgraded = {
+      incidents: [
+        {
+          id: "i-downgraded",
+          name: "Degraded performance for multiple models",
+          status: "monitoring",
+          impact: "minor",
+          created_at: "2026-08-01T10:00:00Z",
+          updated_at: "2026-08-01T12:00:00Z",
+        },
+      ],
+    };
+
+    it("keeps an already-reported incident that fell below minImpact", async () => {
+      mockedHttpGet
+        .mockResolvedValueOnce(mockJsonResponse(downgraded))
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }));
+      const adapter = new AtlassianStatuspageAdapter({ ...baseConfig, minImpact: "major" });
+
+      const result = await adapter.fetchIncidents({
+        trackedOpenIds: new Set(["i-downgraded"]),
+      });
+
+      expect(result.map((i) => i.externalId)).toEqual(["i-downgraded"]);
+    });
+
+    it("still drops the same incident when it was never reported", async () => {
+      mockedHttpGet
+        .mockResolvedValueOnce(mockJsonResponse(downgraded))
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }));
+      const adapter = new AtlassianStatuspageAdapter({ ...baseConfig, minImpact: "major" });
+
+      const result = await adapter.fetchIncidents({ trackedOpenIds: new Set() });
+
+      expect(result).toHaveLength(0);
+    });
+
+    it("delivers the resolution of a tracked incident", async () => {
+      mockedHttpGet
+        .mockResolvedValueOnce(
+          mockJsonResponse({
+            incidents: [{ ...downgraded.incidents[0], status: "resolved" }],
+          }),
+        )
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }));
+      const adapter = new AtlassianStatuspageAdapter({ ...baseConfig, minImpact: "major" });
+
+      const result = await adapter.fetchIncidents({
+        trackedOpenIds: new Set(["i-downgraded"]),
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].status).toBe("resolved");
+    });
+
+    it("keeps a tracked incident that no longer matches componentFilter", async () => {
+      mockedHttpGet
+        .mockResolvedValueOnce(
+          mockJsonResponse({
+            incidents: [
+              {
+                id: "i-renamed",
+                name: "Outage",
+                status: "resolved",
+                impact: "critical",
+                created_at: "2026-08-01T10:00:00Z",
+                updated_at: "2026-08-01T12:00:00Z",
+                components: [{ id: "c1", name: "Renamed Component" }],
+              },
+            ],
+          }),
+        )
+        .mockResolvedValueOnce(mockJsonResponse({ incidents: [] }))
+        .mockResolvedValueOnce(mockJsonResponse({ components: [] }));
+      const adapter = new AtlassianStatuspageAdapter({
+        ...baseConfig,
+        componentFilter: ["Old Component"],
+      });
+
+      const result = await adapter.fetchIncidents({
+        trackedOpenIds: new Set(["i-renamed"]),
+      });
+
+      expect(result.map((i) => i.externalId)).toEqual(["i-renamed"]);
+    });
 
     it("applies minImpact on top of componentFilter, not instead of it", async () => {
       mockEndpoints(

@@ -25,6 +25,7 @@ import {
   closeStore,
   createStore,
   diffIncidents,
+  getOpenIncidentIds,
   getStoredIncidents,
   recordProviderPoll,
   setMetadata,
@@ -80,7 +81,10 @@ async function runPoll(
     const adapterResults = await Promise.allSettled(
       providers.map(async (providerConfig) => {
         const adapter = createAdapter(providerConfig);
-        const incidents = await adapter.fetchIncidents();
+        // Hand the adapter the incidents we already owe a resolution card
+        // for, so no filter can drop one mid-flight. See FetchContext.
+        const trackedOpenIds = await getOpenIncidentIds(store, providerConfig.key);
+        const incidents = await adapter.fetchIncidents({ trackedOpenIds });
         return {
           providerKey: providerConfig.key,
           incidents,

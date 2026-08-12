@@ -116,10 +116,34 @@ Severity is kept separately: Atlassian Statuspage publishes `none`/`minor`/`majo
    - unknown + `open` → notify opened
    - known as `open`, now `resolved` → notify resolved
    - otherwise → nothing
+
+   Step 3 receives the IDs this provider has stored as `open` and lets them through
+   unfiltered — see below.
 6. **Notify** and persist the row, marking what was actually sent.
 7. **Health tracking** over the whole cycle, so global suppression can see the full failure ratio.
 8. **Periodic reports**, if a reporting period ended — unless `REPORTS_SCHEDULER=external`, where
    host cron drives them instead.
+
+### Once reported, always followed
+
+Filters (`componentFilter`, `minImpact`, the BetterStack age cap) decide what to **start**
+reporting. They are never consulted about an incident already reported and still awaiting its
+resolution card. Before polling, the loop reads the provider's stored `open` IDs and passes them to
+the adapter as `FetchContext.trackedOpenIds`; every adapter that discards incidents must let those
+through.
+
+The rule exists because the alternative fails silently and in the worst possible direction:
+
+- Statuspage **downgrades** `major` to `minor` once an incident reaches monitoring. With
+  `minImpact: major`, the incident leaves the watched set between the problem card and the all-clear.
+- Editing `minImpact` or `componentFilter` strands whatever is in flight at that moment.
+- The BetterStack feed has no "unresolved" endpoint, so an incident that stays open past the 7-day
+  age cap drops out of view entirely.
+
+In each case the diff never sees the incident again, so `notify_resolved` cannot fire. The reader is
+left with a problem card and no all-clear, believing an outage continues — worse than never having
+reported it. Twelve incidents were stuck this way before the rule existed, the oldest by three
+months.
 
 ## State schema (SQLite)
 

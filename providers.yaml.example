@@ -23,10 +23,17 @@ language: de
 # Lowest incident severity that still produces a card:
 # "none" | "minor" | "major" | "critical". Omit to report everything.
 # Only atlassian-statuspage publishes a severity; every other adapter
-# ignores this. Overridable per provider. "major" removes roughly three
-# quarters of the volume on busy pages — Cloudflare alone publishes ~22
-# "minor" regional blips a month. See docs/ADAPTERS.md → Severity filter.
-minImpact: major
+# ignores this. Overridable per provider.
+#
+# "minor" is the right global floor: it drops only "none" (informational
+# notices, maintenance windows) and keeps everything a user would notice.
+# Do NOT set "major" globally — most vendors reserve it for total outages
+# and classify a real, user-visible degradation as "minor". Anthropic, for
+# example, publishes roughly three times as many "minor" as "major".
+#
+# Dampen loud sources individually instead, on the provider entry. See
+# docs/ADAPTERS.md → Severity filter.
+minImpact: minor
 
 providers: []
 

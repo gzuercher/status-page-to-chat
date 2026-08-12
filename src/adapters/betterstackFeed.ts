@@ -2,7 +2,7 @@ import { XMLParser } from "fast-xml-parser";
 import { httpGet } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
 import { resolveProviderLogoUrl } from "../lib/logo.js";
-import type { NormalizedIncident, StatusProvider } from "../lib/types.js";
+import type { FetchContext, NormalizedIncident, StatusProvider } from "../lib/types.js";
 import type { ProviderConfig } from "../lib/config.js";
 
 /**
@@ -118,7 +118,7 @@ export class BetterStackFeedAdapter implements StatusProvider {
     this.parser = new XMLParser({ ignoreAttributes: true, trimValues: true });
   }
 
-  async fetchIncidents(): Promise<NormalizedIncident[]> {
+  async fetchIncidents(context?: FetchContext): Promise<NormalizedIncident[]> {
     const url = `${this.baseUrl}${FEED_PATH}`;
     const response = await httpGet(url, {
       accept: "application/atom+xml, application/rss+xml, application/xml",
@@ -196,7 +196,13 @@ export class BetterStackFeedAdapter implements StatusProvider {
     const cutoff = Date.now() - MAX_INCIDENT_AGE_DAYS * 24 * 60 * 60 * 1000;
     const normalized: NormalizedIncident[] = [];
     for (const [externalId, agg] of byIncident) {
-      if (new Date(agg.updatedAt).getTime() < cutoff) continue;
+      // The age cap keeps the feed's back catalogue out, but it must not
+      // strand an incident we already reported: this feed carries no
+      // "unresolved" endpoint, so an incident that stays open past the
+      // cutoff would drop out and its resolution never arrive.
+      if (new Date(agg.updatedAt).getTime() < cutoff && !context?.trackedOpenIds.has(externalId)) {
+        continue;
+      }
       normalized.push({
         externalId,
         providerKey: this.key,

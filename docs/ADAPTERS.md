@@ -81,14 +81,38 @@ Statuspage classifies every incident as `none`, `minor`, `major` or `critical`. 
 
 Configurable per provider, or deployment-wide via the top-level `minImpact`; the provider's own value wins. Unset means everything is reported.
 
-This is a volume control, and the numbers argue for using it. Measured over the 18 configured Statuspage providers:
+This is a volume control. Measured over the configured Statuspage providers, per 30 days:
 
-| | incidents/month | cards/month |
+| | incidents | cards |
 |---|---|---|
-| everything | 133 | 265 |
-| `minImpact: major` | 33 | 66 |
+| everything | 161 | 322 |
+| `minImpact: minor` | 144 | 288 |
+| `minImpact: minor`, Cloudflare `major` | 106 | 212 |
+| `minImpact: major` | 39 | 78 |
 
-The bulk of what it removes is regional noise nobody acts on — Cloudflare alone publishes ~22 `minor` incidents a month along the lines of "Network Performance Issues in Bangalore". Note that each incident produces **two** cards (opened + resolved), so incident counts double.
+Each incident produces **two** cards (opened + resolved), so incident counts double.
+
+#### Do not raise this deployment-wide
+
+`major` looks like the obvious setting and is a trap. Vendors reserve it for a total outage and classify a real, user-visible degradation as `minor`:
+
+| | `minor` | `major` |
+|---|---:|---:|
+| Anthropic | 30 | 11 |
+| GitHub | 17 | 6 |
+| Cloudflare | 38 | 3 |
+
+At `minImpact: major` an Anthropic incident affecting `claude.ai`, `Claude Code` and the API — the kind users notice immediately — produces no card at all. Roughly three quarters of what these providers report is invisible.
+
+`minor` is therefore the right global floor: it removes only `none`, which is informational notices and maintenance banners.
+
+Loud sources are dampened **individually** instead. Cloudflare is the clear case: ~38 `minor` a month, nearly all single-datacentre blips in regions we do not serve, so it carries `minImpact: major` on its own entry.
+
+#### Filters gate entry, not exit
+
+`minImpact` decides what to **start** reporting. It never applies to an incident already reported and awaiting its resolution card — those bypass every filter (see [ARCHITECTURE.md](ARCHITECTURE.md#once-reported-always-followed)).
+
+Without that rule the filter produces silent half-truths: Statuspage routinely downgrades `major` to `minor` when an incident enters monitoring, so the incident leaves the watched set between the problem card and the all-clear. The reader is left believing an outage is ongoing — a worse outcome than never having reported it.
 
 An incident whose `impact` is missing or unrecognised is always reported. Suppressing what we cannot classify would hide exactly the surprises this service exists to surface.
 

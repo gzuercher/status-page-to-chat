@@ -112,6 +112,27 @@ export async function getStoredIncidents(
 }
 
 /**
+ * External IDs this provider has stored as `open` — the incidents we have
+ * reported and still owe a resolution card for.
+ *
+ * Read before polling and handed to the adapter as {@link FetchContext}, so
+ * filters cannot drop an incident that is already in flight. See the type's
+ * documentation for why that matters.
+ */
+export async function getOpenIncidentIds(
+  store: Store,
+  providerKey: string,
+): Promise<ReadonlySet<string>> {
+  const rows = store
+    .prepare<[string], { external_id: string }>(
+      `SELECT external_id FROM incidents WHERE provider_key = ? AND status = 'open'`,
+    )
+    .all(providerKey);
+
+  return new Set(rows.map((row) => row.external_id));
+}
+
+/**
  * Compares current incidents against the stored state and determines
  * which actions are needed. Pure function — safe to call from anywhere.
  */
