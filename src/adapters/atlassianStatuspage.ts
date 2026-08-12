@@ -1,7 +1,7 @@
 import { httpGet } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
 import { resolveProviderLogoUrl } from "../lib/logo.js";
-import type { NormalizedIncident, StatusProvider } from "../lib/types.js";
+import type { FetchContext, NormalizedIncident, StatusProvider } from "../lib/types.js";
 import { IMPACT_RANK, type Impact, type ProviderConfig } from "../lib/config.js";
 
 /**
@@ -124,7 +124,7 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
     });
   }
 
-  async fetchIncidents(): Promise<NormalizedIncident[]> {
+  async fetchIncidents(context?: FetchContext): Promise<NormalizedIncident[]> {
     // Fetch open incidents
     const unresolvedUrl = `${this.baseUrl}/api/v2/incidents/unresolved.json`;
     const unresolvedResponse = await httpGet(unresolvedUrl, {
@@ -161,17 +161,27 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
 
     const normalized: NormalizedIncident[] = [];
     let belowMinImpact = 0;
+    // Incidents that only survived because we already reported them. A
+    // non-zero count is expected and healthy — it is the resolution card
+    // being rescued from a filter that would otherwise swallow it.
+    let rescued = 0;
 
     for (const incident of incidentMap.values()) {
-      if (!this.passesFilter(incident, targets)) {
-        continue;
-      }
+      // Incidents we already reported bypass every filter — we owe them a
+      // resolution card. Filters decide what to start reporting, never
+      // whether to abandon something already in flight. See FetchContext.
+      const isTracked = context?.trackedOpenIds.has(incident.id) ?? false;
+      const wouldBeFiltered =
+        !this.passesFilter(incident, targets) || !meetsMinImpact(incident, this.minImpact);
 
-      // Severity is checked after the component filter so the log counts
-      // only incidents that were actually relevant to this provider.
-      if (!meetsMinImpact(incident, this.minImpact)) {
-        belowMinImpact++;
-        continue;
+      if (wouldBeFiltered) {
+        if (!isTracked) {
+          // Severity is counted after the component filter so the log
+          // reflects only incidents relevant to this provider.
+          if (this.passesFilter(incident, targets)) belowMinImpact++;
+          continue;
+        }
+        rescued++;
       }
 
       normalized.push({
@@ -195,6 +205,7 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
         filterTargets: targets?.componentIds.size,
         minImpact: this.minImpact,
         belowMinImpact,
+        rescued,
       },
       "Atlassian Statuspage incidents fetched",
     );

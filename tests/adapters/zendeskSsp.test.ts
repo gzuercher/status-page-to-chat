@@ -65,6 +65,19 @@ describe("ZendeskSspAdapter", () => {
     expect(incidents).toHaveLength(0);
   });
 
+  /**
+   * Regression: editing the filter must not strand an incident already
+   * reported — its resolution card would never arrive. See FetchContext.
+   */
+  it("keeps an already-reported incident the filter no longer matches", async () => {
+    mockIncidents();
+    const incidents = await new ZendeskSspAdapter({
+      ...baseConfig,
+      componentFilter: ["Help Center"],
+    }).fetchIncidents({ trackedOpenIds: new Set(["9002"]) });
+    expect(incidents.map((i) => i.externalId)).toEqual(["9002"]);
+  });
+
   it("falls back to the incident title when no service reference resolves", async () => {
     mockedHttpGet.mockResolvedValueOnce({
       status: 200,

@@ -101,6 +101,19 @@ describe("BetterStackFeedAdapter", () => {
     expect(incidents.find((i) => i.externalId === "1")).toBeUndefined();
   });
 
+  /**
+   * Regression: this feed has no "unresolved" endpoint, so an incident that
+   * stays open past the age cap would drop out of view and never produce a
+   * resolution card — the reader is left believing the outage continues.
+   */
+  it("keeps an already-reported incident past the age cap", async () => {
+    mockFeed();
+    const incidents = await new BetterStackFeedAdapter(config).fetchIncidents({
+      trackedOpenIds: new Set(["1"]),
+    });
+    expect(incidents.find((i) => i.externalId === "1")).toBeDefined();
+  });
+
   it("sets logoUrl derived from baseUrl host", async () => {
     mockFeed();
     const incidents = await new BetterStackFeedAdapter(config).fetchIncidents();

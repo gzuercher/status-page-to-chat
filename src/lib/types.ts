@@ -38,13 +38,46 @@ export type NormalizedIncident = {
 };
 
 /**
+ * What the poll loop already knows when it calls an adapter.
+ *
+ * Adapters are otherwise stateless — they read a page and normalise it. The
+ * one thing they cannot derive on their own is whether an incident is new to
+ * us, and that matters for filtering: a filter must decide what to *start*
+ * reporting, never whether to abandon something already reported.
+ */
+export type FetchContext = {
+  /**
+   * External IDs this provider currently has stored as `open`, i.e. we sent
+   * a problem card and owe a resolution card.
+   *
+   * Adapters must let these through **every** filter. Without that, an
+   * incident can silently leave the watched set and its resolution never
+   * arrives: Statuspage routinely downgrades `major` to `minor` once an
+   * incident reaches monitoring, and any edit to `minImpact` or
+   * `componentFilter` has the same effect on incidents already in flight.
+   * The result is a problem card with no all-clear — worse than never
+   * having reported it, because the reader is left believing it is ongoing.
+   *
+   * Filters therefore gate entry only. Once reported, an incident is
+   * followed until it resolves.
+   */
+  readonly trackedOpenIds: ReadonlySet<string>;
+};
+
+/**
  * Interface for status page adapters.
  * Each adapter fetches incidents from a specific platform.
  */
 export interface StatusProvider {
   readonly key: string;
   readonly displayName: string;
-  fetchIncidents(): Promise<NormalizedIncident[]>;
+  /**
+   * Fetches and normalises the provider's current incidents.
+   *
+   * `context` is optional so adapters that apply no filtering can ignore it;
+   * every adapter that drops incidents MUST honour `trackedOpenIds`.
+   */
+  fetchIncidents(context?: FetchContext): Promise<NormalizedIncident[]>;
   /**
    * How many incidents the upstream page returned during the most recent
    * `fetchIncidents()`, *before* componentFilter or age caps were applied.
