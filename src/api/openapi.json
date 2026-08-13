@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "status-page-to-chat",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Manage the providers monitored by status-page-to-chat and inspect runtime state. Designed for chat-based maintenance via Langdock or any OpenAPI-aware LLM tool."
   },
   "servers": [
@@ -166,6 +166,10 @@
           },
           "notificationsFailed": {
             "type": "integer"
+          },
+          "incidentsClosedStale": {
+            "type": "integer",
+            "description": "Incidents retired silently because the upstream stopped updating them for 14 days. Normally 0; a persistently non-zero value means a provider routinely leaves incidents open."
           },
           "durationMs": {
             "type": "integer"

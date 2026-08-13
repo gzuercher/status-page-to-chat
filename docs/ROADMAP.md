@@ -16,6 +16,20 @@ opens up.
   provider (e.g. DevOps room vs. support room).
 - **Scheduled maintenance as a separate message type** — distinguish
   planned maintenance from unexpected outages in the card layout.
+  Now has evidence behind it: Langdock announces maintenance windows as
+  incidents and never publishes a closing update, so three of them sat
+  `open` for months until the 14-day staleness rule retired them. They
+  are announcements, not outages — treating them as incidents means
+  either a card that never gets its all-clear, or a silent expiry that
+  hides a real signal. Recognising `Scheduled Maintenance` in the title
+  and routing it to its own event type would fix both.
+- **Split `src/main.ts`** — 390 lines of code, well past the 200-line
+  guideline in CLAUDE.md. The poll cycle (provider loop, diff,
+  notification, staleness pass) is a coherent unit that belongs in
+  `src/lib/pollCycle.ts`, leaving main.ts as entrypoint and scheduler.
+  Deliberately not done alongside the v0.5.0 fixes: a structural move of
+  the least test-covered file in the repo, with no functional benefit,
+  does not belong in the same change as a production bugfix.
 - **Slack notifier** — would mean reintroducing card rendering in this
   service, which was deliberately removed. More likely: a second consumer
   of the JSON envelope, alongside the Logic App.

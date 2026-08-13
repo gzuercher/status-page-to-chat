@@ -21,8 +21,13 @@ language: de
 # Optional: lowest incident severity that still produces a card.
 # "none" | "minor" | "major" | "critical". Unset reports everything.
 # Only atlassian-statuspage publishes a severity. Overridable per provider.
-# See ADAPTERS.md → Severity filter for the volume this controls.
-minImpact: major
+#
+# Keep "minor" here and dampen loud sources on their own entry. Most
+# vendors reserve "major" for a total outage and file a real, user-visible
+# degradation under "minor" — a global "major" hid roughly three quarters
+# of what Anthropic and GitHub reported.
+# See ADAPTERS.md → Severity filter.
+minImpact: minor
 
 # List of monitored services
 providers:
@@ -188,6 +193,12 @@ Reports count **what was actually notified**: anything suppressed by `componentF
 therefore never appears in a report. Downtime sums only **resolved** incidents — an open one has no
 end yet — and is a sum over possibly overlapping outages, so it can exceed wall-clock time. The
 label says "gesamt"/"total" to make that explicit.
+
+Incidents retired by the 14-day staleness rule count as resolved, with their downtime measured to
+the last update the provider published rather than to the moment we closed them. That is a floor,
+not an exact figure: the true end lies somewhere between that update and the cutoff. Understating it
+is the deliberate choice — stamping the closing time would book weeks of silence as outage and make
+a forgotten maintenance banner the worst incident of the quarter.
 
 ### Sources that never report anything
 
