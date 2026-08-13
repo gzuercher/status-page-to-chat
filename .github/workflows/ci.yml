@@ -21,7 +21,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          # Match the runtime in Dockerfile — CI proving a build on a
+          # different major than production ships on is worth little.
+          node-version: "24"
           cache: "pnpm"
 
       - name: Install dependencies

@@ -26,3 +26,14 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # Dependabot proposes whatever Node tag is newest, which is how it
+      # offered 22 → 25. Odd-numbered Node releases are never LTS: 25 goes
+      # out of support long before 24 "Krypton" does, so taking it would
+      # have moved production onto a shorter support window while looking
+      # like an upgrade.
+      #
+      # Major moves are therefore made by hand, LTS to LTS. Patch and minor
+      # updates of the current tag still come through automatically.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
