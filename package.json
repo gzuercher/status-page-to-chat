@@ -1,6 +1,6 @@
 {
   "name": "status-page-to-chat",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Self-hosted poller that watches external status pages and posts incidents to Microsoft Teams",
   "main": "dist/src/main.js",
   "scripts": {
