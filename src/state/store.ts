@@ -133,6 +133,70 @@ export async function getOpenIncidentIds(
 }
 
 /**
+ * Closes incidents that have been `open` without any upstream update for
+ * longer than the cutoff, **without** sending a resolution card.
+ *
+ * Every route by which an incident can get stuck open ends in the same
+ * state — a card in the channel claiming an outage continues, months after
+ * it ended. The causes differ (a provider that never closes its maintenance
+ * windows, an incident aged out of a 50-entry API window, wording no
+ * keyword list matches) and patching each one individually is a losing
+ * game. This is the catch-all.
+ *
+ * Deliberately silent: an all-clear two months late informs nobody and
+ * reads as a fresh event. The row is marked `notified_resolved` so no
+ * later cycle mistakes it for a card still owed.
+ *
+ * `updated_at` is left untouched on purpose. The reports derive downtime
+ * from `updated_at - started_at`, so stamping "now" would book the entire
+ * silent stretch as outage time and turn a forgotten maintenance banner
+ * into weeks of fictitious downtime. The last real update is the best
+ * evidence we have of when it actually ended.
+ *
+ * Only ever called after a **successful** poll: an adapter that is simply
+ * broken must not quietly retire the incidents it can no longer see.
+ *
+ * @returns the rows that were closed, for logging.
+ */
+export async function closeStaleIncidents(
+  store: Store,
+  providerKey: string,
+  cutoffIso: string,
+): Promise<StoredIncident[]> {
+  const rows = store
+    .prepare<[string, string], IncidentRow>(
+      `SELECT provider_key, external_id, title, status,
+              started_at, updated_at, url,
+              notified_opened, notified_resolved
+         FROM incidents
+        WHERE provider_key = ? AND status = 'open' AND updated_at < ?`,
+    )
+    .all(providerKey, cutoffIso);
+
+  if (rows.length === 0) return [];
+
+  store
+    .prepare(
+      `UPDATE incidents
+          SET status = 'resolved', notified_resolved = 1
+        WHERE provider_key = ? AND status = 'open' AND updated_at < ?`,
+    )
+    .run(providerKey, cutoffIso);
+
+  return rows.map((row) => ({
+    providerKey: row.provider_key,
+    externalId: row.external_id,
+    title: row.title,
+    status: row.status,
+    startedAt: row.started_at,
+    updatedAt: row.updated_at,
+    url: row.url,
+    notifiedOpened: row.notified_opened === 1,
+    notifiedResolved: row.notified_resolved === 1,
+  }));
+}
+
+/**
  * Compares current incidents against the stored state and determines
  * which actions are needed. Pure function — safe to call from anywhere.
  */

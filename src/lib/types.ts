@@ -188,5 +188,12 @@ export type RunSummary = {
   incidentsResolved: number;
   notificationsSent: number;
   notificationsFailed: number;
+  /**
+   * Incidents retired silently because the upstream stopped updating them
+   * (see closeStaleIncidents). Normally 0 — a persistently non-zero value
+   * means a provider routinely leaves incidents open, which is worth
+   * knowing before someone reads it as our defect.
+   */
+  incidentsClosedStale: number;
   durationMs: number;
 };

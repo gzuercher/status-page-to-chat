@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  closeStaleIncidents,
   closeStore,
   createStore,
   diffIncidents,
@@ -171,6 +172,124 @@ describe("SQLite store (in-memory)", () => {
 
       expect((await getStoredIncidents(store, "acme")).size).toBe(1);
       expect((await getStoredIncidents(store, "other")).size).toBe(1);
+    } finally {
+      closeStore(store);
+    }
+  });
+});
+
+/**
+ * The catch-all for incidents that get stuck open. Every route into that
+ * state — a provider that never closes its maintenance banners, an incident
+ * aged out of a 50-entry API window, wording no keyword list matches — ends
+ * in the same place: a card claiming an outage continues, long after it
+ * ended. Twelve rows were stuck this way, the oldest by three months.
+ */
+describe("closeStaleIncidents", () => {
+  const CUTOFF = "2026-08-01T00:00:00.000Z";
+
+  const incident = (
+    id: string,
+    status: "open" | "resolved",
+    updatedAt: string,
+  ): NormalizedIncident => ({
+    externalId: id,
+    providerKey: "acme",
+    displayName: "Acme",
+    title: `Title ${id}`,
+    status,
+    url: `https://example.com/${id}`,
+    startedAt: "2026-06-01T10:00:00.000Z",
+    updatedAt,
+  });
+
+  it("closes an incident whose last update predates the cutoff", async () => {
+    const store = createStore(":memory:");
+    try {
+      await upsertIncident(store, incident("old", "open", "2026-07-01T10:00:00.000Z"), true, false);
+
+      const closed = await closeStaleIncidents(store, "acme", CUTOFF);
+
+      expect(closed.map((c) => c.externalId)).toEqual(["old"]);
+      expect((await getStoredIncidents(store, "acme")).get("old")?.status).toBe("resolved");
+    } finally {
+      closeStore(store);
+    }
+  });
+
+  it("marks it as notified so no resolution card is ever owed", async () => {
+    // An all-clear months late informs nobody and reads as a fresh event.
+    const store = createStore(":memory:");
+    try {
+      await upsertIncident(store, incident("old", "open", "2026-07-01T10:00:00.000Z"), true, false);
+
+      await closeStaleIncidents(store, "acme", CUTOFF);
+
+      expect((await getStoredIncidents(store, "acme")).get("old")?.notifiedResolved).toBe(true);
+    } finally {
+      closeStore(store);
+    }
+  });
+
+  it("leaves updatedAt untouched so reports do not book fictitious downtime", async () => {
+    // Reports derive downtime from updatedAt - startedAt. Stamping "now"
+    // would turn a forgotten maintenance banner into weeks of outage.
+    const store = createStore(":memory:");
+    try {
+      await upsertIncident(store, incident("old", "open", "2026-07-01T10:00:00.000Z"), true, false);
+
+      await closeStaleIncidents(store, "acme", CUTOFF);
+
+      expect((await getStoredIncidents(store, "acme")).get("old")?.updatedAt).toBe(
+        "2026-07-01T10:00:00.000Z",
+      );
+    } finally {
+      closeStore(store);
+    }
+  });
+
+  it("keeps a recently updated incident open", async () => {
+    const store = createStore(":memory:");
+    try {
+      await upsertIncident(
+        store,
+        incident("fresh", "open", "2026-08-10T10:00:00.000Z"),
+        true,
+        false,
+      );
+
+      const closed = await closeStaleIncidents(store, "acme", CUTOFF);
+
+      expect(closed).toHaveLength(0);
+      expect((await getStoredIncidents(store, "acme")).get("fresh")?.status).toBe("open");
+    } finally {
+      closeStore(store);
+    }
+  });
+
+  it("does not touch other providers", async () => {
+    const store = createStore(":memory:");
+    try {
+      await upsertIncident(
+        store,
+        { ...incident("old", "open", "2026-07-01T10:00:00.000Z"), providerKey: "other" },
+        true,
+        false,
+      );
+
+      const closed = await closeStaleIncidents(store, "acme", CUTOFF);
+
+      expect(closed).toHaveLength(0);
+      expect((await getStoredIncidents(store, "other")).get("old")?.status).toBe("open");
+    } finally {
+      closeStore(store);
+    }
+  });
+
+  it("returns nothing when there is no stale incident", async () => {
+    const store = createStore(":memory:");
+    try {
+      expect(await closeStaleIncidents(store, "acme", CUTOFF)).toEqual([]);
     } finally {
       closeStore(store);
     }
