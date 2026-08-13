@@ -42,6 +42,31 @@ describe("OpenAPI mirrors the provider schema", () => {
   });
 });
 
+/**
+ * `RunSummary` is served verbatim by `GET /api/last-run`, so the OpenAPI
+ * copy drifts the moment a counter is added. `incidentsClosedStale` landed
+ * without it and the documented response was silently incomplete.
+ *
+ * Read from the emitted log/response shape rather than the TS type, which
+ * does not survive compilation: main.ts builds the object literal once, so
+ * its keys are the contract.
+ */
+describe("OpenAPI mirrors RunSummary", () => {
+  it("documents every counter the poller emits", async () => {
+    const source = await import("node:fs/promises").then((fs) =>
+      fs.readFile(new URL("../../src/lib/types.ts", import.meta.url), "utf8"),
+    );
+    const block = source.slice(source.indexOf("export type RunSummary = {"));
+    const fields = [...block.slice(0, block.indexOf("};")).matchAll(/^\s{2}(\w+):/gm)].map(
+      (m) => m[1],
+    );
+
+    const documented = Object.keys(openapi.components.schemas.RunSummary.properties);
+    // `completedAt` is added by the API layer, not by the poll loop.
+    expect(fields.sort()).toEqual(documented.filter((f) => f !== "completedAt").sort());
+  });
+});
+
 describe("MCP tool schema mirrors the provider schema", () => {
   it("lists every adapter in the add_provider tool", async () => {
     const source = await import("node:fs/promises").then((fs) =>
