@@ -113,6 +113,7 @@ WEBHOOK_URL='https://webhook.site/<your-slot>' STATE_DB_PATH=./data/state.sqlite
 ```
 
 Requirements: Node.js 22.19+, pnpm (via `corepack enable`). Optional: Docker for container work.
+The container image and CI run Node 24 LTS; 22.19 stays the supported floor for local development.
 
 ## Shipping a change
 
