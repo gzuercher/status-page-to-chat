@@ -24,6 +24,7 @@ import {
   LAST_RUN_METADATA_KEY,
   closeStore,
   createStore,
+  closeStaleIncidents,
   diffIncidents,
   getOpenIncidentIds,
   getStoredIncidents,
@@ -37,6 +38,23 @@ import { runHealthcheck } from "./cli/health.js";
 import { runDemo } from "./cli/demo.js";
 import { runReport } from "./cli/report.js";
 import { startApiServer, type LastRunRef } from "./api/server.js";
+
+/**
+ * After this many days without an upstream update, an incident that is
+ * still `open` is closed silently.
+ *
+ * Not a guess about how long outages last, but about how long a *report*
+ * about one stays useful. Two weeks of silence means either the provider
+ * never closed it (maintenance banners are the common case) or we lost
+ * sight of it; in both cases the row is stale bookkeeping, and an all-clear
+ * that late reads as a fresh event rather than a correction.
+ *
+ * The trade-off is accepted knowingly: a genuine outage running past two
+ * weeks without a single update would be retired early. No provider we
+ * watch has ever behaved that way, and the alternative — leaving rows open
+ * forever — has already produced cards claiming outages that ended in May.
+ */
+const STALE_INCIDENT_DAYS = 14;
 
 /**
  * Runs one full poll cycle:
@@ -66,8 +84,13 @@ async function runPoll(
     incidentsResolved: 0,
     notificationsSent: 0,
     notificationsFailed: 0,
+    incidentsClosedStale: 0,
     durationMs: 0,
   };
+
+  // Incidents whose last upstream update predates this are retired silently.
+  // Computed once per run so every provider uses the same boundary.
+  const staleCutoff = new Date(startTime - STALE_INCIDENT_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
   // Collected for the health tracker after all providers have been
   // polled. One entry per configured provider, success or failure.
@@ -181,6 +204,27 @@ async function runPoll(
         if (diff.action !== "none") {
           await upsertIncident(store, diff.incident, notifiedOpened, notifiedResolved);
         }
+      }
+
+      // Retire incidents the upstream stopped updating long ago. Safe to do
+      // here because this branch only runs on a successful poll — a broken
+      // adapter must not quietly close what it can no longer see.
+      try {
+        const stale = await closeStaleIncidents(store, providerKey, staleCutoff);
+        for (const incident of stale) {
+          logger.info(
+            {
+              provider: providerKey,
+              incidentId: incident.externalId,
+              lastUpdate: incident.updatedAt,
+              title: incident.title,
+            },
+            "Closed stale incident without notifying",
+          );
+        }
+        summary.incidentsClosedStale += stale.length;
+      } catch (err) {
+        logger.error({ provider: providerKey, err }, "Failed to close stale incidents");
       }
     }
   } catch (err) {

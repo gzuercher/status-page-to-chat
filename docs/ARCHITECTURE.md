@@ -120,8 +120,10 @@ Severity is kept separately: Atlassian Statuspage publishes `none`/`minor`/`majo
    Step 3 receives the IDs this provider has stored as `open` and lets them through
    unfiltered — see below.
 6. **Notify** and persist the row, marking what was actually sent.
-7. **Health tracking** over the whole cycle, so global suppression can see the full failure ratio.
-8. **Periodic reports**, if a reporting period ended — unless `REPORTS_SCHEDULER=external`, where
+7. **Retire stale incidents** — anything still `open` without an upstream update for 14 days is
+   closed silently. Only on a successful poll.
+8. **Health tracking** over the whole cycle, so global suppression can see the full failure ratio.
+9. **Periodic reports**, if a reporting period ended — unless `REPORTS_SCHEDULER=external`, where
    host cron drives them instead.
 
 ### Once reported, always followed
@@ -144,6 +146,31 @@ In each case the diff never sees the incident again, so `notify_resolved` cannot
 left with a problem card and no all-clear, believing an outage continues — worse than never having
 reported it. Twelve incidents were stuck this way before the rule existed, the oldest by three
 months.
+
+### Stale incidents are retired silently
+
+An incident that stays `open` for **14 days without any upstream update** is closed without a
+resolution card, and `incidentsClosedStale` in `run_summary` counts it.
+
+The rule above keeps an incident in view until it resolves, but some never do. A provider closes a
+maintenance banner by simply abandoning it; an incident ages out of a 50-entry API window; the
+resolution wording matches no keyword. The causes differ, the result is identical — a card in the
+channel claiming an outage continues, months after it ended.
+
+Rather than patch each route separately, this catches all of them. Three properties matter:
+
+- **Silent.** An all-clear two months late informs nobody and reads as a fresh event. The row is
+  marked `notified_resolved` so no later cycle mistakes it for a card still owed.
+- **`updated_at` is left untouched.** Reports derive downtime from `updated_at - started_at`;
+  stamping "now" would book the whole silent stretch as outage time and turn a forgotten maintenance
+  banner into weeks of fictitious downtime. The last real update is the best evidence of when it
+  actually ended.
+- **Only after a successful poll.** A broken adapter must not quietly retire the incidents it can no
+  longer see.
+
+The trade-off is accepted knowingly: a genuine outage running past two weeks with no update at all
+would be retired early. No watched provider has behaved that way, and the alternative has already
+produced cards about outages that ended in May.
 
 ## State schema (SQLite)
 
