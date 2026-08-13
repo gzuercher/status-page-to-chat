@@ -263,7 +263,19 @@ Incidents whose newest update is older than 7 days are dropped — the feed only
 
 **Feed generations.** BetterStack has changed where the incident id lives. Older pages carried a per-incident `<link>` (`…/incident/12345`); current pages set `<link>` to the bare status-page root and put the id in the `<guid>` fragment (`https://status.example.com/#<sha256>`). Both are accepted. Reading the id only from `<link>` made every item unidentifiable on current feeds, and the adapter reported zero incidents indefinitely.
 
-**Resolution wording.** BetterStack's monitor-driven updates say "X went down" / "X recovered". `recovered` must therefore be in the resolved-keyword list; without it every such incident stays `open` forever, which turns the first successful poll into a channel flood.
+**Resolution wording.** This feed has no status field — whether an incident is closed can only be read out of the update text, which makes the keyword list load-bearing.
+
+BetterStack's monitor-driven updates say "X went down" / "X recovered", so `recovered` must be in the list; without it every such incident stays `open` forever, which turns the first successful poll into a channel flood.
+
+Human-written updates are the harder half. Operators routinely close an incident without ever using the word "resolved" — "The platform is available again", "Langdock is back to normal". Measured against the live Langdock feed, **6 of 11** incidents ended on such prose and stayed `open` indefinitely, each one a problem card with no all-clear behind it. Hence `available again`, `back to normal` and the German equivalents.
+
+Widening the list brings its own trap: a partial recovery reads almost exactly like a full one.
+
+> All Claude models **except Fable 5** are available again. We're still working on Fable 5.
+
+Matching the all-clear alone would post a resolution card while the incident is demonstrably ongoing — and a false all-clear is worse than a late one, because it actively tells people a broken service works. A resolution keyword is therefore withdrawn when the same update also carries a qualifier (`except`, `still working`, `partially`, `weiterhin`, …).
+
+Both lists are heuristics over prose and will miss wordings. When a Langdock incident stays open in `GET /api/incidents/open` long after its status page has closed it, the update text is the first place to look.
 
 ### Configuration
 
