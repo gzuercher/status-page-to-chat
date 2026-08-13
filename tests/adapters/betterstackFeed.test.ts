@@ -15,6 +15,10 @@ const mockedHttpGet = vi.mocked(httpGet);
 
 const fixture = readFileSync(join(__dirname, "../fixtures/betterstack-feed.xml"), "utf-8");
 const guidFixture = readFileSync(join(__dirname, "../fixtures/betterstack-feed-guid.xml"), "utf-8");
+const proseFixture = readFileSync(
+  join(__dirname, "../fixtures/betterstack-feed-prose.xml"),
+  "utf-8",
+);
 
 const config: ProviderConfig = {
   key: "langdock",
@@ -78,6 +82,44 @@ describe("BetterStackFeedAdapter", () => {
       const adapter = new BetterStackFeedAdapter(config);
       await adapter.fetchIncidents();
       expect(adapter.lastUpstreamCount).toBe(2);
+    });
+  });
+
+  /**
+   * Regression: measured against the live Langdock feed, 6 of 11 incidents
+   * ended on prose that contained no resolution keyword and stayed `open`
+   * forever — each one a problem card with no all-clear behind it.
+   */
+  describe("prose all-clears", () => {
+    function mockProseFeed(): void {
+      mockedHttpGet.mockResolvedValueOnce({
+        status: 200,
+        contentType: "application/rss+xml",
+        body: proseFixture,
+      });
+    }
+
+    it('closes an incident that ends on "back to normal"', async () => {
+      vi.setSystemTime(new Date("2026-07-31T12:00:00Z"));
+      mockProseFeed();
+      const incidents = await new BetterStackFeedAdapter(config).fetchIncidents();
+      expect(incidents.find((i) => i.externalId === "987396")?.status).toBe("resolved");
+    });
+
+    it('closes an incident that ends on "available again"', async () => {
+      vi.setSystemTime(new Date("2026-07-23T12:00:00Z"));
+      mockProseFeed();
+      const incidents = await new BetterStackFeedAdapter(config).fetchIncidents();
+      expect(incidents.find((i) => i.externalId === "973839")?.status).toBe("resolved");
+    });
+
+    it("keeps a partial recovery open despite the all-clear phrase", async () => {
+      // "All Claude models except Fable 5 are available again. We're still
+      // working on Fable 5" — a false all-clear is worse than a late one.
+      vi.setSystemTime(new Date("2026-08-11T12:00:00Z"));
+      mockProseFeed();
+      const incidents = await new BetterStackFeedAdapter(config).fetchIncidents();
+      expect(incidents.find((i) => i.externalId === "1007839")?.status).toBe("open");
     });
   });
 

@@ -51,6 +51,36 @@ const RESOLVED_KEYWORDS = [
   "behoben",
   "gelöst",
   "wiederhergestellt",
+  // Prose all-clears. Operators frequently close an incident without ever
+  // using the word "resolved": measured against the live Langdock feed,
+  // 6 of 11 incidents ended on wording like "The platform is available
+  // again" and stayed open in our state forever.
+  "available again",
+  "back to normal",
+  "wieder verfügbar",
+  "wieder erreichbar",
+];
+
+/**
+ * Words that withdraw an all-clear appearing in the same update.
+ *
+ * Partial recoveries read almost exactly like full ones — "All Claude models
+ * except Fable 5 are available again. We're still working on Fable 5" — and
+ * matching the all-clear alone would post a resolution card while the
+ * incident is demonstrably ongoing. A false all-clear is worse than a late
+ * one: it actively tells people a broken service works.
+ *
+ * Only consulted when a resolution keyword already matched, so ordinary
+ * incident prose is unaffected.
+ */
+const QUALIFIER_KEYWORDS = [
+  "still working",
+  "still investigating",
+  "except",
+  "partially",
+  "continue to",
+  "weiterhin",
+  "teilweise",
 ];
 
 type RssItem = {
@@ -92,7 +122,9 @@ function extractIncidentId(link: string, guid: string): string | null {
 
 function isResolved(title: string, description: string): boolean {
   const haystack = `${title} ${description}`.toLowerCase();
-  return RESOLVED_KEYWORDS.some((kw) => haystack.includes(kw));
+  if (!RESOLVED_KEYWORDS.some((kw) => haystack.includes(kw))) return false;
+  // An all-clear that carves out an exception is not an all-clear.
+  return !QUALIFIER_KEYWORDS.some((kw) => haystack.includes(kw));
 }
 
 export class BetterStackFeedAdapter implements StatusProvider {

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Prose all-clears. Captured from status.langdock.com on 2026-08-13, where
+  6 of 11 incidents ended on wording that contained no resolution keyword
+  and therefore stayed "open" in our state indefinitely.
+
+  Also covers the trap that comes with fixing that: a partial recovery
+  reads almost exactly like a full one.
+-->
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Incidents | Langdock</title>
+    <link>https://status.example.com/</link>
+    <!-- "back to normal" — a full all-clear, never says "resolved". -->
+    <item>
+      <title>Platform currently unavailable</title>
+      <link>https://status.example.com/incident/987396</link>
+      <pubDate>Thu, 30 Jul 2026 18:09:00 -0000</pubDate>
+      <guid>https://status.example.com/incident/987396#2</guid>
+      <description>We have identified the root cause and error rates have decreased. The Langdock platform is back to normal. All services are available again.</description>
+    </item>
+    <item>
+      <title>Platform currently unavailable</title>
+      <link>https://status.example.com/incident/987396</link>
+      <pubDate>Thu, 30 Jul 2026 17:55:00 -0000</pubDate>
+      <guid>https://status.example.com/incident/987396#1</guid>
+      <description>We are investigating increased error rates across the Langdock platform.</description>
+    </item>
+    <!-- "available again" — likewise a full all-clear. -->
+    <item>
+      <title>Performance severly degraded</title>
+      <link>https://status.example.com/incident/973839</link>
+      <pubDate>Wed, 22 Jul 2026 20:30:00 -0000</pubDate>
+      <guid>https://status.example.com/incident/973839#2</guid>
+      <description>The platform is available again, we apologize for the inconvenience.</description>
+    </item>
+    <item>
+      <title>Performance severly degraded</title>
+      <link>https://status.example.com/incident/973839</link>
+      <pubDate>Wed, 22 Jul 2026 19:09:00 -0000</pubDate>
+      <guid>https://status.example.com/incident/973839#1</guid>
+      <description>We are seeing severely degraded performance across the platform.</description>
+    </item>
+    <!-- Partial recovery: carries an all-clear phrase but is still open. -->
+    <item>
+      <title>Some Claude models unavailable</title>
+      <link>https://status.example.com/incident/1007839</link>
+      <pubDate>Mon, 10 Aug 2026 23:10:00 -0000</pubDate>
+      <guid>https://status.example.com/incident/1007839#2</guid>
+      <description>All Claude models except Fable 5 are available again. We're still working on Fable 5; in the meantime, please use another model.</description>
+    </item>
+    <item>
+      <title>Some Claude models unavailable</title>
+      <link>https://status.example.com/incident/1007839</link>
+      <pubDate>Mon, 10 Aug 2026 21:50:00 -0000</pubDate>
+      <guid>https://status.example.com/incident/1007839#1</guid>
+      <description>Some Claude models are currently unavailable.</description>
+    </item>
+  </channel>
+</rss>
