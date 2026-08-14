@@ -1,13 +1,21 @@
 # Nachzuführen in social-to-chat: healthTracker
 
+> **Status: erledigt (2026-08-14).** Beide Punkte sind in `social-to-chat` angekommen —
+> `formatDuration` mit Commit `403ba35`, die zwei `httpClient`-Härtungen mit `1a67275`. Die Datei
+> bleibt als Nachweis stehen, welche Änderungen bewusst **nicht** portiert wurden und warum;
+> beim nächsten Spiegel-Abgleich ist das der teuerste Teil des Wissens.
+>
+> Nach dem Abgleich unterscheiden sich die `httpClient.ts` der beiden Repos noch in genau zwei
+> Punkten, beide legitim: `REPO_URL` samt abgeleitetem Fallback-User-Agent, und `httpPost`
+> akzeptiert in `social-to-chat` zusätzlich einen String-Payload (die OAuth-Endpunkte von LinkedIn
+> und TikTok erwarten form-encodierte Bodies; hier gibt es keinen solchen Aufrufer). Das steht
+> jetzt auch im Kopfkommentar der dortigen Datei — vorher behauptete er, nur `REPO_URL` weiche ab.
+
 **Anlass:** PR #65 in status-page-to-chat ändert `src/lib/healthTracker.ts`. Das Modul trägt in
 beiden Repos den Marker `GESPIEGELTES MODUL` und muss synchron gehalten werden.
 
 **Kurzfassung: Es ist genau *eine* der drei Änderungen zu übernehmen.** Die anderen beiden dürfen
 **nicht** portiert werden — sie würden die half-dead-Erkennung in social-to-chat stilllegen.
-
-Diese Datei wurde aus einer Read-only-Analyse von `/home/gzuercher/git-work/social-to-chat`
-erstellt; in jenes Repo wurde nichts geschrieben.
 
 ---
 
