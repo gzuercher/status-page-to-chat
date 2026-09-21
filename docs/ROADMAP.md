@@ -61,6 +61,9 @@ opens up.
 
 ## Shipped since this file was last revised
 
+- **Independent poll/delivery healthcheck + optional CheckCentral
+  dead-man's-switch** — see "Known maintenance risks" below for the
+  2026-09-20 outage that prompted it.
 - **Severity filter `minImpact`** (PR #66) — cuts the card volume of the
   Statuspage providers from ~133 to ~33 incidents a month.
 - **Periodic stability reports** (PR #67, #68, #73) — weekly, monthly and
@@ -74,6 +77,24 @@ opens up.
 
 ## Known maintenance risks
 
+- **A poll loop that runs but fails every provider read as healthy.** On
+  2026-09-20, a network/DNS outage on the host made every provider fetch
+  fail for ~23 hours straight (293 consecutive poll cycles, `providersFailed:
+  25` every time) before someone happened to notice. The Docker healthcheck
+  stayed green throughout: it only checked `last_run_at` — stamped every
+  cycle regardless of outcome — never whether polling actually succeeded.
+  Separately, a dead webhook/Logic App during a quiet stretch (no incidents
+  to report) would produce zero failed deliveries and look identical to
+  "nothing happened" — "no failures" is not "delivery works". Fixed by
+  tracking poll success and delivery success as two independent signals
+  (`last_successful_poll_at`, `last_delivery_attempt_at`/`last_delivery_ok_at`
+  — see `src/cli/health.ts`), kept fresh during quiet stretches by a
+  payload-free reachability probe against `WEBHOOK_URL` (no dependency on
+  the Logic App understanding any particular payload — any HTTP response
+  counts as reachable). An optional CheckCentral dead-man's-switch
+  (one check, not two — billed per check — distinguishing poll vs. delivery
+  by the check-in email's body text) additionally pages independently of
+  the Teams channel itself; see `docs/DEPLOYMENT.md` → "Self-monitoring".
 - **Stale `componentFilter` values silence a provider.** This has bitten
   us: on 2026-07-30, `claude`, `cloudflare`, `linkedin`, `zendesk-helpcenter`
   and `gravityzone-bitdefender` had all been reporting zero incidents for
