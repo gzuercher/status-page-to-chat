@@ -102,31 +102,52 @@ describe("CLI subcommands", () => {
       expect(r.stdout).toMatch(/warming up/);
     });
 
-    it("reports healthy when last_run_at is fresh", () => {
-      const dbPath = join(dir, "state.sqlite");
-      // Pre-seed the database with a recent timestamp.
+    /** Seeds every metadata key a genuinely healthy container would have written. */
+    function seedHealthyMetadata(dbPath: string, ageMs = 30_000): void {
       const db = new Database(dbPath);
       db.exec(`CREATE TABLE metadata (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL);`);
-      db.prepare(`INSERT INTO metadata (key, value) VALUES (?, ?)`).run(
+      const fresh = new Date(Date.now() - ageMs).toISOString();
+      const insert = db.prepare(`INSERT INTO metadata (key, value) VALUES (?, ?)`);
+      for (const key of [
         "last_run_at",
-        new Date(Date.now() - 30_000).toISOString(),
-      );
+        "last_successful_poll_at",
+        "last_delivery_attempt_at",
+        "last_delivery_ok_at",
+      ]) {
+        insert.run(key, fresh);
+      }
       db.close();
+    }
+
+    it("reports healthy when both the poll and the delivery signal are fresh", () => {
+      const dbPath = join(dir, "state.sqlite");
+      seedHealthyMetadata(dbPath);
 
       const r = runCli(["health"], { STATE_DB_PATH: dbPath });
       expect(r.code).toBe(0);
-      expect(r.stdout).toMatch(/healthy: last poll was \d+s ago/);
+      expect(r.stdout).toMatch(/healthy: poll and delivery both current/);
     });
 
-    it("reports unhealthy when last_run_at exceeds the threshold", () => {
+    it("reports unhealthy when a poll cycle completed but no provider ever succeeded", () => {
+      // This is exactly the 2026-09-20 outage: last_run_at is stamped every
+      // cycle regardless of outcome, so on its own it cannot distinguish
+      // "polling works" from "the loop runs but every provider fails".
       const dbPath = join(dir, "state.sqlite");
       const db = new Database(dbPath);
       db.exec(`CREATE TABLE metadata (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL);`);
-      db.prepare(`INSERT INTO metadata (key, value) VALUES (?, ?)`).run(
-        "last_run_at",
-        new Date(Date.now() - 3_600_000).toISOString(),
-      );
+      const fresh = new Date(Date.now() - 30_000).toISOString();
+      db.prepare(`INSERT INTO metadata (key, value) VALUES (?, ?)`).run("last_run_at", fresh);
       db.close();
+
+      const r = runCli(["health"], { STATE_DB_PATH: dbPath });
+      expect(r.code).toBe(1);
+      expect(r.stdout).toMatch(/unhealthy/);
+      expect(r.stdout).toMatch(/poll: no provider has ever been fetched successfully/);
+    });
+
+    it("reports unhealthy when the last successful poll exceeds the threshold", () => {
+      const dbPath = join(dir, "state.sqlite");
+      seedHealthyMetadata(dbPath, 3_600_000);
 
       const r = runCli(["health"], {
         STATE_DB_PATH: dbPath,
@@ -134,6 +155,25 @@ describe("CLI subcommands", () => {
       });
       expect(r.code).toBe(1);
       expect(r.stdout).toMatch(/unhealthy/);
+      expect(r.stdout).toMatch(/poll: last success/);
+    });
+
+    it("reports unhealthy when the last delivery attempt failed, even with a fresh poll", () => {
+      const dbPath = join(dir, "state.sqlite");
+      const db = new Database(dbPath);
+      db.exec(`CREATE TABLE metadata (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL);`);
+      const now = Date.now();
+      const insert = db.prepare(`INSERT INTO metadata (key, value) VALUES (?, ?)`);
+      insert.run("last_run_at", new Date(now - 5_000).toISOString());
+      insert.run("last_successful_poll_at", new Date(now - 5_000).toISOString());
+      // An attempt exists, but no success ever followed it — the webhook is down.
+      insert.run("last_delivery_attempt_at", new Date(now - 5_000).toISOString());
+      db.close();
+
+      const r = runCli(["health"], { STATE_DB_PATH: dbPath });
+      expect(r.code).toBe(1);
+      expect(r.stdout).toMatch(/unhealthy/);
+      expect(r.stdout).toMatch(/delivery: last attempt failed/);
     });
   });
 

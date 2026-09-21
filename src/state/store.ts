@@ -7,6 +7,39 @@ export type Store = Database.Database;
 /** ISO timestamp of the last completed poll cycle, in the metadata table. */
 export const LAST_RUN_METADATA_KEY = "last_run_at";
 
+/**
+ * ISO timestamp of the last poll cycle in which at least one provider was
+ * actually fetched successfully — as opposed to {@link LAST_RUN_METADATA_KEY},
+ * which is stamped every cycle regardless of outcome. A poll loop that
+ * completes every 5 minutes while every provider fails (a DNS/network
+ * outage, say) keeps the former fresh forever; this key does not.
+ */
+export const LAST_SUCCESSFUL_POLL_METADATA_KEY = "last_successful_poll_at";
+
+/**
+ * ISO timestamp of the last time the notifier attempted a delivery, success
+ * or failure. Written before the attempt, so it is set even when the
+ * attempt throws.
+ */
+export const LAST_DELIVERY_ATTEMPT_METADATA_KEY = "last_delivery_attempt_at";
+
+/**
+ * ISO timestamp of the last delivery attempt that actually succeeded.
+ * Compared against {@link LAST_DELIVERY_ATTEMPT_METADATA_KEY} to tell "the
+ * last attempt failed" from "the last attempt is just old".
+ */
+export const LAST_DELIVERY_OK_METADATA_KEY = "last_delivery_ok_at";
+
+/**
+ * ISO timestamp of the last CheckCentral check-in email actually sent.
+ * Only one check-in exists (CheckCentral is billed per check) — it carries
+ * both signals in its body text (STATUS: OK vs a delivery-warning line) so
+ * poll and delivery stay distinguishable within a single check. Only
+ * advanced on a successful send, and only sent at all when this cycle's
+ * poll succeeded — see main.ts's check-in gating.
+ */
+export const LAST_CHECKCENTRAL_SENT_METADATA_KEY = "last_checkcentral_sent_at";
+
 const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS incidents (
     provider_key       TEXT    NOT NULL,

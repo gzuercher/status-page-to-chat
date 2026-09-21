@@ -20,12 +20,19 @@ import {
 } from "./lib/healthTracker.js";
 import { resolveProviderLogoUrl } from "./lib/logo.js";
 import { buildReport, dueReports } from "./lib/report.js";
+import { httpPost } from "./lib/httpClient.js";
+import { loadCheckCentralConfig, sendCheckin } from "./lib/checkcentralMailer.js";
 import {
+  LAST_CHECKCENTRAL_SENT_METADATA_KEY,
+  LAST_DELIVERY_ATTEMPT_METADATA_KEY,
+  LAST_DELIVERY_OK_METADATA_KEY,
   LAST_RUN_METADATA_KEY,
+  LAST_SUCCESSFUL_POLL_METADATA_KEY,
   closeStore,
   createStore,
   closeStaleIncidents,
   diffIncidents,
+  getMetadata,
   getOpenIncidentIds,
   getStoredIncidents,
   recordProviderPoll,
@@ -37,6 +44,7 @@ import { runValidate } from "./cli/validate.js";
 import { runHealthcheck } from "./cli/health.js";
 import { runDemo } from "./cli/demo.js";
 import { runReport } from "./cli/report.js";
+import { runCheckCentralTest } from "./cli/checkcentralTest.js";
 import { startApiServer, type LastRunRef } from "./api/server.js";
 
 /**
@@ -57,6 +65,130 @@ import { startApiServer, type LastRunRef } from "./api/server.js";
 const STALE_INCIDENT_DAYS = 14;
 
 /**
+ * Shared cadence for everything in this file whose only purpose is to keep
+ * a health signal fresh rather than to communicate something to a human:
+ * the webhook reachability probe and the two CheckCentral check-in emails.
+ * Real traffic (an incident, an adapter-health alert, a periodic report)
+ * already proves the delivery path works and is not subject to this gate.
+ */
+function checkCentralIntervalMs(): number {
+  const minutes = Number(process.env.CHECKCENTRAL_INTERVAL_MINUTES ?? 60);
+  return minutes * 60_000;
+}
+
+/** True once at least `intervalMs` have passed since `lastIso`, or it was never set. */
+function isDue(lastIso: string | undefined, intervalMs: number): boolean {
+  return !lastIso || Date.now() - new Date(lastIso).getTime() >= intervalMs;
+}
+
+/**
+ * Wraps a notifier call so the delivery-path health signal is recorded
+ * regardless of outcome — the attempt timestamp is written before the call,
+ * the success timestamp only after it resolves. This is deliberately
+ * independent of poll success: the 2026-09-20 outage showed that "the poll
+ * loop is fine" and "the webhook/Logic App is fine" are different facts,
+ * each needing its own evidence. See cli/health.ts.
+ */
+async function trackedDeliver(store: Store, send: () => Promise<void>): Promise<void> {
+  setMetadata(store, LAST_DELIVERY_ATTEMPT_METADATA_KEY, new Date().toISOString());
+  await send();
+  setMetadata(store, LAST_DELIVERY_OK_METADATA_KEY, new Date().toISOString());
+}
+
+/**
+ * Exercises the delivery path with an empty POST, bypassing the Notifier
+ * abstraction and its JSON incident/alert/report schema entirely — on
+ * purpose. A prior version of this fix sent a `heartbeat` business event
+ * through the same envelope the Logic App renders cards from; that risked
+ * the Logic App choking on an event kind it does not expect. An empty body
+ * carries no such risk: the Logic App's HTTP trigger either accepts it (a
+ * 2xx we don't need) or rejects it at the schema-validation gate before any
+ * workflow logic runs (a 4xx), and *either way* the response proves the
+ * network/TLS/Azure-gateway path is up — which is exactly what the
+ * 2026-09-20 outage (a connect timeout, i.e. no response at all) broke.
+ * `httpPost` never logs the URL (it carries the Logic App's SAS signature).
+ *
+ * Only runs when nothing else has attempted delivery recently — real
+ * traffic already proves the path works and updates the same timestamp
+ * this checks, so a busy deployment never probes at all.
+ */
+async function maybeProbeWebhookReachability(store: Store, summary: RunSummary): Promise<void> {
+  const webhookUrl = process.env.WEBHOOK_URL;
+  if (!webhookUrl) return;
+  if (!isDue(getMetadata(store, LAST_DELIVERY_ATTEMPT_METADATA_KEY), checkCentralIntervalMs())) {
+    return;
+  }
+
+  try {
+    await trackedDeliver(store, () => httpPost(webhookUrl, {}).then(() => undefined));
+    summary.notificationsSent++;
+    logger.debug({}, "Webhook reachability probe succeeded");
+  } catch (err) {
+    summary.notificationsFailed++;
+    logger.error({ err }, "Webhook reachability probe failed");
+  }
+}
+
+/** Fixed strings the CheckCentral check's conditions are configured to match — see docs/DEPLOYMENT.md#self-monitoring. */
+const CHECKCENTRAL_SUBJECT = "Status Page Poller — Health";
+const CHECKCENTRAL_STATUS_OK = "STATUS: OK";
+const CHECKCENTRAL_STATUS_DELIVERY_DOWN = "STATUS: DELIVERY DOWN";
+
+/**
+ * Sends the one CheckCentral dead-man's-switch check-in email (see
+ * docs/DEPLOYMENT.md#self-monitoring — CheckCentral is billed per check, so
+ * this deliberately uses only one, not two). Poll and delivery stay
+ * distinguishable within that single check via the body text:
+ *
+ *   - Not sent at all when polling failed this cycle. Silence is the
+ *     signal — CheckCentral's own overdue/default-Failure state fires,
+ *     exactly like a plain dead-man's-switch. This is the 2026-09-20
+ *     failure mode and the one that must never go unnoticed.
+ *   - Sent with `STATUS: OK` when polling succeeded and the last delivery
+ *     attempt succeeded too.
+ *   - Sent with `STATUS: DELIVERY DOWN` when polling succeeded but the last
+ *     delivery attempt did not — CheckCentral's `warning_conditions`
+ *     matches this so the two failure modes still read differently on the
+ *     CheckCentral side, without a second check.
+ *
+ * The "last sent" timestamp only advances on an actual send. If the cycle
+ * is due but polling just failed, the timestamp is left alone — so the
+ * moment polling recovers, the next cycle (5 min later, not a full
+ * interval later) sends immediately.
+ */
+async function maybeSendCheckCentralCheckin(
+  store: Store,
+  summary: RunSummary,
+  pollSucceededThisCycle: boolean,
+): Promise<void> {
+  if (!pollSucceededThisCycle) return;
+  const config = loadCheckCentralConfig();
+  if (!config) return;
+  if (!isDue(getMetadata(store, LAST_CHECKCENTRAL_SENT_METADATA_KEY), checkCentralIntervalMs())) {
+    return;
+  }
+
+  const lastDeliveryAttempt = getMetadata(store, LAST_DELIVERY_ATTEMPT_METADATA_KEY);
+  const lastDeliveryOk = getMetadata(store, LAST_DELIVERY_OK_METADATA_KEY);
+  const deliveryCurrentlyOk =
+    !!lastDeliveryAttempt &&
+    !!lastDeliveryOk &&
+    new Date(lastDeliveryOk).getTime() >= new Date(lastDeliveryAttempt).getTime();
+  const statusLine = deliveryCurrentlyOk
+    ? CHECKCENTRAL_STATUS_OK
+    : CHECKCENTRAL_STATUS_DELIVERY_DOWN;
+
+  try {
+    await sendCheckin(config, CHECKCENTRAL_SUBJECT, statusLine);
+    setMetadata(store, LAST_CHECKCENTRAL_SENT_METADATA_KEY, new Date().toISOString());
+    summary.notificationsSent++;
+  } catch (err) {
+    summary.notificationsFailed++;
+    logger.error({ err }, "CheckCentral check-in failed");
+  }
+}
+
+/**
  * Runs one full poll cycle:
  *   1. Poll all configured providers in parallel
  *   2. Diff against the stored state
@@ -67,7 +199,7 @@ const STALE_INCIDENT_DAYS = 14;
  * run never throws, it always produces a structured `run_summary` log
  * entry so the caller can observe the run outcome.
  */
-async function runPoll(
+export async function runPoll(
   config: AppConfig,
   notifier: Notifier,
   store: Store,
@@ -175,7 +307,7 @@ async function runPoll(
 
         if (diff.action === "notify_opened") {
           try {
-            await notifier.notifyOpened(diff.incident);
+            await trackedDeliver(store, () => notifier.notifyOpened(diff.incident));
             notifiedOpened = true;
             summary.notificationsSent++;
           } catch (err) {
@@ -189,7 +321,7 @@ async function runPoll(
 
         if (diff.action === "notify_resolved") {
           try {
-            await notifier.notifyResolved(diff.incident);
+            await trackedDeliver(store, () => notifier.notifyResolved(diff.incident));
             notifiedResolved = true;
             summary.notificationsSent++;
           } catch (err) {
@@ -231,6 +363,18 @@ async function runPoll(
     logger.fatal({ err }, "Critical error in poll run");
   }
 
+  // Independent of whether any provider succeeded — recorded here, not
+  // inside the loop above, so it reflects "did polling work this cycle" as
+  // one fact rather than being derived indirectly from provider counters
+  // elsewhere. See LAST_SUCCESSFUL_POLL_METADATA_KEY.
+  if (summary.providersSucceeded > 0) {
+    try {
+      setMetadata(store, LAST_SUCCESSFUL_POLL_METADATA_KEY, new Date().toISOString());
+    } catch (err) {
+      logger.error({ err }, "Failed to persist last_successful_poll_at metadata");
+    }
+  }
+
   // Health tracking runs *after* the per-provider loop so suppression
   // can take the full failure ratio into account. Notification errors
   // are isolated per event — a single bad webhook does not block the
@@ -239,7 +383,7 @@ async function runPoll(
     const events = healthTracker.ingest(healthInput);
     for (const event of events) {
       try {
-        await notifier.notifyAdapterHealth(buildHealthAlert(event));
+        await trackedDeliver(store, () => notifier.notifyAdapterHealth(buildHealthAlert(event)));
         summary.notificationsSent++;
         logger.info(
           { provider: event.providerKey, kind: event.kind },
@@ -272,7 +416,7 @@ async function runPoll(
     for (const period of dueReports(store, new Date())) {
       try {
         const report = buildReport(store, providers, period, new Date());
-        await notifier.notifyReport(report);
+        await trackedDeliver(store, () => notifier.notifyReport(report));
         summary.notificationsSent++;
         logger.info(
           { period, label: report.label, incidents: report.totalIncidents },
@@ -286,6 +430,12 @@ async function runPoll(
   } catch (err) {
     if (!(err instanceof SkipReports)) logger.error({ err }, "Report scheduling raised");
   }
+
+  // Runs last and unconditionally — independent of whether polling worked
+  // this cycle, since the reachability probe is the delivery path's own
+  // signal, not the poll path's.
+  await maybeProbeWebhookReachability(store, summary);
+  await maybeSendCheckCentralCheckin(store, summary, summary.providersSucceeded > 0);
 
   summary.durationMs = Date.now() - startTime;
   const completedAt = new Date().toISOString();
@@ -474,34 +624,53 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
-const subcommand = process.argv[2];
+/**
+ * Only true when this file was launched directly (`node dist/src/main.js
+ * ...`), never when it is `require`d as a module — e.g. from a test that
+ * pulls in {@link runPoll}. Without this guard, importing this file for its
+ * exports also runs the full CLI dispatch below as a side effect. The
+ * build emits CommonJS (see tsconfig.json), so this is the standard
+ * `require.main === module` entrypoint check, not `import.meta`.
+ */
+if (require.main === module) {
+  runCli();
+}
 
-if (subcommand === "validate") {
-  runValidate();
-} else if (subcommand === "health") {
-  runHealthcheck();
-} else if (subcommand === "demo") {
-  runDemo(process.argv[3]).catch((err: unknown) => {
-    logger.fatal({ err }, "Demo run failed");
-    process.exit(1);
-  });
-} else if (subcommand === "report") {
-  runReport(
-    process.argv[3] && !process.argv[3].startsWith("--") ? process.argv[3] : undefined,
-    process.argv.includes("--dry-run"),
-  ).catch((err: unknown) => {
-    logger.fatal({ err }, "Report run failed");
-    process.exit(1);
-  });
-} else if (subcommand === undefined || subcommand === "poll") {
-  main().catch((err: unknown) => {
-    logger.fatal({ err }, "Poller failed to start");
-    process.exit(1);
-  });
-} else {
-  process.stderr.write(
-    `Unknown subcommand: ${subcommand}\n` +
-      `Usage: node dist/src/main.js [poll|validate|health|demo [type]|report [period] [--dry-run]]\n`,
-  );
-  process.exit(2);
+function runCli(): void {
+  const subcommand = process.argv[2];
+
+  if (subcommand === "validate") {
+    runValidate();
+  } else if (subcommand === "health") {
+    runHealthcheck();
+  } else if (subcommand === "demo") {
+    runDemo(process.argv[3]).catch((err: unknown) => {
+      logger.fatal({ err }, "Demo run failed");
+      process.exit(1);
+    });
+  } else if (subcommand === "report") {
+    runReport(
+      process.argv[3] && !process.argv[3].startsWith("--") ? process.argv[3] : undefined,
+      process.argv.includes("--dry-run"),
+    ).catch((err: unknown) => {
+      logger.fatal({ err }, "Report run failed");
+      process.exit(1);
+    });
+  } else if (subcommand === "checkcentral-test") {
+    runCheckCentralTest().catch((err: unknown) => {
+      logger.fatal({ err }, "CheckCentral test check-in failed");
+      process.exit(1);
+    });
+  } else if (subcommand === undefined || subcommand === "poll") {
+    main().catch((err: unknown) => {
+      logger.fatal({ err }, "Poller failed to start");
+      process.exit(1);
+    });
+  } else {
+    process.stderr.write(
+      `Unknown subcommand: ${subcommand}\n` +
+        "Usage: node dist/src/main.js [poll|validate|health|demo [type]|report [period] [--dry-run]|checkcentral-test]\n",
+    );
+    process.exit(2);
+  }
 }

@@ -397,7 +397,17 @@ Everything that is not in `providers.yaml` lives as an environment variable on t
 | `API_TOKEN` | no | Bearer token guarding the management REST API. Required unless `API_AUTH_DISABLED=true`. |
 | `API_AUTH_DISABLED` | no | Set to literal `true` to disable API auth entirely (only on trusted networks). |
 | `API_PORT` | no | Port the management API listens on. Default: `8080`. |
-| `HEALTH_MAX_AGE_SECONDS` | no | Healthcheck threshold for "no recent poll" → unhealthy. Default: `900` (15 min). |
+| `HEALTH_MAX_AGE_SECONDS` | no | Healthcheck threshold for "no recent *successful* poll" → unhealthy. Default: `900` (15 min). |
+| `DELIVERY_MAX_AGE_SECONDS` | no | Healthcheck threshold for "no recent successful delivery to the webhook/Logic App" → unhealthy. Independent of `HEALTH_MAX_AGE_SECONDS` — see [DEPLOYMENT.md](DEPLOYMENT.md#self-monitoring). Default: `7200` (2 h). |
+| `CHECKCENTRAL_INTERVAL_MINUTES` | no | How often the webhook reachability probe and the CheckCentral check-in email run, when a cycle would not otherwise exercise them. Default: `60`. |
+| `SMTP_HOST` | no¹ | SMTP relay for the CheckCentral check-in email, e.g. `smtp.azurecomm.net` (Azure Communication Services). |
+| `SMTP_PORT` | no | SMTP port. Default: `587` (STARTTLS). |
+| `SMTP_USERNAME` | no¹ | SMTP auth username. |
+| `SMTP_PASSWORD` | no¹ | SMTP auth password/access key. **Secret — set via `.env`, never commit it.** |
+| `CHECKCENTRAL_FROM_EMAIL` | no¹ | Sender address for the check-in email, e.g. `hostmaster@raptus.com`. |
+| `CHECKCENTRAL_TO_EMAIL` | no¹ | CheckCentral's mailbox-monitor address, e.g. `raptus+internal-it@mycheckcentral.cc`. |
+
+¹ `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `CHECKCENTRAL_FROM_EMAIL` and `CHECKCENTRAL_TO_EMAIL` are optional as a group: leave all five unset to run without CheckCentral entirely (the default — everything else in this table still works). Set only some of them and the poller logs a warning and disables the check-in, since a partial config is almost always a typo. CheckCentral is billed per check, so this deliberately uses only **one** check — poll and delivery are distinguished by the email's body text (`STATUS: OK` vs `STATUS: DELIVERY DOWN`), not by separate checks. See [DEPLOYMENT.md](DEPLOYMENT.md#self-monitoring) for how to set it up, and `node dist/src/main.js checkcentral-test` to send one by hand.
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for how these are set with plain Docker Compose or Portainer.
 

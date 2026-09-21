@@ -252,19 +252,47 @@ late. Add `--dry-run` to print a report without sending it.
 ## Self-monitoring
 
 - **Container restart policy**: `unless-stopped` — Docker restarts the container on crash.
-- **Healthcheck**: built into the image. Queries the SQLite state for the most recent poll. Unhealthy if no poll has completed in `HEALTH_MAX_AGE_SECONDS` (default 900). Visible in `docker inspect` and Portainer's container view.
+- **Healthcheck**: built into the image, checking two independent things (see `src/cli/health.ts`):
+  - **Poll path**: was any provider actually fetched successfully within `HEALTH_MAX_AGE_SECONDS` (default 900)?
+  - **Delivery path**: did the last attempt to reach the webhook/Logic App succeed, within `DELIVERY_MAX_AGE_SECONDS` (default 7200)? A payload-free reachability probe (`CHECKCENTRAL_INTERVAL_MINUTES`, default 60) keeps this signal fresh even during a quiet stretch with no incidents to report — it POSTs an empty body to `WEBHOOK_URL` and treats *any* HTTP response (2xx or not) as "reachable", so it never depends on the Logic App understanding a particular payload shape. Only a network-level failure (timeout, DNS, connection refused — exactly what broke on 2026-09-20) counts as unreachable.
+
+  These are deliberately not conflated. A poll loop that runs every cycle but fails every provider (a DNS/network outage) is a different failure from a dead webhook that never surfaces because nothing was due to send — each needs its own evidence, or one can silently mask the other. Visible in `docker inspect` and Portainer's container view; the stdout line names which check tripped.
 - **Logs**: structured JSON to stdout, captured by the Docker `json-file` driver with 5×10 MB rotation. Forward to an external log collector if you want long-term retention.
-- **API**: `GET /api/health` returns `{"status":"ok","lastRunAt":"..."}` — easy to scrape from an external uptime checker.
+- **API**: `GET /api/health` returns `{"status":"ok","lastRunAt":"..."}` — easy to scrape from an external uptime checker. Note this reflects "a cycle completed", the same coarse signal the Docker healthcheck used to rely on alone — it does not (yet) carry the poll/delivery split above.
+- **CheckCentral (optional, external alerting)**: the Docker healthcheck above is only visible locally (`docker inspect`, Portainer) — nothing pages anyone. When `SMTP_HOST`/`SMTP_USERNAME`/`SMTP_PASSWORD`/`CHECKCENTRAL_FROM_EMAIL`/`CHECKCENTRAL_TO_EMAIL` are all set, the poller additionally sends **one** dead-man's-switch check-in email per cycle (CheckCentral is billed per check, so this deliberately uses only one, not two):
+  - Not sent at all when polling failed this cycle — silence is the signal; CheckCentral's own overdue detection raises the alarm, exactly like a plain dead-man's-switch. This is the 2026-09-20 failure mode.
+  - Sent with body `STATUS: OK` when polling succeeded and the last delivery attempt (real traffic or the reachability probe above) succeeded too.
+  - Sent with body `STATUS: DELIVERY DOWN` when polling succeeded but the last delivery attempt did not — so the two failure modes still read differently in CheckCentral, without a second check.
+
+  A watchdog must not depend on the channel it watches — that's why this goes out over SMTP, independent of the Teams webhook entirely. The email fires at most once every `CHECKCENTRAL_INTERVAL_MINUTES`, but a broken condition is re-checked every poll cycle so recovery is caught immediately, not delayed a full interval.
+
+  **Setting up the check in CheckCentral** (mailbox-monitor style, matching the existing "Raptus Internal IT" group convention):
+  1. Create one check in the same group/inbox that already receives other internal-IT check-ins (e.g. `raptus+internal-it@mycheckcentral.cc`), named e.g. "Status Poller — Health".
+  2. `interval_value: 1`, `interval_type: "Hour"`, `overdue_minutes: 90` — matches `CHECKCENTRAL_INTERVAL_MINUTES` (default 60) with slack for one missed cycle before it's genuinely overdue. `default_status: "Failure"` so silence reads as failure, not "unknown".
+  3. `matching_conditions` (required: All): Subject contains `Status Page Poller — Health`, From contains `hostmaster@raptus.com` (or whatever `CHECKCENTRAL_FROM_EMAIL` is set to).
+  4. `success_conditions` (required: All): Body Text contains `STATUS: OK`.
+  5. `warning_conditions` (required: All): Body Text contains `STATUS: DELIVERY DOWN`. This is what distinguishes "delivery is broken" from "everything is fine" without a second check; CheckCentral's own overdue/Failure state separately distinguishes "polling itself is broken" (see above — no email at all).
+  6. Enable whichever notification channel/ticketing system should page on failure — this repo has no opinion on that part, it only controls whether the email itself gets sent.
+
+  **Testing it by hand**, once both the `.env` values and the CheckCentral check above are in place:
+  ```bash
+  docker exec raptus-status-notifs node dist/src/main.js checkcentral-test
+  ```
+  Sends one real `STATUS: OK` email through the exact same code path the poll loop uses (marked in the body as a manual test), so you can confirm the SMTP relay and the CheckCentral matching/success conditions actually work before relying on them. Exits 1 with a clear message if CheckCentral is not configured. Run this from a shell that has the real secrets in its environment — this deliberately cannot be done by an AI assistant session, which must not read `.env` contents.
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Container restarts in a loop | `WEBHOOK_URL` not set, or `providers.yaml` missing/invalid | `docker compose logs` shows the reason. Add the env var or run `docker compose run --rm status-poller node dist/src/main.js validate` to dry-run the YAML. |
-| `docker inspect` shows `unhealthy` | The poll loop hasn't completed in 15 min — usually a network issue or hung adapter | Check logs for adapter errors. Restart with `docker compose restart`. Adjust `HEALTH_MAX_AGE_SECONDS` if the network is genuinely slow. |
+| `docker inspect` shows `unhealthy: poll: ...` | No provider has been fetched successfully within `HEALTH_MAX_AGE_SECONDS` — usually a network issue or hung adapter | Check logs for adapter errors. Restart with `docker compose restart`. Adjust `HEALTH_MAX_AGE_SECONDS` if the network is genuinely slow. |
+| `docker inspect` shows `unhealthy: delivery: ...` | The webhook/Logic App is unreachable, rejecting requests, or the URL/SAS signature is stale | Check logs for "Webhook reachability probe failed" and the underlying HTTP/network error. |
+| CheckCentral shows the check as overdue (Failure) | Polling itself is broken — see the `unhealthy: poll: ...` row above | Same fix as that row. |
+| CheckCentral shows the check in Warning | Delivery is broken — see the `unhealthy: delivery: ...` row above | Same fix as that row. |
+| CheckCentral shows the check overdue but `docker inspect` is healthy | The SMTP relay itself is down, or `SMTP_HOST`/credentials are wrong | Check logs for "CheckCentral check-in failed", or run `node dist/src/main.js checkcentral-test` by hand. |
 | API returns 401 with a valid token | `API_TOKEN` env var differs between container and caller | Compare `docker compose exec status-poller printenv API_TOKEN` to the value used by curl or your LLM platform. |
 | API returns 401 with no token expected | You forgot to set `API_AUTH_DISABLED=true` and didn't set `API_TOKEN` | Either set a token (recommended) or explicitly opt out of auth. |
 | Edits to `providers.yaml` don't take effect | The path mount in compose points elsewhere, or the file has YAML errors | `docker compose exec status-poller cat /data/providers.yaml` to see what the container sees. `docker compose run --rm status-poller node dist/src/main.js validate` to check the file. |
 | GHCR pull fails with `unauthorized` | The image was set to private somehow | Confirm visibility on GitHub → repo → Packages. The published image should be public. |
 
-A "frozen-but-running" process where the cron loop hung but the container stays up is detected by the healthcheck via `last_run_at` in the SQLite state — Docker reports the container as `unhealthy` and Portainer surfaces it.
+A "frozen-but-running" process where the cron loop hung but the container stays up is detected the same way as before: `last_run_at` never advancing. What changed is that a poll loop which keeps *running* but stops *succeeding* — every provider failing every cycle — no longer reads as healthy just because a cycle technically completed; see `last_successful_poll_at` above.

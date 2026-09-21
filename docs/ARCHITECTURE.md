@@ -191,7 +191,13 @@ CREATE TABLE provider_health (    -- observation bookkeeping, incident-independe
 );
 
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT);
-                                  -- last_run_at, report_last_{weekly,monthly,quarterly}
+                                  -- last_run_at                        -- every cycle, regardless of outcome
+                                  -- last_successful_poll_at            -- only when ≥1 provider fetch succeeded
+                                  -- last_delivery_attempt_at           -- every notifier call or webhook probe, success or failure
+                                  -- last_delivery_ok_at                -- only on a successful delivery/probe
+                                  -- last_checkcentral_poll_sent_at     -- last CheckCentral poll check-in actually sent
+                                  -- last_checkcentral_delivery_sent_at -- last CheckCentral delivery check-in actually sent
+                                  -- report_last_{weekly,monthly,quarterly}
 
 CREATE TABLE translations (source_hash TEXT, target_lang TEXT, translated TEXT,
                            PRIMARY KEY (source_hash, target_lang));

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { demoTypes, sampleIncident, sampleAlert, sendDemo } from "../../src/cli/demo.js";
 import type { AdapterHealthAlert, NormalizedIncident, Notifier } from "../../src/lib/types.js";
+import type { StatusReport } from "../../src/lib/report.js";
 
 vi.mock("../../src/lib/logger.js", () => ({
   logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), fatal: vi.fn() },
@@ -11,6 +12,7 @@ class RecordingNotifier implements Notifier {
   public opened: NormalizedIncident[] = [];
   public resolved: NormalizedIncident[] = [];
   public health: AdapterHealthAlert[] = [];
+  public reports: StatusReport[] = [];
   async notifyOpened(incident: NormalizedIncident): Promise<void> {
     this.opened.push(incident);
   }
@@ -19,6 +21,9 @@ class RecordingNotifier implements Notifier {
   }
   async notifyAdapterHealth(alert: AdapterHealthAlert): Promise<void> {
     this.health.push(alert);
+  }
+  async notifyReport(report: StatusReport): Promise<void> {
+    this.reports.push(report);
   }
 }
 

@@ -22,6 +22,17 @@ services:
       # LOG_LEVEL: info
       # USER_AGENT: "status-page-to-chat/1.0.0 (+https://example.com; ops@example.com)"
       # HEALTH_MAX_AGE_SECONDS: "900"
+      # DELIVERY_MAX_AGE_SECONDS: "7200"
+      # CHECKCENTRAL_INTERVAL_MINUTES: "60"
+      # Optional: CheckCentral dead-man's-switch check-ins over SMTP — all
+      # five required together, or leave all unset to disable. See
+      # docs/DEPLOYMENT.md#self-monitoring.
+      # SMTP_HOST: smtp.azurecomm.net
+      # SMTP_PORT: "587"
+      # SMTP_USERNAME: acs-...
+      # SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # CHECKCENTRAL_FROM_EMAIL: hostmaster@raptus.com
+      # CHECKCENTRAL_TO_EMAIL: raptus+internal-it@mycheckcentral.cc
     ports:
       # Management API. Bind to localhost if you put a reverse proxy in
       # front; expose to the LAN if you trust your network.
