@@ -47,7 +47,7 @@ function ageSeconds(iso: string, now: number): number | null {
  *      (webhook/Logic App) actually succeed, and recently? A dead webhook
  *      during a quiet stretch with no incidents to report would otherwise
  *      produce zero failed deliveries — "no failures" is not "delivery
- *      works". main.ts's payload-free reachability probe (see
+ *      works". main.ts's request-free reachability probe (see
  *      maybeProbeWebhookReachability) exists so this signal cannot go
  *      stale just because nothing newsworthy happened.
  *

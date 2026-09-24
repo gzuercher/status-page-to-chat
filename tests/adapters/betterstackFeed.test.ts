@@ -162,6 +162,26 @@ describe("BetterStackFeedAdapter", () => {
     expect(incidents[0].logoUrl).toContain("status.example.com");
   });
 
+  it("throws on an Atom feed instead of reporting it as empty (Langdock → incident.io)", async () => {
+    mockedHttpGet.mockResolvedValueOnce({
+      status: 200,
+      contentType: "application/atom+xml",
+      body: '<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>x</id><title>Down</title></entry></feed>',
+    });
+    await expect(new BetterStackFeedAdapter(config).fetchIncidents()).rejects.toThrow(
+      /Unexpected feed format/,
+    );
+  });
+
+  it("still treats an RSS channel without items as empty", async () => {
+    mockedHttpGet.mockResolvedValueOnce({
+      status: 200,
+      contentType: "application/rss+xml",
+      body: '<?xml version="1.0"?><rss version="2.0"><channel><title>x</title></channel></rss>',
+    });
+    await expect(new BetterStackFeedAdapter(config).fetchIncidents()).resolves.toEqual([]);
+  });
+
   it("throws on non-200 response", async () => {
     mockedHttpGet.mockResolvedValueOnce({ status: 503, contentType: "", body: "" });
     await expect(new BetterStackFeedAdapter(config).fetchIncidents()).rejects.toThrow(/HTTP 503/);

@@ -20,7 +20,7 @@ import {
 } from "./lib/healthTracker.js";
 import { resolveProviderLogoUrl } from "./lib/logo.js";
 import { buildReport, dueReports } from "./lib/report.js";
-import { httpPost } from "./lib/httpClient.js";
+import { probeWebhookReachability } from "./lib/webhookProbe.js";
 import { loadCheckCentralConfig, sendCheckin } from "./lib/checkcentralMailer.js";
 import {
   LAST_CHECKCENTRAL_SENT_METADATA_KEY,
@@ -65,6 +65,14 @@ import { startApiServer, type LastRunRef } from "./api/server.js";
 const STALE_INCIDENT_DAYS = 14;
 
 /**
+ * How long a card whose delivery failed keeps being retried, measured
+ * against the incident's last upstream update. Long enough to ride out a
+ * webhook or Logic App outage of several hours; short enough that a card
+ * arriving after a day-long outage does not read as a fresh event.
+ */
+const DELIVERY_RETRY_HOURS = 24;
+
+/**
  * Shared cadence for everything in this file whose only purpose is to keep
  * a health signal fresh rather than to communicate something to a human:
  * the webhook reachability probe and the two CheckCentral check-in emails.
@@ -96,17 +104,16 @@ async function trackedDeliver(store: Store, send: () => Promise<void>): Promise<
 }
 
 /**
- * Exercises the delivery path with an empty POST, bypassing the Notifier
- * abstraction and its JSON incident/alert/report schema entirely — on
- * purpose. A prior version of this fix sent a `heartbeat` business event
- * through the same envelope the Logic App renders cards from; that risked
- * the Logic App choking on an event kind it does not expect. An empty body
- * carries no such risk: the Logic App's HTTP trigger either accepts it (a
- * 2xx we don't need) or rejects it at the schema-validation gate before any
- * workflow logic runs (a 4xx), and *either way* the response proves the
- * network/TLS/Azure-gateway path is up — which is exactly what the
- * 2026-09-20 outage (a connect timeout, i.e. no response at all) broke.
- * `httpPost` never logs the URL (it carries the Logic App's SAS signature).
+ * Exercises the delivery path without sending anything to it: a TLS
+ * handshake with the webhook host, no HTTP request (see lib/webhookProbe.ts).
+ *
+ * An earlier version POSTed an empty `{}` body, on the assumption that the
+ * Logic App would reject it before any workflow logic ran. It does not —
+ * its HTTP trigger accepts any method and body, so every probe became a
+ * workflow run with an empty envelope (observed from 2026-09-22 22:45 UTC).
+ * The handshake still proves the network/TLS/Azure-gateway path is up,
+ * which is exactly what the 2026-09-20 outage (a connect timeout, i.e. no
+ * response at all) broke.
  *
  * Only runs when nothing else has attempted delivery recently — real
  * traffic already proves the path works and updates the same timestamp
@@ -120,7 +127,7 @@ async function maybeProbeWebhookReachability(store: Store, summary: RunSummary):
   }
 
   try {
-    await trackedDeliver(store, () => httpPost(webhookUrl, {}).then(() => undefined));
+    await trackedDeliver(store, () => probeWebhookReachability(webhookUrl));
     summary.notificationsSent++;
     logger.debug({}, "Webhook reachability probe succeeded");
   } catch (err) {
@@ -223,6 +230,8 @@ export async function runPoll(
   // Incidents whose last upstream update predates this are retired silently.
   // Computed once per run so every provider uses the same boundary.
   const staleCutoff = new Date(startTime - STALE_INCIDENT_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  // Failed deliveries are retried only while the incident is this fresh.
+  const retryCutoff = new Date(startTime - DELIVERY_RETRY_HOURS * 60 * 60 * 1000).toISOString();
 
   // Collected for the health tracker after all providers have been
   // polled. One entry per configured provider, success or failure.
@@ -296,7 +305,7 @@ export async function runPoll(
       );
 
       const stored = await getStoredIncidents(store, providerKey);
-      const diffs = diffIncidents(incidents, stored);
+      const diffs = diffIncidents(incidents, stored, retryCutoff);
 
       for (const diff of diffs) {
         if (diff.incident.status === "open") summary.incidentsOpen++;
@@ -306,6 +315,8 @@ export async function runPoll(
         let notifiedResolved = stored.get(diff.incident.externalId)?.notifiedResolved ?? false;
 
         if (diff.action === "notify_opened") {
+          // A reopened incident owes a fresh resolution card later.
+          notifiedResolved = false;
           try {
             await trackedDeliver(store, () => notifier.notifyOpened(diff.incident));
             notifiedOpened = true;

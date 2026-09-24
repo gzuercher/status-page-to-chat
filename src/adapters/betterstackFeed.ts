@@ -168,7 +168,14 @@ export class BetterStackFeedAdapter implements StatusProvider {
       throw new Error(`XML parsing failed: ${String(err)}`);
     }
 
-    const rawItems = parsed.rss?.channel?.item;
+    // A missing <rss><channel> is not an empty feed but a different format.
+    // status.langdock.com moved to incident.io, whose /feed.atom is real
+    // Atom; treating that as "empty" hid every Langdock incident for weeks
+    // without a single error. Failing loudly lets the health tracker alert.
+    if (!parsed.rss?.channel) {
+      throw new Error(`Unexpected feed format from ${url}: no <rss><channel> element`);
+    }
+    const rawItems = parsed.rss.channel.item;
     if (!rawItems) {
       logger.info({ provider: this.key, incidentCount: 0 }, "BetterStack feed empty");
       return [];

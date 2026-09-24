@@ -96,6 +96,28 @@ describe("AtlassianStatuspageAdapter", () => {
     expect(resolved).toHaveLength(2);
   });
 
+  it("incident.io-Seiten ohne unresolved.json (404): liest offene Incidents aus incidents.json", async () => {
+    // status.langdock.com moved to incident.io, which serves the
+    // Statuspage-compatible API minus this one endpoint.
+    mockedHttpGet
+      .mockResolvedValueOnce({ status: 404, contentType: "text/html", body: "<html>" })
+      .mockResolvedValueOnce(mockJsonResponse(recentFixture));
+
+    const adapter = new AtlassianStatuspageAdapter(baseConfig);
+    const incidents = await adapter.fetchIncidents();
+
+    expect(incidents.map((i) => i.externalId).sort()).toEqual(
+      (recentFixture as { incidents: Array<{ id: string }> }).incidents.map((i) => i.id).sort(),
+    );
+  });
+
+  it("andere Fehler auf unresolved.json bleiben Fehler", async () => {
+    mockedHttpGet.mockResolvedValueOnce({ status: 503, contentType: "text/html", body: "" });
+
+    const adapter = new AtlassianStatuspageAdapter(baseConfig);
+    await expect(adapter.fetchIncidents()).rejects.toThrow(/HTTP 503/);
+  });
+
   it("mappt Status korrekt", async () => {
     mockedHttpGet
       .mockResolvedValueOnce(mockJsonResponse(unresolvedFixture))

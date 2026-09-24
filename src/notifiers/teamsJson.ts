@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { httpPost } from "../lib/httpClient.js";
 import { logger } from "../lib/logger.js";
 import type { Locale } from "../lib/i18n.js";
@@ -143,6 +144,44 @@ type ReportEvent = {
   language: Locale;
   report: JsonReport;
 };
+
+/**
+ * Minimum shape the renderer needs to route an envelope: the fixed header
+ * plus the body object matching the event family. Deliberately shallow —
+ * the static types already pin the full structure; this catches what they
+ * cannot, i.e. anything that reaches `send` through a cast or a future
+ * code path and would otherwise go out as an empty or headless body.
+ */
+const envelopeSchema = z
+  .object({
+    schemaVersion: z.literal(SCHEMA_VERSION),
+    source: z.literal("status-page-to-chat"),
+    event: z.string().regex(/^(incident|adapter|report)\.[a-zA-Z]+$/),
+    severity: z.enum(["problem", "ok"]),
+    language: z.string().min(1),
+    incident: z.record(z.string(), z.unknown()).optional(),
+    alert: z.record(z.string(), z.unknown()).optional(),
+    report: z.record(z.string(), z.unknown()).optional(),
+  })
+  .refine((e) => {
+    const family = e.event.split(".")[0];
+    const bodyKey = family === "adapter" ? "alert" : family;
+    return e[bodyKey as "incident" | "alert" | "report"] !== undefined;
+  }, "envelope body does not match its event family");
+
+/**
+ * Throws when `payload` is not a complete envelope. Called before every
+ * POST: an incomplete envelope is a bug on our side, and not sending it
+ * beats handing the renderer a body it cannot route. The error lists only
+ * the failing field paths, never the payload itself.
+ */
+export function assertDeliverableEnvelope(payload: unknown): void {
+  const result = envelopeSchema.safeParse(payload);
+  if (!result.success) {
+    const fields = result.error.issues.map((i) => i.path.join(".") || "(root)").join(", ");
+    throw new Error(`Refusing to send incomplete envelope: ${fields}`);
+  }
+}
 
 async function toJsonIncident(
   incident: NormalizedIncident,
@@ -292,7 +331,7 @@ export class TeamsJsonNotifier implements Notifier {
   }
 
   /**
-   * Posts the payload once. Retry/backoff (429/5xx/network) lives in the
+   * Validates, then posts the payload once. Retry/backoff (429/5xx/network) lives in the
    * shared httpClient; on a final non-2xx or network failure this throws, and
    * the poll loop leaves the incident un-notified so the next cycle retries.
    */
@@ -300,6 +339,7 @@ export class TeamsJsonNotifier implements Notifier {
     payload: IncidentEvent | AdapterEvent | ReportEvent,
     context: Record<string, unknown>,
   ): Promise<void> {
+    assertDeliverableEnvelope(payload);
     const response = await httpPost(this.webhookUrl, payload);
     if (response.status < 200 || response.status >= 300) {
       throw new Error(`HTTP ${response.status}: ${response.body}`);

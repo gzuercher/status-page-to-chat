@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { TeamsJsonNotifier } from "../../src/notifiers/teamsJson.js";
+import { TeamsJsonNotifier, assertDeliverableEnvelope } from "../../src/notifiers/teamsJson.js";
 import type { NormalizedIncident } from "../../src/lib/types.js";
 import type { StatusReport } from "../../src/lib/report.js";
 import type { Translator } from "../../src/lib/translator.js";
@@ -277,5 +277,58 @@ describe("TeamsJsonNotifier — report envelope", () => {
     expect(r.providers).toEqual([]);
     expect(r.silentProviders).toEqual([]);
     expect(r.totalIncidents).toBe(0);
+  });
+});
+
+describe("assertDeliverableEnvelope — never send an empty or headless envelope", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const validHeader = {
+    schemaVersion: 3,
+    source: "status-page-to-chat",
+    event: "incident.opened",
+    severity: "problem",
+    language: "de",
+  };
+
+  it("rejects the empty body that reached the Logic App from 2026-09-22 on", () => {
+    expect(() => assertDeliverableEnvelope({})).toThrow(/incomplete envelope/);
+  });
+
+  it("rejects null and non-objects", () => {
+    expect(() => assertDeliverableEnvelope(null)).toThrow(/incomplete envelope/);
+    expect(() => assertDeliverableEnvelope("")).toThrow(/incomplete envelope/);
+  });
+
+  it("rejects an envelope without event and names the field", () => {
+    const headless: Record<string, unknown> = { ...validHeader, incident: {} };
+    delete headless.event;
+    expect(() => assertDeliverableEnvelope(headless)).toThrow(/event/);
+  });
+
+  it("rejects an envelope whose body does not match its event family", () => {
+    expect(() => assertDeliverableEnvelope({ ...validHeader, report: {} })).toThrow(
+      /incomplete envelope/,
+    );
+  });
+
+  it("accepts every event family the notifier emits, including camelCase kinds", () => {
+    expect(() => assertDeliverableEnvelope({ ...validHeader, incident: {} })).not.toThrow();
+    expect(() =>
+      assertDeliverableEnvelope({ ...validHeader, event: "adapter.halfDead", alert: {} }),
+    ).not.toThrow();
+    expect(() =>
+      assertDeliverableEnvelope({ ...validHeader, event: "report.weekly", report: {} }),
+    ).not.toThrow();
+  });
+
+  it("the notifier does not POST when the envelope is incomplete", async () => {
+    // Simulates a future code path that loses the body: the translator
+    // throwing is not it (that falls back), so force it via a broken report.
+    const broken = { period: "weekly" } as unknown as StatusReport;
+    await expect(newNotifier().notifyReport(broken)).rejects.toThrow();
+    expect(mockedHttpPost).not.toHaveBeenCalled();
   });
 });
