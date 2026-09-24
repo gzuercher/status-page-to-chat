@@ -17,13 +17,19 @@ import type { StatusReport } from "../src/lib/report.js";
 
 // Three independent things are mocked at the boundary, matching what the
 // two outages this test simulates actually touch: the adapter's HTTP layer
-// (poller), the raw webhook POST the delivery-path reachability probe makes
+// (poller), the TLS handshake the delivery-path reachability probe makes
 // (main.ts's maybeProbeWebhookReachability — deliberately NOT routed
-// through the Notifier), and the injected Notifier for real business
-// traffic (unused here — this fixture never has an incident to report).
+// through the Notifier and NOT an HTTP request), and the injected Notifier
+// for real business traffic (unused here — this fixture never has an
+// incident to report). `httpPost` stays mocked only to prove the probe
+// never calls it.
 vi.mock("../src/lib/httpClient.js", () => ({
   httpGet: vi.fn(),
   httpPost: vi.fn(),
+}));
+
+vi.mock("../src/lib/webhookProbe.js", () => ({
+  probeWebhookReachability: vi.fn(),
 }));
 
 vi.mock("../src/lib/logger.js", () => ({
@@ -36,10 +42,12 @@ vi.mock("../src/lib/checkcentralMailer.js", () => ({
 }));
 
 import { httpGet, httpPost } from "../src/lib/httpClient.js";
+import { probeWebhookReachability } from "../src/lib/webhookProbe.js";
 import { loadCheckCentralConfig, sendCheckin } from "../src/lib/checkcentralMailer.js";
 
 const mockedHttpGet = vi.mocked(httpGet);
 const mockedHttpPost = vi.mocked(httpPost);
+const mockedProbe = vi.mocked(probeWebhookReachability);
 const mockedLoadCheckCentralConfig = vi.mocked(loadCheckCentralConfig);
 const mockedSendCheckin = vi.mocked(sendCheckin);
 
@@ -95,14 +103,13 @@ describe("runPoll → evaluateHealth — the two signals are independent", () =>
 
   it("simulierter Ausfall des Pollers: kippt den Healthcheck auf 'poll', delivery bleibt gesund", async () => {
     mockedHttpGet.mockRejectedValue(new Error("connect timeout"));
-    // The webhook reachability probe is unaffected by the poller outage —
-    // any HTTP response (even a 4xx) counts as reachable.
-    mockedHttpPost.mockResolvedValue({ status: 400, contentType: "", body: "" });
+    // The webhook reachability probe is unaffected by the poller outage.
+    mockedProbe.mockResolvedValue(undefined);
 
     await runPoll(loadConfig(), new RecordingNotifier(), store, new HealthTracker());
 
     expect(getMetadata(store, LAST_SUCCESSFUL_POLL_METADATA_KEY)).toBeUndefined();
-    expect(mockedHttpPost).toHaveBeenCalledOnce();
+    expect(mockedProbe).toHaveBeenCalledOnce();
     expect(getMetadata(store, LAST_DELIVERY_OK_METADATA_KEY)).toBeDefined();
 
     const result = evaluateHealth(store);
@@ -113,7 +120,7 @@ describe("runPoll → evaluateHealth — the two signals are independent", () =>
 
   it("simulierter Ausfall des Webhooks: kippt den Healthcheck auf 'delivery', poll bleibt gesund", async () => {
     mockedHttpGet.mockResolvedValue(jsonResponse({ incidents: [] }));
-    mockedHttpPost.mockRejectedValue(new Error("connect timeout"));
+    mockedProbe.mockRejectedValue(new Error("TLS handshake timed out"));
 
     await runPoll(loadConfig(), new RecordingNotifier(), store, new HealthTracker());
 
@@ -127,9 +134,21 @@ describe("runPoll → evaluateHealth — the two signals are independent", () =>
     expect(result.message).not.toMatch(/poll:/);
   });
 
+  it("Regression 2026-09-22: der Probe sendet keinen HTTP-Request an den Webhook", async () => {
+    // The old probe POSTed `{}` — the Logic App turned every one of them
+    // into a workflow run with an empty envelope.
+    mockedHttpGet.mockResolvedValue(jsonResponse({ incidents: [] }));
+    mockedProbe.mockResolvedValue(undefined);
+
+    await runPoll(loadConfig(), new RecordingNotifier(), store, new HealthTracker());
+
+    expect(mockedProbe).toHaveBeenCalledExactlyOnceWith(process.env.WEBHOOK_URL);
+    expect(mockedHttpPost).not.toHaveBeenCalled();
+  });
+
   it("beide Pfade gesund: der Healthcheck bleibt healthy", async () => {
     mockedHttpGet.mockResolvedValue(jsonResponse({ incidents: [] }));
-    mockedHttpPost.mockResolvedValue({ status: 200, contentType: "", body: "" });
+    mockedProbe.mockResolvedValue(undefined);
 
     await runPoll(loadConfig(), new RecordingNotifier(), store, new HealthTracker());
 
@@ -156,7 +175,7 @@ describe("CheckCentral check-in — one email, poll/delivery distinguished by bo
   it("sends nothing when CheckCentral is not configured", async () => {
     mockedLoadCheckCentralConfig.mockReturnValue(undefined);
     mockedHttpGet.mockResolvedValue(jsonResponse({ incidents: [] }));
-    mockedHttpPost.mockResolvedValue({ status: 200, contentType: "", body: "" });
+    mockedProbe.mockResolvedValue(undefined);
 
     await runPoll(loadConfig(), new RecordingNotifier(), store, new HealthTracker());
 
@@ -165,7 +184,7 @@ describe("CheckCentral check-in — one email, poll/delivery distinguished by bo
 
   it("sends STATUS: OK on a fully healthy first cycle", async () => {
     mockedHttpGet.mockResolvedValue(jsonResponse({ incidents: [] }));
-    mockedHttpPost.mockResolvedValue({ status: 200, contentType: "", body: "" });
+    mockedProbe.mockResolvedValue(undefined);
 
     await runPoll(loadConfig(), new RecordingNotifier(), store, new HealthTracker());
 
@@ -181,7 +200,7 @@ describe("CheckCentral check-in — one email, poll/delivery distinguished by bo
     // is the signal for a broken poll path, exactly like a plain
     // dead-man's-switch. See main.ts's maybeSendCheckCentralCheckin.
     mockedHttpGet.mockRejectedValue(new Error("connect timeout"));
-    mockedHttpPost.mockResolvedValue({ status: 200, contentType: "", body: "" });
+    mockedProbe.mockResolvedValue(undefined);
 
     await runPoll(loadConfig(), new RecordingNotifier(), store, new HealthTracker());
 
@@ -190,7 +209,7 @@ describe("CheckCentral check-in — one email, poll/delivery distinguished by bo
 
   it("sends STATUS: DELIVERY DOWN when the webhook is unreachable, even though polling is fine", async () => {
     mockedHttpGet.mockResolvedValue(jsonResponse({ incidents: [] }));
-    mockedHttpPost.mockRejectedValue(new Error("connect timeout"));
+    mockedProbe.mockRejectedValue(new Error("TLS handshake timed out"));
 
     await runPoll(loadConfig(), new RecordingNotifier(), store, new HealthTracker());
 
@@ -203,7 +222,7 @@ describe("CheckCentral check-in — one email, poll/delivery distinguished by bo
 
   it("does not re-send a check-in that was already sent within the interval", async () => {
     mockedHttpGet.mockResolvedValue(jsonResponse({ incidents: [] }));
-    mockedHttpPost.mockResolvedValue({ status: 200, contentType: "", body: "" });
+    mockedProbe.mockResolvedValue(undefined);
 
     await runPoll(loadConfig(), new RecordingNotifier(), store, new HealthTracker());
     expect(mockedSendCheckin).toHaveBeenCalledOnce();

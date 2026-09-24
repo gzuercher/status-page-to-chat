@@ -89,9 +89,9 @@ opens up.
   tracking poll success and delivery success as two independent signals
   (`last_successful_poll_at`, `last_delivery_attempt_at`/`last_delivery_ok_at`
   — see `src/cli/health.ts`), kept fresh during quiet stretches by a
-  payload-free reachability probe against `WEBHOOK_URL` (no dependency on
-  the Logic App understanding any particular payload — any HTTP response
-  counts as reachable). An optional CheckCentral dead-man's-switch
+  reachability probe against the `WEBHOOK_URL` host (a TLS handshake, no
+  HTTP request — an earlier `{}` POST turned into an empty Logic App run
+  every hour, see lessons.md 2026-09-24). An optional CheckCentral dead-man's-switch
   (one check, not two — billed per check — distinguishing poll vs. delivery
   by the check-in email's body text) additionally pages independently of
   the Teams channel itself; see `docs/DEPLOYMENT.md` → "Self-monitoring".

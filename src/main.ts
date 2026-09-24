@@ -20,7 +20,7 @@ import {
 } from "./lib/healthTracker.js";
 import { resolveProviderLogoUrl } from "./lib/logo.js";
 import { buildReport, dueReports } from "./lib/report.js";
-import { httpPost } from "./lib/httpClient.js";
+import { probeWebhookReachability } from "./lib/webhookProbe.js";
 import { loadCheckCentralConfig, sendCheckin } from "./lib/checkcentralMailer.js";
 import {
   LAST_CHECKCENTRAL_SENT_METADATA_KEY,
@@ -96,17 +96,16 @@ async function trackedDeliver(store: Store, send: () => Promise<void>): Promise<
 }
 
 /**
- * Exercises the delivery path with an empty POST, bypassing the Notifier
- * abstraction and its JSON incident/alert/report schema entirely — on
- * purpose. A prior version of this fix sent a `heartbeat` business event
- * through the same envelope the Logic App renders cards from; that risked
- * the Logic App choking on an event kind it does not expect. An empty body
- * carries no such risk: the Logic App's HTTP trigger either accepts it (a
- * 2xx we don't need) or rejects it at the schema-validation gate before any
- * workflow logic runs (a 4xx), and *either way* the response proves the
- * network/TLS/Azure-gateway path is up — which is exactly what the
- * 2026-09-20 outage (a connect timeout, i.e. no response at all) broke.
- * `httpPost` never logs the URL (it carries the Logic App's SAS signature).
+ * Exercises the delivery path without sending anything to it: a TLS
+ * handshake with the webhook host, no HTTP request (see lib/webhookProbe.ts).
+ *
+ * An earlier version POSTed an empty `{}` body, on the assumption that the
+ * Logic App would reject it before any workflow logic ran. It does not —
+ * its HTTP trigger accepts any method and body, so every probe became a
+ * workflow run with an empty envelope (observed from 2026-09-22 22:45 UTC).
+ * The handshake still proves the network/TLS/Azure-gateway path is up,
+ * which is exactly what the 2026-09-20 outage (a connect timeout, i.e. no
+ * response at all) broke.
  *
  * Only runs when nothing else has attempted delivery recently — real
  * traffic already proves the path works and updates the same timestamp
@@ -120,7 +119,7 @@ async function maybeProbeWebhookReachability(store: Store, summary: RunSummary):
   }
 
   try {
-    await trackedDeliver(store, () => httpPost(webhookUrl, {}).then(() => undefined));
+    await trackedDeliver(store, () => probeWebhookReachability(webhookUrl));
     summary.notificationsSent++;
     logger.debug({}, "Webhook reachability probe succeeded");
   } catch (err) {
