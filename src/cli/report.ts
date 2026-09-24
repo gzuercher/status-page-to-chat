@@ -54,7 +54,7 @@ export async function runReport(periodArg?: string, dryRun = false): Promise<voi
       return;
     }
 
-    const notifier = createNotifier(config, store);
+    const notifier = createNotifier(config);
     await notifier.notifyReport(report);
     logger.info(
       { period, label: report.label, incidents: report.totalIncidents },

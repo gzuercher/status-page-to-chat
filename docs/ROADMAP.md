@@ -61,6 +61,10 @@ opens up.
 
 ## Shipped since this file was last revised
 
+- **Removed in v0.6.0: management REST API, MCP server and title
+  translation** — removed as unnecessary complexity. Providers are
+  maintained by editing `/data/providers.yaml` in the data volume;
+  incident titles pass through in the provider's wording.
 - **Independent poll/delivery healthcheck + optional CheckCentral
   dead-man's-switch** — see "Known maintenance risks" below for the
   2026-09-20 outage that prompted it.

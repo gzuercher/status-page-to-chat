@@ -6,18 +6,8 @@ services:
     environment:
       WEBHOOK_URL: ${WEBHOOK_URL:?WEBHOOK_URL must be set in .env or stack environment}
       CONFIG_PATH: /data/providers.yaml
-      # Bearer token guarding the management API. Required unless you set
-      # API_AUTH_DISABLED=true (only do that behind a private network).
-      API_TOKEN: ${API_TOKEN:-}
-      # API_AUTH_DISABLED: "true"
-      # Claude API key. When set, Teams incident titles are machine-translated
-      # into the configured language (default German). Unset → titles are shown
-      # untranslated; everything else stays localised.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Optional overrides:
       # LANGUAGE: de
-      # TRANSLATE_MODEL: claude-haiku-4-5-20251001
-      # API_PORT: "8080"
       # POLL_CRON: "*/5 * * * *"
       # LOG_LEVEL: info
       # USER_AGENT: "status-page-to-chat/1.0.0 (+https://example.com; ops@example.com)"
@@ -33,17 +23,12 @@ services:
       # SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       # CHECKCENTRAL_FROM_EMAIL: hostmaster@raptus.com
       # CHECKCENTRAL_TO_EMAIL: raptus+internal-it@mycheckcentral.cc
-    ports:
-      # Management API. Bind to localhost if you put a reverse proxy in
-      # front; expose to the LAN if you trust your network.
-      - "127.0.0.1:8080:8080"
     volumes:
       # Holds both state.sqlite AND providers.yaml. The container seeds
       # an empty providers.yaml from /app/providers.yaml.example on first
       # start, so `docker compose up -d` works with no host-side files.
       #
-      # To inspect/edit providers from the host: use the REST API (see
-      # docs/API.md, docs/LLM-INTEGRATION.md), or
+      # To inspect/edit providers from the host:
       #   docker compose cp status-poller:/data/providers.yaml ./providers.yaml
       #   $EDITOR providers.yaml
       #   docker compose cp ./providers.yaml status-poller:/data/providers.yaml

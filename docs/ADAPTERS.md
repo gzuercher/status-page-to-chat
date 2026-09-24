@@ -277,7 +277,7 @@ Widening the list brings its own trap: a partial recovery reads almost exactly l
 
 Matching the all-clear alone would post a resolution card while the incident is demonstrably ongoing — and a false all-clear is worse than a late one, because it actively tells people a broken service works. A resolution keyword is therefore withdrawn when the same update also carries a qualifier (`except`, `still working`, `partially`, `weiterhin`, …).
 
-Both lists are heuristics over prose and will miss wordings. When a Langdock incident stays open in `GET /api/incidents/open` long after its status page has closed it, the update text is the first place to look.
+Both lists are heuristics over prose and will miss wordings. When a Langdock incident stays open in the state DB (`incidents` table) long after its status page has closed it, the update text is the first place to look.
 
 ### Configuration
 

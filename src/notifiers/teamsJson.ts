@@ -4,7 +4,6 @@ import { logger } from "../lib/logger.js";
 import type { Locale } from "../lib/i18n.js";
 import { formatDuration } from "../lib/healthTracker.js";
 import type { StatusReport } from "../lib/report.js";
-import type { Translator } from "../lib/translator.js";
 import type { AdapterHealthAlert, Notifier, NormalizedIncident } from "../lib/types.js";
 
 /**
@@ -35,10 +34,8 @@ type JsonIncident = {
   providerKey: string;
   displayName: string;
   /**
-   * Incident title, machine-translated into `language` (see translator.ts).
-   * Falls back to the provider's wording whenever translation is
-   * unavailable — no API key, an API failure, or a timeout — so a card is
-   * never blocked by a translation problem.
+   * Incident title in the provider's wording. Machine translation was
+   * removed in v0.6.0; the field stays so the key set is unchanged.
    */
   title: string;
   /** The provider's own wording, always, for traceability against the source. */
@@ -183,15 +180,12 @@ export function assertDeliverableEnvelope(payload: unknown): void {
   }
 }
 
-async function toJsonIncident(
-  incident: NormalizedIncident,
-  translator: Translator,
-): Promise<JsonIncident> {
+function toJsonIncident(incident: NormalizedIncident): JsonIncident {
   return {
     externalId: incident.externalId,
     providerKey: incident.providerKey,
     displayName: incident.displayName,
-    title: await translator.translate(incident.title),
+    title: incident.title,
     titleOriginal: incident.title,
     description: incident.description ?? null,
     status: incident.status,
@@ -229,22 +223,14 @@ function alertSeverity(kind: AdapterHealthAlert["kind"]): Severity {
  * show is present, optional fields are `null` (never omitted) so the key set
  * is identical across all variants, and `severity`/`language` are included so
  * the renderer needs no knowledge of our internal derivation rules.
- *
- * Incident titles ARE translated here. Layout belongs to the renderer, but
- * translation needs an API key and a cache, and pushing that into every
- * consumer would mean each of them holding the key and paying for the same
- * lookups. `titleOriginal` travels alongside so the source wording stays
- * traceable.
  */
 export class TeamsJsonNotifier implements Notifier {
   private readonly webhookUrl: string;
   private readonly language: Locale;
-  private readonly translator: Translator;
 
-  constructor(webhookUrl: string, language: Locale, translator: Translator) {
+  constructor(webhookUrl: string, language: Locale) {
     this.webhookUrl = webhookUrl;
     this.language = language;
-    this.translator = translator;
   }
 
   async notifyOpened(incident: NormalizedIncident): Promise<void> {
@@ -254,7 +240,7 @@ export class TeamsJsonNotifier implements Notifier {
       event: "incident.opened",
       severity: "problem",
       language: this.language,
-      incident: await toJsonIncident(incident, this.translator),
+      incident: toJsonIncident(incident),
     };
     await this.send(payload, {
       provider: incident.providerKey,
@@ -270,7 +256,7 @@ export class TeamsJsonNotifier implements Notifier {
       event: "incident.resolved",
       severity: "ok",
       language: this.language,
-      incident: await toJsonIncident(incident, this.translator),
+      incident: toJsonIncident(incident),
     };
     await this.send(payload, {
       provider: incident.providerKey,

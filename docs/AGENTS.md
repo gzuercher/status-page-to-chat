@@ -45,7 +45,7 @@ To minimise merge conflicts, the project is divided into **independent zones**:
 | Zone | Responsible agent / branch | Typical files |
 |---|---|---|
 | Foundation | `core` | `package.json`, `tsconfig.json`, `Dockerfile`, `src/lib/types.ts` |
-| Config | `config` | `src/lib/config.ts`, `src/lib/configWriter.ts`, `config/providers.yaml` |
+| Config | `config` | `src/lib/config.ts`, `config/providers.yaml` |
 | State | `state` | `src/state/store.ts` |
 | Adapter: Atlassian | `adapter-atlassian` | `src/adapters/atlassianStatuspage.ts` + test |
 | Adapter: Google | `adapter-google` | `src/adapters/googleWorkspace.ts` + test |
@@ -56,13 +56,12 @@ To minimise merge conflicts, the project is divided into **independent zones**:
 | Adapter: HTML | `adapter-html` | `src/adapters/htmlScrape.ts` + test |
 | Notifier | `notifier` | `src/notifiers/teamsJson.ts` + test |
 | Health & reports | `observability` | `src/lib/healthTracker.ts`, `src/lib/report.ts` |
-| Presentation | `presentation` | `src/lib/i18n.ts`, `src/lib/logo.ts`, `src/lib/translator.ts` |
+| Presentation | `presentation` | `src/lib/i18n.ts`, `src/lib/logo.ts` |
 | Orchestration | `orchestration` | `src/main.ts`, `src/cli/*` |
-| Management API | `api` | `src/api/server.ts`, `src/api/mcp.ts`, `src/api/openapi.json` |
 | Container / CI | `infra` | `Dockerfile`, `docker-compose.yml`, `.github/workflows/*` |
 | Docs | `docs` | `docs/*.md` |
 
-**Order matters**: Foundation → Types → Config → State → Adapters/Notifiers (parallel) → Orchestration → API → Container/CI. Adapter agents should pause until the foundation is in place.
+**Order matters**: Foundation → Types → Config → State → Adapters/Notifiers (parallel) → Orchestration → Container/CI. Adapter agents should pause until the foundation is in place.
 
 ### Coordination
 
@@ -101,8 +100,8 @@ pnpm install
 ### Development cycle
 
 ```bash
-pnpm build         # tsc + copy api/openapi.json to dist/
-pnpm test          # vitest run (265 tests)
+pnpm build         # tsc
+pnpm test          # vitest run
 pnpm lint          # eslint + prettier check
 pnpm format        # prettier --write
 

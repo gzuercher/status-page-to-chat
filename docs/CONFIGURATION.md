@@ -2,8 +2,8 @@
 
 There are two configuration surfaces:
 
-- **`providers.yaml`** — the list of monitored status pages. With the default Docker Compose setup it lives on the host (next to `docker-compose.yml`) and is bind-mounted into the container at `/data/providers.yaml`. Edit the file and the next poll cycle (within 5 min) picks up the change. The same file can also be edited via the REST API (see [API.md](API.md)) — handy for chat-driven maintenance via any OpenAPI-aware LLM platform; see [LLM-INTEGRATION.md](LLM-INTEGRATION.md).
-- **Environment variables** — set on the container (webhook URL, API token, timing knobs). See the table further down.
+- **`providers.yaml`** — the list of monitored status pages. With the default Docker Compose setup it lives in the container's data volume at `/data/providers.yaml` (seeded empty on first start). Copy it out with `docker compose cp status-poller:/data/providers.yaml ./providers.yaml`, edit, and copy it back; the next poll cycle (within 5 min) picks up the change, no restart needed. A host-side bind mount is optional — see the README.
+- **Environment variables** — set on the container (webhook URL, timing knobs, optional CheckCentral SMTP settings). See the table further down.
 
 The repository also ships `config/providers.yaml` baked into the image, but that's only relevant for the advanced fork-based workflow where you don't want a separate file on the host. The mounted-file path is the documented default.
 
@@ -13,8 +13,8 @@ The repository also ships `config/providers.yaml` baked into the image, but that
 # Required fields
 chatTarget: teamsJson         # the only supported value
 
-# Optional: UI language for the chat cards and the target language for
-# machine-translated incident titles. "de" (default) | "en".
+# Optional: UI language for the chat cards, passed to the renderer as
+# `language`. "de" (default) | "en".
 # Override per deployment with the LANGUAGE env var.
 language: de
 
@@ -87,10 +87,10 @@ Both targets POST to the same kind of webhook (`WEBHOOK_URL`), but differ in the
 
 - **`teamsJson`** — this service posts the **raw normalized event as JSON**; a downstream renderer
   (e.g. an Azure Logic App) builds the card from a central template. Use this when card layout is owned
-  centrally across several feeds. No translation happens here — the raw source-language `title` is sent,
-  and any translation/presentation belongs to the central renderer.
+  centrally across several feeds. The `title` is sent in the provider's own wording; presentation
+  belongs to the central renderer.
 
-The JSON envelope (`teamsJson`, `schemaVersion: 3`). The key set is **stable across all variants**: every optional field is always present as `null` when unset (never omitted), so a template engine like Logic Apps can reference every field unconditionally. `severity` and `language` are included so the renderer needs no knowledge of our internal derivation rules; `title` is verbatim (source language) — translation belongs to the renderer.
+The JSON envelope (`teamsJson`, `schemaVersion: 3`). The key set is **stable across all variants**: every optional field is always present as `null` when unset (never omitted), so a template engine like Logic Apps can reference every field unconditionally. `severity` and `language` are included so the renderer needs no knowledge of our internal derivation rules; `title` and `titleOriginal` both carry the provider's wording verbatim (same value).
 
 ```json
 { "schemaVersion": 3, "source": "status-page-to-chat",
@@ -99,7 +99,8 @@ The JSON envelope (`teamsJson`, `schemaVersion: 3`). The key set is **stable acr
   "language": "de",                     // configured target UI language
   "incident": {
     "externalId": "…", "providerKey": "…", "displayName": "…",
-    "title": "…",                       // source language, not translated
+    "title": "…",                       // provider's wording, not translated
+    "titleOriginal": "…",               // same value as title
     "description": null,                // string | null
     "status": "open",                   // open | resolved
     "url": "…", "startedAt": "…", "updatedAt": "…",
@@ -256,12 +257,12 @@ docker exec raptus-status-notifs node dist/src/main.js report monthly           
 The manual path deliberately does **not** touch the bookkeeping, so it neither suppresses nor
 triggers the scheduled report.
 
-## Localisation & translation (Teams)
+## Localisation (Teams)
 
 The Teams Adaptive Card is fully localised and defaults to **German**.
 
 - **Static text** (status badges, button, field labels, adapter-health messages, error categories) comes from a built-in `de`/`en` dictionary — no external service involved. Pick the language with the top-level `language` field or the `LANGUAGE` env var.
-- **Incident titles** are provider-supplied and usually English. They are machine-translated into `language` via the **Claude API (Haiku)** when `ANTHROPIC_API_KEY` is set. Translations are cached in SQLite keyed by source text, so repeated titles (a given incident's *opened* and *resolved* cards share one title) cost a single API call. If no key is set, or a call fails, the **original title is shown** — translation never blocks a notification.
+- **Incident titles** are provider-supplied (usually English) and passed through in the provider's own wording — they are not translated.
 - **Service descriptions** (`description` per provider) are shown verbatim — author them in your target language.
 
 
@@ -380,23 +381,18 @@ providers:
 
 ## Environment variables (secrets and runtime overrides)
 
-Everything that is not in `providers.yaml` lives as an environment variable on the container. `WEBHOOK_URL`, `ANTHROPIC_API_KEY` and `API_TOKEN` are secrets — keep them out of the YAML and out of version control.
+Everything that is not in `providers.yaml` lives as an environment variable on the container. `WEBHOOK_URL` and `SMTP_PASSWORD` are secrets — keep them out of the YAML and out of version control.
 
 | Variable | Required | Description |
 |---|---|---|
 | `WEBHOOK_URL` | yes | The endpoint that consumes the JSON envelope and renders the card — an Azure Logic App HTTP trigger in the Raptus deployment, or any Teams (Workflows) webhook fronted by something that builds the card. |
-| `ANTHROPIC_API_KEY` | no | Claude API key. When set, Teams incident titles are machine-translated into `language`. Unset → titles shown untranslated. |
 | `LANGUAGE` | no | Overrides the `language` field from `providers.yaml` (`de` \| `en`). Default: `de`. |
-| `TRANSLATE_MODEL` | no | Claude model id used for translation. Default: `claude-haiku-4-5-20251001`. |
 | `CONFIG_PATH` | no | Absolute path to the providers config. Compose sets this to `/data/providers.yaml`. If unset, the image falls back to its baked-in `config/providers.yaml`. |
 | `STATE_DB_PATH` | no | Path to the SQLite file. Default in the container: `/data/state.sqlite`. |
 | `POLL_CRON` | no | Cron expression for the scheduler. Default: `*/5 * * * *`. |
 | `REPORTS_SCHEDULER` | no | `external` hands the periodic reports to an outside scheduler (host cron calling the `report` subcommand) and switches the built-in one off. Never run both — every report would be sent twice. |
 | `LOG_LEVEL` | no | pino log level (`debug`, `info`, `warn`, `error`). Default: `info`. |
 | `USER_AGENT` | no | Overrides the default User-Agent globally (rarely needed, e.g. for tests). |
-| `API_TOKEN` | no | Bearer token guarding the management REST API. Required unless `API_AUTH_DISABLED=true`. |
-| `API_AUTH_DISABLED` | no | Set to literal `true` to disable API auth entirely (only on trusted networks). |
-| `API_PORT` | no | Port the management API listens on. Default: `8080`. |
 | `HEALTH_MAX_AGE_SECONDS` | no | Healthcheck threshold for "no recent *successful* poll" → unhealthy. Default: `900` (15 min). |
 | `DELIVERY_MAX_AGE_SECONDS` | no | Healthcheck threshold for "no recent successful delivery to the webhook/Logic App" → unhealthy. Independent of `HEALTH_MAX_AGE_SECONDS` — see [DEPLOYMENT.md](DEPLOYMENT.md#self-monitoring). Default: `7200` (2 h). |
 | `CHECKCENTRAL_INTERVAL_MINUTES` | no | How often the webhook reachability probe and the CheckCentral check-in email run, when a cycle would not otherwise exercise them. Default: `60`. |
@@ -419,15 +415,14 @@ To send one example of every card type (incident opened/resolved and the three a
 docker exec raptus-status-notifs node dist/src/main.js demo
 ```
 
-Pass a type to send just one: `demo opened` | `resolved` | `down` | `recovered` | `halfdead`. The cards use clearly-labelled sample data ("Demo Service", "Beispielkarte – kein echter Vorfall") and exercise the real notifier and translator, so they look exactly like production cards.
+Pass a type to send just one: `demo opened` | `resolved` | `down` | `recovered` | `halfdead`. The cards use clearly-labelled sample data ("Demo Service", "Beispielkarte – kein echter Vorfall") and exercise the real notifier, so they look exactly like production cards.
 
 ## Adding or removing a status page
 
-Three ways, pick what fits:
+Two ways, pick what fits:
 
-1. **Edit `providers.yaml` on the host.** The next poll cycle (within 5 min) picks up the change automatically — no restart. Use `docker compose run --rm status-poller node dist/src/main.js validate` to dry-run a change before saving.
-2. **Use the REST API.** `PUT /api/providers/<key>` to add or update, `DELETE /api/providers/<key>` to remove. See [API.md](API.md) and [LLM-INTEGRATION.md](LLM-INTEGRATION.md). Same validation gate, same atomic write, comments in the YAML are preserved.
-3. **Fork-based (advanced).** Edit `config/providers.yaml` in the repo, open a PR, merge → CI rebuilds the image → Portainer/compose pulls the new image. Use this when you want every config change tracked in Git.
+1. **Edit `providers.yaml` in the data volume.** `docker compose cp status-poller:/data/providers.yaml ./providers.yaml`, edit, `docker compose cp ./providers.yaml status-poller:/data/providers.yaml`. The next poll cycle (within 5 min) picks up the change automatically — no restart. Use `docker compose run --rm status-poller node dist/src/main.js validate` to dry-run a change before saving.
+2. **Fork-based (advanced).** Edit `config/providers.yaml` in the repo, open a PR, merge → CI rebuilds the image → Portainer/compose pulls the new image. Use this when you want every config change tracked in Git.
 
 To clean up SQLite state for a removed provider (optional, only saves a few rows):
 

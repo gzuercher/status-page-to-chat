@@ -1,6 +1,5 @@
 import { loadConfig } from "../lib/config.js";
 import { logger } from "../lib/logger.js";
-import { closeStore, createStore } from "../state/store.js";
 import { createNotifier } from "../notifiers/index.js";
 import { faviconUrlForHost } from "../lib/logo.js";
 import type { AdapterHealthAlert, NormalizedIncident, Notifier } from "../lib/types.js";
@@ -43,8 +42,7 @@ export function demoTypes(arg?: string): DemoType[] {
 
 /** A clearly-labelled sample incident — never mistaken for a real outage. */
 export function sampleIncident(status: "open" | "resolved"): NormalizedIncident {
-  // Fixed timestamps keep the card deterministic; the title is English on
-  // purpose so the German machine-translation is visible in the demo.
+  // Fixed timestamps keep the card deterministic.
   return {
     externalId: "demo-0001",
     providerKey: "demo",
@@ -108,19 +106,13 @@ export async function sendDemo(notifier: Notifier, types: DemoType[]): Promise<v
  * Subcommand: send example cards to the configured chat target.
  *
  * Usage: `node dist/src/main.js demo [opened|resolved|down|recovered|halfdead]`
- * With no argument it sends all five. Uses the real notifier (and the real
- * translator, so incident titles come through machine-translated), making
- * it the canonical way to eyeball the card design against a live channel.
+ * With no argument it sends all five. Uses the real notifier, making it
+ * the canonical way to eyeball the card design against a live channel.
  */
 export async function runDemo(arg?: string): Promise<void> {
   const types = demoTypes(arg);
   const config = loadConfig();
-  const store = createStore();
-  const notifier = createNotifier(config, store);
-  try {
-    await sendDemo(notifier, types);
-    logger.info({ count: types.length, types }, "Demo run complete");
-  } finally {
-    closeStore(store);
-  }
+  const notifier = createNotifier(config);
+  await sendDemo(notifier, types);
+  logger.info({ count: types.length, types }, "Demo run complete");
 }
