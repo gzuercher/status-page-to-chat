@@ -297,3 +297,57 @@ function writeMetadata(store: Store, key: string, value: string): void {
     )
     .run(key, value);
 }
+
+describe("runPoll — failed deliveries are retried, not lost", () => {
+  let store: Store;
+
+  const openIncident = () => ({
+    id: "inc-retry",
+    name: "API down",
+    status: "investigating",
+    impact: "major",
+    created_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+    updated_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+    shortlink: "https://stspg.io/x",
+    components: [],
+  });
+
+  class FlakyNotifier extends RecordingNotifier {
+    opened: string[] = [];
+    failNext = true;
+    override async notifyOpened(incident: NormalizedIncident): Promise<void> {
+      if (this.failNext) {
+        this.failNext = false;
+        throw new Error("HTTP 502: Logic App unavailable");
+      }
+      this.opened.push(incident.externalId);
+    }
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    store = createStore(":memory:");
+    process.env.WEBHOOK_URL = "https://logic-app.example/trigger?sig=redacted";
+    mockedLoadCheckCentralConfig.mockReturnValue(undefined);
+    mockedProbe.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    closeStore(store);
+    delete process.env.WEBHOOK_URL;
+  });
+
+  it("sends the opened card on the next cycle after a failed attempt", async () => {
+    mockedHttpGet.mockImplementation(async () => jsonResponse({ incidents: [openIncident()] }));
+    const notifier = new FlakyNotifier();
+
+    await runPoll(loadConfig(), notifier, store, new HealthTracker());
+    expect(notifier.opened).toEqual([]);
+
+    await runPoll(loadConfig(), notifier, store, new HealthTracker());
+    expect(notifier.opened).toEqual(["inc-retry"]);
+
+    await runPoll(loadConfig(), notifier, store, new HealthTracker());
+    expect(notifier.opened).toEqual(["inc-retry"]);
+  });
+});

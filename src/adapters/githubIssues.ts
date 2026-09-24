@@ -40,7 +40,11 @@ export class GithubIssuesAdapter implements StatusProvider {
   }
 
   async fetchIncidents(): Promise<NormalizedIncident[]> {
-    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/issues?state=all&per_page=30`;
+    // Sorted by last update, not creation (the API default): an old issue
+    // that was just closed must be on the first page, or its resolution
+    // card is lost. An open issue nobody touches can drop off — that is the
+    // same upstream silence closeStaleIncidents retires anyway.
+    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/issues?state=all&sort=updated&direction=desc&per_page=100`;
 
     const headers: Record<string, string> = {
       Accept: "application/vnd.github+json",

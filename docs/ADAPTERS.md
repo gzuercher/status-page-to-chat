@@ -23,11 +23,11 @@ The task of each adapter: fetch raw data, extract open + recently closed inciden
 
 ## 1. `atlassian-statuspage`
 
-**Covered services**: Bitbucket, Bexio, Webflow, DigiCert, NinjaOne, Sucuri, SmartRecruiters, Retool, Kaseya, Bitdefender GravityZone, Figma, Claude — everything running on Atlassian Statuspage with a **public JSON API**. Bitwarden, Zendesk and Langdock look like Atlassian pages but actually run on Hund.io, Zendesk's own SSP backend and BetterStack respectively — they need the `hund-atom`, `zendesk-ssp` and `betterstack-feed` adapters. Sophos runs technically on Atlassian Statuspage but has the JSON API disabled (see [ROADMAP.md](ROADMAP.md) → Later extensions).
+**Covered services**: Bitbucket, Bexio, Webflow, DigiCert, NinjaOne, Sucuri, SmartRecruiters, Retool, Kaseya, Bitdefender GravityZone, Figma, Claude, Langdock — everything running on Atlassian Statuspage with a **public JSON API**, plus **incident.io** pages, which serve a Statuspage-compatible `/api/v2/` (Langdock moved from BetterStack to incident.io in 2026). Bitwarden and Zendesk look like Atlassian pages but actually run on Hund.io and Zendesk's own SSP backend — they need the `hund-atom` and `zendesk-ssp` adapters. Sophos runs technically on Atlassian Statuspage but has the JSON API disabled (see [ROADMAP.md](ROADMAP.md) → Later extensions).
 
 ### Endpoints
 
-- Open incidents: `{baseUrl}/api/v2/incidents/unresolved.json`
+- Open incidents: `{baseUrl}/api/v2/incidents/unresolved.json` (optional: incident.io answers 404, open incidents then come from the recent list)
 - Recent incidents (incl. recently resolved): `{baseUrl}/api/v2/incidents.json`
 - Summary (optional, for component lookup): `{baseUrl}/api/v2/summary.json`
 
@@ -240,7 +240,9 @@ Pull requests are filtered out (GitHub API returns both issues and PRs).
 
 ## 5. `betterstack-feed`
 
-**Service**: status pages hosted on BetterStack (e.g. Langdock).
+**Service**: status pages hosted on BetterStack. (Langdock used this until it moved to incident.io — now `atlassian-statuspage`.)
+
+A response without `<rss><channel>` (e.g. a real Atom feed) is an **error**, not an empty feed: that is how a platform switch surfaces as an `adapter.down` alert instead of weeks of silence.
 
 BetterStack has no public JSON API. The RSS 2.0 feed at `/feed.atom` carries one `<item>` per incident *update*; multiple updates of the same incident share a `…/incident/<id>` link, which is used as `externalId` to deduplicate.
 
@@ -280,10 +282,10 @@ Both lists are heuristics over prose and will miss wordings. When a Langdock inc
 ### Configuration
 
 ```yaml
-- key: langdock
-  displayName: Langdock
+- key: example
+  displayName: Example
   adapter: betterstack-feed
-  baseUrl: https://status.langdock.com
+  baseUrl: https://status.example.com
 ```
 
 ---

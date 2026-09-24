@@ -232,26 +232,54 @@ export async function closeStaleIncidents(
 /**
  * Compares current incidents against the stored state and determines
  * which actions are needed. Pure function — safe to call from anywhere.
+ *
+ * Decisions follow the delivery flags, not just the status, so that:
+ *
+ *   - a card whose delivery failed is retried on the next cycle (the row
+ *     is stored with its flag still false). Only within `retryCutoffIso`:
+ *     a card that is a day late reads as a new event, not a correction;
+ *   - an incident the provider reopens gets a fresh "opened" card. It
+ *     counts as reopened only when upstream reports an update newer than
+ *     the stored one — a stale-closed row whose upstream still says `open`
+ *     with the same old timestamp stays closed instead of flapping;
+ *   - a long-running open incident has its `updatedAt` refreshed (`touch`)
+ *     every cycle, so closeStaleIncidents measures real upstream silence
+ *     rather than the age of our first write.
  */
 export function diffIncidents(
   current: NormalizedIncident[],
   stored: Map<string, StoredIncident>,
+  retryCutoffIso?: string,
 ): DiffResult[] {
-  const results: DiffResult[] = [];
+  const withinRetryWindow = (incident: NormalizedIncident): boolean =>
+    !retryCutoffIso || incident.updatedAt >= retryCutoffIso;
 
-  for (const incident of current) {
+  return current.map((incident): DiffResult => {
     const existing = stored.get(incident.externalId);
 
-    if (!existing && incident.status === "open") {
-      results.push({ incident, action: "notify_opened" });
-    } else if (existing && existing.status === "open" && incident.status === "resolved") {
-      results.push({ incident, action: "notify_resolved" });
-    } else {
-      results.push({ incident, action: "none" });
+    if (incident.status === "open") {
+      if (!existing) return { incident, action: "notify_opened" };
+      if (existing.status === "resolved") {
+        return incident.updatedAt > existing.updatedAt
+          ? { incident, action: "notify_opened" }
+          : { incident, action: "none" };
+      }
+      if (!existing.notifiedOpened && withinRetryWindow(incident)) {
+        return { incident, action: "notify_opened" };
+      }
+      return { incident, action: "touch" };
     }
-  }
 
-  return results;
+    // Resolved upstream. Never stored → nothing was announced, nothing owed.
+    if (!existing) return { incident, action: "none" };
+    // A resolution is owed only for an incident whose opening was announced.
+    if (existing.notifiedOpened && !existing.notifiedResolved) {
+      if (existing.status === "open" || withinRetryWindow(incident)) {
+        return { incident, action: "notify_resolved" };
+      }
+    }
+    return { incident, action: "touch" };
+  });
 }
 
 /**

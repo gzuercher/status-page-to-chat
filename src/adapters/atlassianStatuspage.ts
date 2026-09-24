@@ -132,7 +132,12 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
       userAgent: this.userAgent,
     });
 
-    this.validateJsonResponse(unresolvedResponse, unresolvedUrl);
+    // incident.io serves the Statuspage-compatible `/api/v2/` API too, but
+    // without this endpoint (404). Its `incidents.json` lists open incidents
+    // alongside resolved ones, so the recent list alone still covers them.
+    // Any other non-200 stays an error.
+    const hasUnresolvedEndpoint = unresolvedResponse.status !== 404;
+    if (hasUnresolvedEndpoint) this.validateJsonResponse(unresolvedResponse, unresolvedUrl);
 
     // Fetch recent incidents (includes recently resolved)
     const recentUrl = `${this.baseUrl}/api/v2/incidents.json`;
@@ -143,7 +148,7 @@ export class AtlassianStatuspageAdapter implements StatusProvider {
 
     this.validateJsonResponse(recentResponse, recentUrl);
 
-    const unresolved = this.parseIncidents(unresolvedResponse.body);
+    const unresolved = hasUnresolvedEndpoint ? this.parseIncidents(unresolvedResponse.body) : [];
     const recent = this.parseIncidents(recentResponse.body);
 
     // Merge: all open + recently resolved (deduplicated)

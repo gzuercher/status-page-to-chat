@@ -65,6 +65,14 @@ import { startApiServer, type LastRunRef } from "./api/server.js";
 const STALE_INCIDENT_DAYS = 14;
 
 /**
+ * How long a card whose delivery failed keeps being retried, measured
+ * against the incident's last upstream update. Long enough to ride out a
+ * webhook or Logic App outage of several hours; short enough that a card
+ * arriving after a day-long outage does not read as a fresh event.
+ */
+const DELIVERY_RETRY_HOURS = 24;
+
+/**
  * Shared cadence for everything in this file whose only purpose is to keep
  * a health signal fresh rather than to communicate something to a human:
  * the webhook reachability probe and the two CheckCentral check-in emails.
@@ -222,6 +230,8 @@ export async function runPoll(
   // Incidents whose last upstream update predates this are retired silently.
   // Computed once per run so every provider uses the same boundary.
   const staleCutoff = new Date(startTime - STALE_INCIDENT_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  // Failed deliveries are retried only while the incident is this fresh.
+  const retryCutoff = new Date(startTime - DELIVERY_RETRY_HOURS * 60 * 60 * 1000).toISOString();
 
   // Collected for the health tracker after all providers have been
   // polled. One entry per configured provider, success or failure.
@@ -295,7 +305,7 @@ export async function runPoll(
       );
 
       const stored = await getStoredIncidents(store, providerKey);
-      const diffs = diffIncidents(incidents, stored);
+      const diffs = diffIncidents(incidents, stored, retryCutoff);
 
       for (const diff of diffs) {
         if (diff.incident.status === "open") summary.incidentsOpen++;
@@ -305,6 +315,8 @@ export async function runPoll(
         let notifiedResolved = stored.get(diff.incident.externalId)?.notifiedResolved ?? false;
 
         if (diff.action === "notify_opened") {
+          // A reopened incident owes a fresh resolution card later.
+          notifiedResolved = false;
           try {
             await trackedDeliver(store, () => notifier.notifyOpened(diff.incident));
             notifiedOpened = true;

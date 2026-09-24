@@ -53,24 +53,24 @@ describe("diffIncidents", () => {
     expect(results[0].action).toBe("notify_resolved");
   });
 
-  it("erkennt unveraenderten offenen Incident", () => {
+  it("unveraenderter offener Incident: nur auffrischen, keine Karte", () => {
     const current = [makeIncident("inc-1", "open")];
     const stored = new Map([["inc-1", makeStored("inc-1", "open")]]);
 
     const results = diffIncidents(current, stored);
 
     expect(results).toHaveLength(1);
-    expect(results[0].action).toBe("none");
+    expect(results[0].action).toBe("touch");
   });
 
-  it("erkennt unveraenderten resolved Incident", () => {
+  it("unveraenderter resolved Incident: keine Karte", () => {
     const current = [makeIncident("inc-1", "resolved")];
     const stored = new Map([["inc-1", makeStored("inc-1", "resolved")]]);
 
     const results = diffIncidents(current, stored);
 
     expect(results).toHaveLength(1);
-    expect(results[0].action).toBe("none");
+    expect(results[0].action).toBe("touch");
   });
 
   it("ignoriert neuen resolved Incident (kein notify_resolved ohne vorheriges open)", () => {
@@ -99,7 +99,68 @@ describe("diffIncidents", () => {
     expect(results).toHaveLength(3);
     expect(results.find((r) => r.incident.externalId === "inc-1")?.action).toBe("notify_opened");
     expect(results.find((r) => r.incident.externalId === "inc-2")?.action).toBe("notify_resolved");
-    expect(results.find((r) => r.incident.externalId === "inc-3")?.action).toBe("none");
+    expect(results.find((r) => r.incident.externalId === "inc-3")?.action).toBe("touch");
+  });
+
+  describe("Zustellung wiederholen, Wiedereröffnung, Auffrischen", () => {
+    const CUTOFF = "2026-04-15T00:00:00Z";
+    const withUpdate = (inc: NormalizedIncident, updatedAt: string): NormalizedIncident => ({
+      ...inc,
+      updatedAt,
+    });
+
+    it("wiederholt eine fehlgeschlagene Eröffnungskarte im nächsten Zyklus", () => {
+      const stored = new Map([
+        ["inc-1", { ...makeStored("inc-1", "open"), notifiedOpened: false }],
+      ]);
+      const [r] = diffIncidents([makeIncident("inc-1", "open")], stored, CUTOFF);
+      expect(r.action).toBe("notify_opened");
+    });
+
+    it("wiederholt eine fehlgeschlagene Entwarnung im nächsten Zyklus", () => {
+      const stored = new Map([
+        ["inc-1", { ...makeStored("inc-1", "resolved"), notifiedResolved: false }],
+      ]);
+      const [r] = diffIncidents([makeIncident("inc-1", "resolved")], stored, CUTOFF);
+      expect(r.action).toBe("notify_resolved");
+    });
+
+    it("wiederholt nichts, was älter als das Wiederholungsfenster ist", () => {
+      const late = "2026-04-16T00:00:00Z";
+      const stored = new Map([
+        ["a", { ...makeStored("a", "open"), notifiedOpened: false }],
+        ["b", { ...makeStored("b", "resolved"), notifiedResolved: false }],
+      ]);
+      const results = diffIncidents(
+        [makeIncident("a", "open"), makeIncident("b", "resolved")],
+        stored,
+        late,
+      );
+      expect(results.map((r) => r.action)).toEqual(["touch", "touch"]);
+    });
+
+    it("schickt keine Entwarnung für einen nie gemeldeten Incident", () => {
+      const stored = new Map([
+        ["inc-1", { ...makeStored("inc-1", "open"), notifiedOpened: false }],
+      ]);
+      const [r] = diffIncidents([makeIncident("inc-1", "resolved")], stored, CUTOFF);
+      expect(r.action).toBe("touch");
+    });
+
+    it("meldet einen wiedereröffneten Incident neu", () => {
+      const stored = new Map([["inc-1", makeStored("inc-1", "resolved")]]);
+      const reopened = withUpdate(makeIncident("inc-1", "open"), "2026-04-15T12:00:00Z");
+      const [r] = diffIncidents([reopened], stored, CUTOFF);
+      expect(r.action).toBe("notify_opened");
+    });
+
+    it("lässt einen stillgelegten Incident zu, solange upstream nichts Neues meldet", () => {
+      // closeStaleIncidents flipped it to resolved; upstream still says open
+      // with the same old timestamp. Must not flap into a card every cycle.
+      const stored = new Map([["inc-1", makeStored("inc-1", "resolved")]]);
+      const [r] = diffIncidents([makeIncident("inc-1", "open")], stored, CUTOFF);
+      expect(r.action).toBe("none");
+    });
   });
 });
 

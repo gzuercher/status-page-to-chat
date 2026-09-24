@@ -23,6 +23,21 @@ const config: ProviderConfig = {
 describe("GithubIssuesAdapter", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("fragt nach letzter Änderung sortiert ab, damit frisch geschlossene alte Issues nicht herausfallen", async () => {
+    mockedHttpGet.mockResolvedValueOnce({
+      status: 200,
+      contentType: "application/json",
+      body: "[]",
+    });
+
+    await new GithubIssuesAdapter(config).fetchIncidents();
+
+    const [url] = mockedHttpGet.mock.calls[0];
+    expect(url).toContain("sort=updated");
+    expect(url).toContain("direction=desc");
+    expect(url).toContain("per_page=100");
+  });
+
   it("filtert Pull Requests heraus", async () => {
     mockedHttpGet.mockResolvedValueOnce({
       status: 200,

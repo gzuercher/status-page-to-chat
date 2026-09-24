@@ -174,7 +174,11 @@ export type StoredIncident = {
  */
 export type DiffResult = {
   incident: NormalizedIncident;
-  action: "notify_opened" | "notify_resolved" | "none";
+  /**
+   * `touch` persists the fresh upstream data (title, `updatedAt`, status)
+   * without a card. `none` leaves the stored row untouched.
+   */
+  action: "notify_opened" | "notify_resolved" | "touch" | "none";
 };
 
 /**
