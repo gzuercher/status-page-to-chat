@@ -22,18 +22,14 @@ You need a Docker host. Anywhere will do — a Synology, a Raspberry Pi, a small
    curl -O https://raw.githubusercontent.com/gzuercher/status-page-to-chat/main/docker-compose.yml
    cat > .env <<EOF
    WEBHOOK_URL=https://chat.googleapis.com/v1/spaces/...
-   API_TOKEN=$(openssl rand -hex 32)
    EOF
    chmod 600 .env
    docker compose up -d
    ```
 
-   That's literally it. The container brings its own empty `providers.yaml` and seeds it into the data volume on first start. Logs show `providerCount: 0` and quiet poll cycles. No webhook traffic until you add at least one provider. `API_TOKEN` is the bearer credential for the management API — save the value somewhere safe.
+   That's literally it. The container brings its own empty `providers.yaml` and seeds it into the data volume on first start. Logs show `providerCount: 0` and quiet poll cycles. No webhook traffic until you add at least one provider.
 
-3. **Add the services you want to watch**. Two ways:
-
-   - **Use the management API** — `PUT /api/providers/<key>` with a small JSON body. Easiest from a chat-driven LLM assistant; see [docs/LLM-INTEGRATION.md](docs/LLM-INTEGRATION.md). `curl` examples in [docs/API.md](docs/API.md).
-   - **Edit the file directly** — `docker compose cp status-poller:/data/providers.yaml ./providers.yaml`, edit, `docker compose cp ./providers.yaml status-poller:/data/providers.yaml`. The next poll cycle (within 5 min) picks it up automatically.
+3. **Add the services you want to watch** by editing `providers.yaml`: `docker compose cp status-poller:/data/providers.yaml ./providers.yaml`, edit, `docker compose cp ./providers.yaml status-poller:/data/providers.yaml`. The next poll cycle (within 5 min) picks it up automatically, no restart needed.
 
 4. **Watch the logs**: `docker compose logs -f` — you should see `Configuration loaded`, `Poller scheduled`, and a `run_summary` line within ~30 seconds.
 
@@ -51,7 +47,7 @@ That's it. No cloud account, no fork, no infrastructure setup. Adding providers 
 
 ## Configuration
 
-The container seeds an empty `providers.yaml` into its named data volume on first start (template baked into the image). Edit the live file via the REST API or `docker compose cp` — the next poll cycle (max 5 min) picks up changes automatically. If an edit produces invalid YAML, the container keeps running on the previous configuration and logs a warning, so a typo never takes the service down.
+The container seeds an empty `providers.yaml` into its named data volume on first start (template baked into the image). Edit the live file via `docker compose cp` — the next poll cycle (max 5 min) picks up changes automatically. If an edit produces invalid YAML, the container keeps running on the previous configuration and logs a warning, so a typo never takes the service down.
 
 If you prefer a host-side bind mount (so you can edit `providers.yaml` in your usual editor), add a `docker-compose.override.yml` next to the compose file:
 
@@ -75,11 +71,6 @@ Environment variables you can set:
 | `WEBHOOK_URL` | required | Endpoint that consumes the JSON envelope and renders the card (e.g. an Azure Logic App HTTP trigger) |
 | `CHAT_TARGET` | from `providers.yaml` | Overrides the configured chat target; `teamsJson` is the only valid value |
 | `LANGUAGE` | `de` | UI language of the Teams cards (`de` \| `en`) |
-| `ANTHROPIC_API_KEY` | — | Claude API key; when set, Teams incident titles are machine-translated |
-| `TRANSLATE_MODEL` | `claude-haiku-4-5-20251001` | Claude model used for translation |
-| `API_TOKEN` | — | Bearer token for the management API. Required unless `API_AUTH_DISABLED=true`. |
-| `API_AUTH_DISABLED` | — | Set to literal `true` to disable API auth (only on trusted networks) |
-| `API_PORT` | `8080` | Port the management API listens on |
 | `CONFIG_PATH` | `/data/providers.yaml` (in compose) | Path to the providers config |
 | `STATE_DB_PATH` | `/data/state.sqlite` | SQLite file location |
 | `POLL_CRON` | `*/5 * * * *` | When the poller runs |
@@ -87,10 +78,6 @@ Environment variables you can set:
 | `LOG_LEVEL` | `info` | pino log level |
 | `USER_AGENT` | `status-page-to-chat/<version> (+<repo>)` | Override the outbound User-Agent (e.g. add a contact address) |
 | `HEALTH_MAX_AGE_SECONDS` | `900` | Healthcheck threshold — container is reported unhealthy if no poll completed within this window |
-
-## Configure via chat
-
-You can hand over day-to-day maintenance — adding, removing, and inspecting providers — to a backoffice colleague who never touches the host. The container ships an OpenAPI-described REST API; point any OpenAPI-aware LLM platform at it (Langdock, ChatGPT Custom GPTs, OpenWebUI, your own assistant) and they manage the watch list in natural language. See [docs/LLM-INTEGRATION.md](docs/LLM-INTEGRATION.md) for platform-specific setup walkthroughs and [docs/API.md](docs/API.md) for the underlying endpoints.
 
 ## Documentation
 
@@ -100,8 +87,6 @@ You can hand over day-to-day maintenance — adding, removing, and inspecting pr
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Format of `providers.yaml` and env vars |
 | [docs/ADAPTERS.md](docs/ADAPTERS.md) | Specification per status page adapter |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Three deployment paths: plain Docker via SSH, Portainer stack, local laptop |
-| [docs/API.md](docs/API.md) | Management API reference with `curl` examples |
-| [docs/LLM-INTEGRATION.md](docs/LLM-INTEGRATION.md) | Chat-based maintenance via any OpenAPI-aware LLM platform |
 
 ## Development
 

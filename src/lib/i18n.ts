@@ -9,8 +9,8 @@
  * with the calculation. It is rendered for the `report` CLI subcommand;
  * the chat card is assembled downstream from the same figures.
  *
- * Incident titles are not covered here — they are machine-translated
- * (see translator.ts).
+ * Incident titles are not covered here — they are passed through in the
+ * provider's own wording.
  *
  * Adding a language: add a `Messages` object and register it in `MESSAGES`.
  * The config `language` enum (config.ts) and this map must stay in sync.
@@ -110,9 +110,4 @@ const MESSAGES: Record<Locale, Messages> = { de, en };
 /** Returns the message bundle for a locale (defaults to {@link DEFAULT_LOCALE}). */
 export function getMessages(locale: Locale = DEFAULT_LOCALE): Messages {
   return MESSAGES[locale] ?? MESSAGES[DEFAULT_LOCALE];
-}
-
-/** Maps a UI locale to the natural-language name handed to the translator. */
-export function localeToLanguageName(locale: Locale): string {
-  return locale === "en" ? "English" : "German";
 }

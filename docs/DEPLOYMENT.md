@@ -4,19 +4,15 @@
 
 ## Target state
 
-A single Docker container, image pulled from GHCR. The container has two important runtime surfaces:
-
-- **A poller** that fetches every 5 minutes and posts webhook messages on state change.
-- **A management REST API on port 8080** for editing the watched providers without redeploying.
+A single Docker container, image pulled from GHCR, running **a poller** that fetches every 5 minutes and posts webhook messages on state change. The container exposes no port; the watched providers are edited in `providers.yaml` inside the data volume, without redeploying.
 
 | Piece | Where | Purpose |
 |---|---|---|
 | Image | `ghcr.io/gzuercher/status-page-to-chat:latest` | Built on every push to `main`, public |
 | Container | `status-page-to-chat` | Long-lived Node.js process |
 | State | Named Docker volume `state` (compose-managed) | Holds `state.sqlite` |
-| Config | `providers.yaml` on the host (mounted) | List of monitored status pages — editable live |
+| Config | `/data/providers.yaml` in the `state` volume | List of monitored status pages — editable live via `docker compose cp` |
 | `WEBHOOK_URL` | env var | Webhook of the renderer (Teams workflow or Azure Logic App) |
-| `API_TOKEN` | env var | Bearer token guarding the management API |
 | Logs | Docker `json-file` driver (5×10 MB rotation) | `docker compose logs -f` |
 | Healthcheck | `node main.js health` (built into the image) | `docker inspect` shows `healthy` / `unhealthy` |
 
@@ -75,12 +71,11 @@ curl -O https://raw.githubusercontent.com/gzuercher/status-page-to-chat/main/doc
 # Secrets
 cat > .env <<EOF
 WEBHOOK_URL=https://chat.googleapis.com/v1/spaces/...
-API_TOKEN=$(openssl rand -hex 32)
 EOF
 chmod 600 .env
 ```
 
-The container ships with an empty `providers.yaml` baked in; on first start it seeds that file into the data volume. No host-side provider file needed. The service starts in that "zero providers configured" state — no chat messages until you add entries via the API or via `docker compose cp`.
+The container ships with an empty `providers.yaml` baked in; on first start it seeds that file into the data volume. No host-side provider file needed. The service starts in that "zero providers configured" state — no chat messages until you add entries. To add them: `docker compose cp status-poller:/data/providers.yaml ./providers.yaml`, edit, `docker compose cp ./providers.yaml status-poller:/data/providers.yaml`. The next poll cycle (within 5 min) picks the change up, no restart needed.
 
 ### 4. Start the container
 
@@ -92,7 +87,6 @@ docker compose logs -f
 You should see, within ~30 seconds:
 
 - `Configuration loaded` with the provider count
-- `API server listening` on port 8080
 - `Poller scheduled` with the next cron run
 - A `run_summary` line per poll
 
@@ -101,12 +95,11 @@ Press `Ctrl-C` to detach from the log stream (the container keeps running).
 ### 5. Verify
 
 ```bash
-# Health (no auth required)
-curl http://127.0.0.1:8080/api/health
+# Health check by hand (same command the Docker HEALTHCHECK runs)
+docker compose exec status-poller node dist/src/main.js health
 
-# Provider list (token required)
-curl -H "Authorization: Bearer $(grep ^API_TOKEN .env | cut -d= -f2)" \
-     http://127.0.0.1:8080/api/providers
+# Configured providers
+docker compose exec status-poller cat /data/providers.yaml
 
 # Docker-level health
 docker inspect --format '{{.State.Health.Status}}' status-page-to-chat
@@ -157,21 +150,19 @@ If you already use Portainer, this is a few clicks.
    - **Web editor**: paste the contents of `docker-compose.yml` from the repo.
 4. Under **Environment variables**, set:
    - `WEBHOOK_URL` — the real webhook URL
-   - `API_TOKEN` — generate via `openssl rand -hex 32` somewhere safe
 5. **Deploy the stack**.
 
-### 2. Drop `providers.yaml` next to the compose file
+### 2. Add providers
 
-The compose file mounts `./providers.yaml` from the stack's working directory. Portainer creates that directory under `/data/compose/<stack-id>` on the host. SSH (or use the File Station on your NAS) to put the file there:
+The stack keeps `providers.yaml` in its named data volume, seeded empty on first start. Edit it from the host:
 
 ```bash
-ssh <user>@<host>
-cd /data/compose/<stack-id>     # find the stack ID in Portainer's stack details
-curl -o providers.yaml https://raw.githubusercontent.com/gzuercher/status-page-to-chat/main/providers.yaml.example
-# edit as needed
+docker cp status-page-to-chat:/data/providers.yaml ./providers.yaml
+# edit as needed (see providers.yaml.example in the repo)
+docker cp ./providers.yaml status-page-to-chat:/data/providers.yaml
 ```
 
-Restart the stack after the file is in place: **Stacks → status-page-to-chat → Stop → Start**.
+The next poll cycle (within 5 min) picks the change up, no restart needed.
 
 ### 3. Verify
 
@@ -190,7 +181,6 @@ git clone https://github.com/gzuercher/status-page-to-chat
 cd status-page-to-chat
 cp providers.yaml.example providers.yaml
 echo "WEBHOOK_URL=https://webhook.site/<your-test-slot>" > .env
-echo "API_TOKEN=local-dev-token" >> .env
 docker compose up --build
 ```
 
@@ -216,16 +206,15 @@ Requires Node.js 22.19+ and pnpm (`corepack enable`).
 Two values are sensitive:
 
 - `WEBHOOK_URL` — anyone holding it can post to your chat room.
-- `API_TOKEN` — anyone holding it can edit `providers.yaml` and read your incident state.
+- `SMTP_PASSWORD` (only when CheckCentral check-ins are enabled) — anyone holding it can send mail through your relay.
 
 Both live as environment variables. Never commit them. `.env` is in `.gitignore`. Set the file mode to `600` on the host (`chmod 600 .env`).
 
 **Rotation:**
 
-1. Generate a new value (`openssl rand -hex 32` for the API token, regenerate the webhook in the chat channel).
+1. Generate a new value (regenerate the webhook in the chat channel, or a new SMTP access key at the relay).
 2. Update `.env` on the host (or update the Portainer stack env vars).
 3. `docker compose up -d` — Compose recreates the container with the new value.
-4. Update your LLM platform or any other client to use the new token.
 
 ## Periodic reports via host cron
 
@@ -258,7 +247,6 @@ late. Add `--dry-run` to print a report without sending it.
 
   These are deliberately not conflated. A poll loop that runs every cycle but fails every provider (a DNS/network outage) is a different failure from a dead webhook that never surfaces because nothing was due to send — each needs its own evidence, or one can silently mask the other. Visible in `docker inspect` and Portainer's container view; the stdout line names which check tripped.
 - **Logs**: structured JSON to stdout, captured by the Docker `json-file` driver with 5×10 MB rotation. Forward to an external log collector if you want long-term retention.
-- **API**: `GET /api/health` returns `{"status":"ok","lastRunAt":"..."}` — easy to scrape from an external uptime checker. Note this reflects "a cycle completed", the same coarse signal the Docker healthcheck used to rely on alone — it does not (yet) carry the poll/delivery split above.
 - **CheckCentral (optional, external alerting)**: the Docker healthcheck above is only visible locally (`docker inspect`, Portainer) — nothing pages anyone. When `SMTP_HOST`/`SMTP_USERNAME`/`SMTP_PASSWORD`/`CHECKCENTRAL_FROM_EMAIL`/`CHECKCENTRAL_TO_EMAIL` are all set, the poller additionally sends **one** dead-man's-switch check-in email per cycle (CheckCentral is billed per check, so this deliberately uses only one, not two):
   - Not sent at all when polling failed this cycle — silence is the signal; CheckCentral's own overdue detection raises the alarm, exactly like a plain dead-man's-switch. This is the 2026-09-20 failure mode.
   - Sent with body `STATUS: OK` when polling succeeded and the last delivery attempt (real traffic or the reachability probe above) succeeded too.
@@ -290,9 +278,7 @@ late. Add `--dry-run` to print a report without sending it.
 | CheckCentral shows the check as overdue (Failure) | Polling itself is broken — see the `unhealthy: poll: ...` row above | Same fix as that row. |
 | CheckCentral shows the check in Warning | Delivery is broken — see the `unhealthy: delivery: ...` row above | Same fix as that row. |
 | CheckCentral shows the check overdue but `docker inspect` is healthy | The SMTP relay itself is down, or `SMTP_HOST`/credentials are wrong | Check logs for "CheckCentral check-in failed", or run `node dist/src/main.js checkcentral-test` by hand. |
-| API returns 401 with a valid token | `API_TOKEN` env var differs between container and caller | Compare `docker compose exec status-poller printenv API_TOKEN` to the value used by curl or your LLM platform. |
-| API returns 401 with no token expected | You forgot to set `API_AUTH_DISABLED=true` and didn't set `API_TOKEN` | Either set a token (recommended) or explicitly opt out of auth. |
-| Edits to `providers.yaml` don't take effect | The path mount in compose points elsewhere, or the file has YAML errors | `docker compose exec status-poller cat /data/providers.yaml` to see what the container sees. `docker compose run --rm status-poller node dist/src/main.js validate` to check the file. |
+| Edits to `providers.yaml` don't take effect | The file was copied into the wrong container, or it has YAML errors | `docker compose exec status-poller cat /data/providers.yaml` to see what the container sees. `docker compose run --rm status-poller node dist/src/main.js validate` to check the file. |
 | GHCR pull fails with `unauthorized` | The image was set to private somehow | Confirm visibility on GitHub → repo → Packages. The published image should be public. |
 
 A "frozen-but-running" process where the cron loop hung but the container stays up is detected the same way as before: `last_run_at` never advancing. What changed is that a poll loop which keeps *running* but stops *succeeding* — every provider failing every cycle — no longer reads as healthy just because a cycle technically completed; see `last_successful_poll_at` above.

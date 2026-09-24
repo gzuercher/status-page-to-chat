@@ -45,7 +45,6 @@ import { runHealthcheck } from "./cli/health.js";
 import { runDemo } from "./cli/demo.js";
 import { runReport } from "./cli/report.js";
 import { runCheckCentralTest } from "./cli/checkcentralTest.js";
-import { startApiServer, type LastRunRef } from "./api/server.js";
 
 /**
  * After this many days without an upstream update, an incident that is
@@ -211,7 +210,6 @@ export async function runPoll(
   notifier: Notifier,
   store: Store,
   healthTracker: HealthTracker,
-  lastRun?: LastRunRef,
 ): Promise<void> {
   const startTime = Date.now();
 
@@ -455,9 +453,6 @@ export async function runPoll(
   } catch (err) {
     logger.error({ err }, "Failed to persist last_run_at metadata");
   }
-  if (lastRun) {
-    lastRun.current = { ...summary, completedAt };
-  }
   logger.info({ run_summary: summary }, "run_summary");
 }
 
@@ -571,12 +566,8 @@ async function main(): Promise<void> {
   seedProvidersFileIfMissing();
   let currentConfig = loadConfig();
   const store = createStore();
-  const notifier = createNotifier(currentConfig, store);
+  const notifier = createNotifier(currentConfig);
   const healthTracker = new HealthTracker();
-  const lastRun: LastRunRef = { current: null };
-
-  const apiPort = Number(process.env.API_PORT ?? 8080);
-  const apiServer = startApiServer({ store, lastRun }, apiPort);
 
   let isRunning = false;
   let shuttingDown = false;
@@ -585,8 +576,8 @@ async function main(): Promise<void> {
     if (shuttingDown || isRunning) return;
     isRunning = true;
     try {
-      // Reload config from disk before each cycle so on-host edits and
-      // API-driven changes take effect without a restart. If the file is
+      // Reload config from disk before each cycle so on-host edits take
+      // effect without a restart. If the file is
       // currently broken, keep running on the last good config.
       const reloaded = parseConfig();
       if (reloaded.ok) {
@@ -597,7 +588,7 @@ async function main(): Promise<void> {
           "Config reload failed, continuing with previous config",
         );
       }
-      await runPoll(currentConfig, notifier, store, healthTracker, lastRun);
+      await runPoll(currentConfig, notifier, store, healthTracker);
     } finally {
       isRunning = false;
     }
@@ -617,7 +608,6 @@ async function main(): Promise<void> {
     shuttingDown = true;
     logger.info({ signal }, "Shutdown signal received, stopping scheduler");
     job.stop();
-    apiServer.close();
 
     const waitForRun = (): void => {
       if (!isRunning) {

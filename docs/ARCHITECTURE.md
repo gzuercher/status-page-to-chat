@@ -7,19 +7,19 @@ scheduler fires every 5 minutes, polls a list of external status pages, normalis
 into a unified incident model, compares them with the last known state in a local SQLite file, and
 sends a message to a chat channel when something changed.
 
-Two things run alongside that loop: a **management API** (REST + MCP) so the provider list can be
-maintained from a chat assistant instead of a shell, and **self-monitoring** that reports when an
-adapter itself breaks.
+Alongside that loop runs **self-monitoring** that reports when an adapter itself breaks. The
+provider list is maintained by editing `/data/providers.yaml` in the data volume; there is no
+network-facing interface.
 
 ```
-        ┌───────────────────────┐          ┌─────────────────────────┐
-        │ croner (*/5 min)      │          │ HTTP :8080              │
-        └──────────┬────────────┘          │  /api/…   REST          │
-                   │                       │  /mcp     MCP tools     │
-                   ▼                       └────────────┬────────────┘
-        ┌───────────────────────┐                       │
-        │  Config loader (zod)  │ ◄── /data/providers.yaml ◄─┘
-        └──────────┬────────────┘        (reloaded every cycle)
+        ┌───────────────────────┐
+        │ croner (*/5 min)      │
+        └──────────┬────────────┘
+                   │
+                   ▼
+        ┌───────────────────────┐
+        │  Config loader (zod)  │ ◄── /data/providers.yaml
+        └──────────┬────────────┘     (reloaded every cycle)
                    │
      ┌─────────────┼──────────────┐
      ▼             ▼              ▼
@@ -36,7 +36,7 @@ adapter itself breaks.
      ┌────────────────────────┐      ┌──────────────────────────────┐
      │ State diff             │ ◄──► │ SQLite (Docker volume)       │
      └───────────┬────────────┘      │  incidents · provider_health │
-                 │                   │  metadata  · translations    │
+                 │                   │  metadata                    │
                  ▼                   └──────────────────────────────┘
      ┌────────────────────────┐
      │ Health tracker         │  down / recovered / half-dead
@@ -57,16 +57,13 @@ adapter itself breaks.
 | Adapters | `src/adapters/*.ts` | One `StatusProvider` implementation per status-page type (8) |
 | Notifier registry | `src/notifiers/index.ts` | Selects the notifier from `chatTarget` |
 | Notifier | `src/notifiers/teamsJson.ts` | Emits the raw event as JSON; the renderer builds the card |
-| State store | `src/state/store.ts` | SQLite persistence: incidents, observation bookkeeping, metadata, translation cache |
+| State store | `src/state/store.ts` | SQLite persistence: incidents, observation bookkeeping, metadata |
 | Health tracker | `src/lib/healthTracker.ts` | Detects adapters that are down, recovered, or half-dead |
 | Reports | `src/lib/report.ts` | Periodic stability reports and silent-source detection |
 | Logos | `src/lib/logo.ts` | Resolves the brand icon shown on a card |
 | Localisation | `src/lib/i18n.ts` | Wording of the periodic reports |
-| Translator | `src/lib/translator.ts` | Machine-translates incident titles, cached in SQLite |
 | HTTP client | `src/lib/httpClient.ts` | Shared client with User-Agent, timeout, retry and backoff |
 | Error categories | `src/lib/errorCategory.ts` | Maps a thrown error onto a short, stable category |
-| API server | `src/api/server.ts`, `configWriter.ts` | REST management API over the YAML file |
-| MCP server | `src/api/mcp.ts` | The same operations as MCP tools, under `/mcp` |
 | CLI | `src/cli/*.ts` | `validate`, `health`, `demo`, `report` |
 | Types | `src/lib/types.ts` | `NormalizedIncident`, `StatusProvider`, `Notifier`, `AdapterHealthAlert` |
 
@@ -198,9 +195,6 @@ CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT);
                                   -- last_checkcentral_poll_sent_at     -- last CheckCentral poll check-in actually sent
                                   -- last_checkcentral_delivery_sent_at -- last CheckCentral delivery check-in actually sent
                                   -- report_last_{weekly,monthly,quarterly}
-
-CREATE TABLE translations (source_hash TEXT, target_lang TEXT, translated TEXT,
-                           PRIMARY KEY (source_hash, target_lang));
 ```
 
 WAL mode is enabled (`journal_mode = WAL`); the file is updated atomically on each upsert.
@@ -240,21 +234,20 @@ notifications.
 
 ## Security
 
-- `WEBHOOK_URL`, `API_TOKEN` and `ANTHROPIC_API_KEY` are the only secrets. They live in the
-  container environment — never in the repo, never in the image.
-- The management API requires a bearer token; without `API_TOKEN` it refuses to start.
+- `WEBHOOK_URL` and, when CheckCentral check-ins are enabled, `SMTP_PASSWORD` are the only
+  secrets. They live in the container environment — never in the repo, never in the image.
+- The container exposes no port. The only inbound path is the data volume.
 - No personal data in logs. The webhook URL is never logged: it can carry a SAS signature, and a
   throttled webhook is exactly the situation that writes a retry log line. Status-page URLs *are*
   logged — there they are the useful diagnostic.
-- `baseUrl` is checked against private, loopback and link-local ranges. The management API exists to
-  be driven by a chat assistant, so a URL someone types is a weaker trust boundary than a YAML file
-  an operator edits; without the check the poller could be aimed at cloud metadata every 5 minutes.
+- `baseUrl` is checked against private, loopback and link-local ranges; without the check a typo or
+  a copied entry could aim the poller at cloud metadata every 5 minutes.
 - Responses are capped at 5 MB. Without a cap the far end decides how much memory we spend.
 - Outbound calls go only to configured hosts.
 
 ## What is explicitly NOT built
 
-- No own user authentication beyond the API bearer token (no UI, no accounts)
+- No user authentication (no UI, no accounts, no inbound API)
 - No database server — SQLite on a Docker volume is sufficient
 - No queue — each run is synchronous
 - No card rendering in `teamsJson` mode: layout and wording belong to the downstream renderer
@@ -263,5 +256,4 @@ notifications.
 
 - Configuration and envelope: [CONFIGURATION.md](CONFIGURATION.md)
 - Adapter details: [ADAPTERS.md](ADAPTERS.md)
-- Management API: [API.md](API.md) · [LLM-INTEGRATION.md](LLM-INTEGRATION.md)
 - Deployment: [DEPLOYMENT.md](DEPLOYMENT.md)

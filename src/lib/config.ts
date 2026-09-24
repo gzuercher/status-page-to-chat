@@ -218,8 +218,8 @@ export const configSchema = z
   .object({
     chatTarget: chatTargetSchema,
     /**
-     * UI language for the chat cards (static labels, badges, health texts)
-     * and the target language for machine-translated incident titles.
+     * UI language for the chat cards (static labels, badges, health texts),
+     * passed to the renderer as `language`.
      * Defaults to German. Override per deployment with the `LANGUAGE` env var.
      */
     language: z.enum(["de", "en"]).default("de"),
@@ -286,9 +286,8 @@ function resolveConfigPath(configPath?: string): string {
 }
 
 /**
- * Validates a YAML string in-memory and returns a Result. Used by the
- * API server's configWriter to validate proposed edits before writing
- * them to disk, without the temp-file dance.
+ * Validates a YAML string in-memory and returns a Result, without the
+ * temp-file dance (used by tests and fixtures).
  */
 export function parseConfigFromString(raw: string, filePath = "<in-memory>"): ConfigResult {
   let parsed: unknown;
@@ -340,7 +339,7 @@ export function parseConfigFromString(raw: string, filePath = "<in-memory>"): Co
     result.data.chatTarget = override as AppConfig["chatTarget"];
   }
 
-  // Optional env-level override of the UI/translation language, mirroring
+  // Optional env-level override of the UI language, mirroring
   // the CHAT_TARGET mechanism above.
   const langOverride = process.env.LANGUAGE;
   if (langOverride) {

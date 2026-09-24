@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TeamsJsonNotifier, assertDeliverableEnvelope } from "../../src/notifiers/teamsJson.js";
 import type { NormalizedIncident } from "../../src/lib/types.js";
 import type { StatusReport } from "../../src/lib/report.js";
-import type { Translator } from "../../src/lib/translator.js";
 
 vi.mock("../../src/lib/httpClient.js", () => ({
   httpPost: vi.fn(),
@@ -34,13 +33,8 @@ function lastPayload(): Record<string, unknown> {
   return payload as Record<string, unknown>;
 }
 
-/** Translator stub: marks its input so translation is visible in assertions. */
-const fakeTranslator: Translator = {
-  translate: async (text: string) => `[de] ${text}`,
-};
-
-function newNotifier(translator: Translator = fakeTranslator): TeamsJsonNotifier {
-  return new TeamsJsonNotifier("https://logic-app.example/trigger", "de", translator);
+function newNotifier(): TeamsJsonNotifier {
+  return new TeamsJsonNotifier("https://logic-app.example/trigger", "de");
 }
 
 describe("TeamsJsonNotifier", () => {
@@ -68,11 +62,11 @@ describe("TeamsJsonNotifier", () => {
       severity: "problem",
       language: "de",
     });
-    // Every incident field survives; the title arrives translated, with
-    // the provider's own wording alongside it.
+    // Every incident field survives; title and titleOriginal both carry
+    // the provider's wording (no machine translation since v0.6.0).
     expect(p.incident).toMatchObject({
       ...testIncident,
-      title: "[de] CDN Degradation",
+      title: "CDN Degradation",
       titleOriginal: "CDN Degradation",
     });
   });
@@ -114,23 +108,10 @@ describe("TeamsJsonNotifier", () => {
     expect((lastPayload().alert as Record<string, unknown>).errorCategory).toBe("HTTP 503");
   });
 
-  it("translates the incident title and keeps the original alongside", async () => {
+  it("passes the provider's title through untranslated, twice for a stable key set", async () => {
     mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
 
     await newNotifier().notifyOpened(testIncident);
-
-    const incident = lastPayload().incident as Record<string, unknown>;
-    expect(incident.title).toBe("[de] CDN Degradation");
-    expect(incident.titleOriginal).toBe("CDN Degradation");
-  });
-
-  it("falls back to the provider's wording when translation fails", async () => {
-    // translator.ts swallows its own errors, but a notifier must not depend
-    // on that: a card is never worth losing over a translation problem.
-    mockedHttpPost.mockResolvedValueOnce({ status: 200, contentType: "", body: "" });
-    const passthrough: Translator = { translate: async (text: string) => text };
-
-    await newNotifier(passthrough).notifyOpened(testIncident);
 
     const incident = lastPayload().incident as Record<string, unknown>;
     expect(incident.title).toBe("CDN Degradation");
@@ -325,8 +306,7 @@ describe("assertDeliverableEnvelope — never send an empty or headless envelope
   });
 
   it("the notifier does not POST when the envelope is incomplete", async () => {
-    // Simulates a future code path that loses the body: the translator
-    // throwing is not it (that falls back), so force it via a broken report.
+    // Simulates a future code path that loses the body via a broken report.
     const broken = { period: "weekly" } as unknown as StatusReport;
     await expect(newNotifier().notifyReport(broken)).rejects.toThrow();
     expect(mockedHttpPost).not.toHaveBeenCalled();

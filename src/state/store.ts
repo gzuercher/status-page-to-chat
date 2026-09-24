@@ -63,12 +63,6 @@ const CREATE_TABLE_SQL = `
     last_polled_at      TEXT NOT NULL,
     last_upstream_count INTEGER
   );
-  CREATE TABLE IF NOT EXISTS translations (
-    source_hash  TEXT NOT NULL,
-    target_lang  TEXT NOT NULL,
-    translated   TEXT NOT NULL,
-    PRIMARY KEY (source_hash, target_lang)
-  );
 `;
 
 /**
@@ -374,42 +368,6 @@ export function getMetadata(store: Store, key: string): string | undefined {
     .prepare<[string], { value: string }>(`SELECT value FROM metadata WHERE key = ?`)
     .get(key);
   return row?.value;
-}
-
-/**
- * Reads a cached machine-translation. `sourceHash` is a hash of the source
- * text (the translator owns the hashing). Returns undefined on a cache miss.
- */
-export function getCachedTranslation(
-  store: Store,
-  sourceHash: string,
-  targetLang: string,
-): string | undefined {
-  const row = store
-    .prepare<[string, string], { translated: string }>(
-      `SELECT translated FROM translations WHERE source_hash = ? AND target_lang = ?`,
-    )
-    .get(sourceHash, targetLang);
-  return row?.translated;
-}
-
-/**
- * Stores a machine-translation, overwriting any prior value for the
- * (sourceHash, targetLang) pair.
- */
-export function setCachedTranslation(
-  store: Store,
-  sourceHash: string,
-  targetLang: string,
-  translated: string,
-): void {
-  store
-    .prepare(
-      `INSERT INTO translations (source_hash, target_lang, translated)
-         VALUES (?, ?, ?)
-         ON CONFLICT(source_hash, target_lang) DO UPDATE SET translated = excluded.translated`,
-    )
-    .run(sourceHash, targetLang, translated);
 }
 
 /** One incident row reduced to what the statistics report needs. */

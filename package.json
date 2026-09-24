@@ -1,10 +1,10 @@
 {
   "name": "status-page-to-chat",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Self-hosted poller that watches external status pages and posts incidents to Microsoft Teams",
   "main": "dist/src/main.js",
   "scripts": {
-    "build": "tsc && node -e \"require('node:fs').mkdirSync('dist/src/api', {recursive: true}); require('node:fs').copyFileSync('src/api/openapi.json', 'dist/src/api/openapi.json')\"",
+    "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src/ tests/ && prettier --check src/ tests/",
@@ -15,22 +15,13 @@
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "esbuild"
-    ],
-    "overrides": {
-      "hono": ">=4.12.25",
-      "fast-uri": ">=3.1.5",
-      "ip-address": ">=10.3.1",
-      "qs": ">=6.15.2",
-      "body-parser": ">=2.3.0",
-      "@hono/node-server": ">=1.19.15 <2"
-    }
+    ]
   },
   "engines": {
     "node": ">=22.19.0"
   },
   "packageManager": "pnpm@10.33.2",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^13.0.3",
     "cheerio": "^1.2.0",
     "croner": "^10.0.1",
