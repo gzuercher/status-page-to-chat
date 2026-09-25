@@ -1,128 +1,155 @@
-# Default provider configuration.
+# Provider configuration as run in production (Raptus AG, teth.rserver.ch).
 #
-# This file is bundled into the Docker image and used by every container
-# instance unless CONFIG_PATH points to an alternative file. Adapt it to
-# the services *you* care about — fork the repo or mount your own file.
+# Reference copy only: the running container reads /data/providers.yaml in
+# its data volume (CONFIG_PATH), not this file. This file is baked into the
+# image and used only when CONFIG_PATH is unset (fork-based workflow).
+#
+# To change production: `docker compose cp` the live file out, edit, copy
+# it back — the next poll cycle (within 5 min) picks it up. Then mirror the
+# change here.
+#
+# Removed on 2026-09-25: cloudflare (minImpact "major" filtered out every
+# incident), shopify (no incidents published since 2025-06, outages only
+# as component status), langdock (moved to incident.io).
 #
 # Schema and adapter docs: docs/CONFIGURATION.md, docs/ADAPTERS.md.
 
-chatTarget: teamsJson
+chatTarget: teamsJson # einziges unterstuetztes Ziel; die Logic App rendert die Karte
+
+# Lowest severity that still produces a card. "minor" drops only "none"
+# (informational notices). Do NOT raise this globally: most vendors class a
+# real, user-visible degradation as "minor" and reserve "major" for a total
+# outage — at "major" we missed roughly three quarters of what Anthropic and
+# GitHub reported. Dampen loud sources per provider instead (`minImpact` on the entry).
+# Only atlassian-statuspage publishes a severity. Per provider overridable.
+minImpact: minor
 
 providers:
-  # --- Atlassian Statuspage ---
-  - key: bitbucket
-    displayName: Bitbucket
-    adapter: atlassian-statuspage
-    baseUrl: https://bitbucket.status.atlassian.com
-
-  - key: bitwarden
-    displayName: Bitwarden
-    adapter: atlassian-statuspage
-    baseUrl: https://status.bitwarden.com
-
-  - key: bexio
-    displayName: Bexio
-    adapter: atlassian-statuspage
-    baseUrl: https://www.bexio-status.com
-
-  - key: webflow
-    displayName: Webflow
-    adapter: atlassian-statuspage
-    baseUrl: https://status.webflow.com
-
-  - key: digicert
-    displayName: DigiCert
-    adapter: atlassian-statuspage
-    baseUrl: https://status.digicert.com
-
-  - key: ninjaone
-    displayName: NinjaOne
-    adapter: atlassian-statuspage
-    baseUrl: https://status.ninjaone.com
-
-  - key: sucuri
-    displayName: Sucuri
-    adapter: atlassian-statuspage
-    baseUrl: https://status.sucuri.net
-
-  - key: smartrecruiters
-    displayName: SmartRecruiters
-    adapter: atlassian-statuspage
-    baseUrl: https://status.smartrecruiters.com
-
-  - key: retool
-    displayName: Retool
-    adapter: atlassian-statuspage
-    baseUrl: https://status.retool.com
-
-  - key: langdock
-    displayName: Langdock
-    adapter: atlassian-statuspage
-    baseUrl: https://status.langdock.com
-
-  - key: zendesk-helpcenter
-    displayName: Zendesk Help Center
-    adapter: atlassian-statuspage
-    baseUrl: https://status.zendesk.com
-    componentFilter: example-helpcenter     # placeholder — replace with your Zendesk subdomain
-
-  - key: kaseya-itglue
-    displayName: Kaseya IT Glue
-    adapter: atlassian-statuspage
-    baseUrl: https://status.kaseya.com
-    componentFilter: IT Glue                # only the IT Glue product
-
-  - key: gravityzone-bitdefender
-    displayName: Bitdefender GravityZone
-    adapter: atlassian-statuspage
-    baseUrl: https://status.gravityzone.bitdefender.com
-    componentFilter:                        # only the cloud instances actually used
-      - cloudgz.gravityzone.bitdefender.com
-      - cloud.gravityzone.bitdefender.com
-
-  - key: figma
-    displayName: Figma
-    adapter: atlassian-statuspage
-    baseUrl: https://status.figma.com
-    # No componentFilter: only 3 generic components, all relevant.
-
-  # --- Sophos: DEFERRED (see ROADMAP.md → "Later extensions") ---
-  # status.sophos.com runs on Atlassian Statuspage but the operator has
-  # disabled all machine-readable endpoints. /api/v2/*, /history.atom,
-  # /history.rss and /history.json all respond HTTP 200 with a generic
-  # 1034-byte 404 HTML page instead of JSON/Atom — even with a realistic
-  # browser User-Agent. The atlassian-statuspage adapter therefore cannot
-  # cover Sophos. Enable when (a) Sophos opens the JSON API, or (b) an
-  # HTML-scraping adapter exists. Browser impersonation is rejected as
-  # a workaround per docs/CONFIGURATION.md.
-  # - key: sophos
-  #   displayName: Sophos
-  #   adapter: atlassian-statuspage   # or: html-scraping (future)
-  #   baseUrl: https://status.sophos.com
-
   - key: claude
     displayName: Claude
+    description: "KI-Assistent und API von Anthropic."
     adapter: atlassian-statuspage
-    baseUrl: https://status.claude.com
-    componentFilter:                        # only the products actually used
-      - claude.ai
-      - Claude Code
-      - api.anthropic.com
-
-  # --- Google Workspace ---
+    # Nicht status.claude.com: dessen Zertifikat deckt nur *.statuspage.io
+    # ab, die TLS-Pruefung schlaegt fehl (seit 2026-08-13, von Anthropic
+    # selbst als Incident gemeldet). anthropic.statuspage.io ist dieselbe
+    # Seite (page id tymt9n04zgry) unter dem Namen, den das Zertifikat
+    # traegt. Zurueckstellen, sobald das Custom-Domain-Zertifikat wieder
+    # gueltig ist -- noetig ist es dann aber nicht.
+    baseUrl: https://anthropic.statuspage.io
+    componentFilter: claude.ai, Claude Code, api.anthropic.com
+    # Ohne dies leitet der Adapter das Kartenlogo aus baseUrl ab und wuerde
+    # das Statuspage-Logo statt der Marke Claude zeigen.
+    logoUrl: https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE%2CSIZE%2CURL&size=64&url=https%3A%2F%2Fclaude.com
+  - key: github
+    displayName: GitHub
+    description: "Git-Hosting, Actions, Packages und Copilot."
+    adapter: atlassian-statuspage
+    baseUrl: https://www.githubstatus.com
+    # Die Statusseite fuehrt ein Logo mit gruenem Haken - auf einer
+    # Stoerungskarte irritierend. Deshalb das Markenlogo von github.com.
+    logoUrl: https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE%2CSIZE%2CURL&size=64&url=https%3A%2F%2Fgithub.com
+  - key: bitbucket
+    displayName: Bitbucket
+    description: "Git-Repository-Hosting und CI/CD-Pipelines von Atlassian."
+    adapter: atlassian-statuspage
+    baseUrl: https://bitbucket.status.atlassian.com
+  - key: bitwarden
+    displayName: Bitwarden
+    description: "Passwort-Manager und Tresor-Dienst."
+    adapter: hund-atom
+    baseUrl: https://status.bitwarden.com
   - key: google-workspace
     displayName: Google Workspace
+    description: "Gmail, Drive, Docs, Meet und Kalender von Google."
     adapter: google-workspace
-
-  # --- WEDOS ---
+  - key: bexio
+    displayName: Bexio
+    description: "Schweizer Business-Software für KMU (Buchhaltung, Rechnungen)."
+    adapter: atlassian-statuspage
+    baseUrl: https://www.bexio-status.com
+  - key: webflow
+    displayName: Webflow
+    description: "Visueller Website-Baukasten und Hosting."
+    adapter: atlassian-statuspage
+    baseUrl: https://status.webflow.com
+  - key: digicert
+    displayName: DigiCert
+    description: "Zertifizierungsstelle für TLS-/SSL-Zertifikate."
+    adapter: atlassian-statuspage
+    baseUrl: https://status.digicert.com
+  - key: ninjaone
+    displayName: NinjaOne
+    description: "RMM- und Endpoint-Management-Plattform."
+    adapter: atlassian-statuspage
+    baseUrl: https://status.ninjaone.com
+  - key: sucuri
+    displayName: Sucuri
+    description: "Website-Firewall und Malware-Schutz."
+    adapter: atlassian-statuspage
+    baseUrl: https://status.sucuri.net
+  - key: smartrecruiters
+    displayName: SmartRecruiters
+    description: "Bewerbermanagement- und Recruiting-Plattform."
+    adapter: atlassian-statuspage
+    baseUrl: https://status.smartrecruiters.com
+  - key: retool
+    displayName: Retool
+    description: "Plattform für interne Tools und Admin-Oberflächen."
+    adapter: atlassian-statuspage
+    baseUrl: https://status.retool.com
+  - key: zendesk-helpcenter
+    displayName: Zendesk
+    description: "Support-Plattform: Ticketing, Help Center, Chat und API."
+    adapter: zendesk-ssp
+    baseUrl: https://status.zendesk.com
+    logoUrl: https://www.google.com/s2/favicons?domain=zendesk.com&sz=64
+  - key: kaseya-itglue
+    displayName: Kaseya IT Glue
+    description: "IT-Dokumentationsplattform (IT Glue)."
+    adapter: atlassian-statuspage
+    baseUrl: https://status.kaseya.com
+    componentFilter: IT Glue
+  - key: gravityzone-bitdefender
+    displayName: Bitdefender GravityZone
+    description: "Cloud-Endpoint-Security von Bitdefender."
+    adapter: atlassian-statuspage
+    baseUrl: https://status.gravityzone.bitdefender.com
+    componentFilter: cloudgz.gravityzone.bitdefender.com, cloud.gravityzone.bitdefender.com
+  - key: figma
+    displayName: Figma
+    description: "Kollaboratives Design- und Prototyping-Tool."
+    adapter: atlassian-statuspage
+    baseUrl: https://status.figma.com
   - key: wedos
     displayName: WEDOS
+    description: "Tschechischer Webhosting- und Domain-Anbieter."
     adapter: wedos-status-online
     baseUrl: https://wedos.status.online
-
-  # --- GitHub Issues as a status tracker ---
+    logoUrl: https://www.google.com/s2/favicons?domain=wedos.cz&sz=64
   - key: onetimesecret
     displayName: Onetime Secret
+    description: "Sichere, einmalige Übertragung von Geheimnissen."
     adapter: github-issues
     owner: onetimesecret
     repo: status
+    logoUrl: https://www.google.com/s2/favicons?domain=onetimesecret.com&sz=64
+  - key: trello
+    displayName: Trello
+    description: "Kanban-basiertes Projekt- und Aufgaben-Board."
+    adapter: atlassian-statuspage
+    baseUrl: https://trello.status.atlassian.com
+  - key: linkedin
+    displayName: LinkedIn
+    description: "Berufliches Netzwerk."
+    adapter: atlassian-statuspage
+    baseUrl: https://www.linkedin-status.com
+  - key: vercel
+    displayName: Vercel
+    description: "Hosting- und Deployment-Plattform für Web-Apps."
+    adapter: atlassian-statuspage
+    baseUrl: https://www.vercel-status.com
+  - key: directus
+    displayName: Directus
+    description: "Headless-CMS und Datenplattform."
+    adapter: atlassian-statuspage
+    baseUrl: https://status.directus.cloud
