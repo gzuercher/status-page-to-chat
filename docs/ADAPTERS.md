@@ -23,7 +23,7 @@ The task of each adapter: fetch raw data, extract open + recently closed inciden
 
 ## 1. `atlassian-statuspage`
 
-**Covered services**: Bitbucket, Bexio, Webflow, DigiCert, NinjaOne, Sucuri, SmartRecruiters, Retool, Kaseya, Bitdefender GravityZone, Figma, Claude, Langdock — everything running on Atlassian Statuspage with a **public JSON API**, plus **incident.io** pages, which serve a Statuspage-compatible `/api/v2/` (Langdock moved from BetterStack to incident.io in 2026). Bitwarden and Zendesk look like Atlassian pages but actually run on Hund.io and Zendesk's own SSP backend — they need the `hund-atom` and `zendesk-ssp` adapters. Sophos runs technically on Atlassian Statuspage but has the JSON API disabled (see [ROADMAP.md](ROADMAP.md) → Later extensions).
+**Covered services**: Bitbucket, Bexio, Webflow, DigiCert, NinjaOne, Sucuri, SmartRecruiters, Retool, Kaseya, Bitdefender GravityZone, Figma, Claude, Vercel, LinkedIn, Trello, Directus — everything running on Atlassian Statuspage with a **public JSON API**. **incident.io** pages work too: they serve a Statuspage-compatible `/api/v2/` without `incidents/unresolved.json`. Bitwarden and Zendesk look like Atlassian pages but actually run on Hund.io and Zendesk's own SSP backend — they need the `hund-atom` and `zendesk-ssp` adapters. Sophos runs technically on Atlassian Statuspage but has the JSON API disabled (see [ROADMAP.md](ROADMAP.md) → Later extensions).
 
 ### Endpoints
 
@@ -106,7 +106,7 @@ At `minImpact: major` an Anthropic incident affecting `claude.ai`, `Claude Code`
 
 `minor` is therefore the right global floor: it removes only `none`, which is informational notices and maintenance banners.
 
-Loud sources are dampened **individually** instead. Cloudflare is the clear case: ~38 `minor` a month, nearly all single-datacentre blips in regions we do not serve, so it carries `minImpact: major` on its own entry.
+Loud sources are dampened **individually** instead — but check the result. Cloudflare carried `minImpact: major` on its own entry and turned out to publish no `major` incident at all (2026-09-25: 39 `minor`, 11 `none`, 0 `major` in the last 50), so the provider was silent while three incidents were open. It was removed. Before dampening a source this way, count how many of its incidents would still pass; if the answer is zero, prefer a `componentFilter` or drop the provider.
 
 #### Filters gate entry, not exit
 
@@ -277,7 +277,7 @@ Widening the list brings its own trap: a partial recovery reads almost exactly l
 
 Matching the all-clear alone would post a resolution card while the incident is demonstrably ongoing — and a false all-clear is worse than a late one, because it actively tells people a broken service works. A resolution keyword is therefore withdrawn when the same update also carries a qualifier (`except`, `still working`, `partially`, `weiterhin`, …).
 
-Both lists are heuristics over prose and will miss wordings. When a Langdock incident stays open in the state DB (`incidents` table) long after its status page has closed it, the update text is the first place to look.
+Both lists are heuristics over prose and will miss wordings. When a BetterStack incident stays open in the state DB (`incidents` table) long after its status page has closed it, the update text is the first place to look.
 
 ### Configuration
 
